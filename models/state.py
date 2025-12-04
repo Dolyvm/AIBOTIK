@@ -31,13 +31,13 @@ class CharacterState:
     """Динамическое состояние персонажа в рамках сессии с пользователем."""
 
     # Основные метрики (0-100)
-    trust: int = 25          # Доверие
-    affection: int = 10      # Привязанность
-    arousal: int = 0         # Уровень возбуждения
-    comfort: int = 30        # Комфорт в присутствии пользователя
+    trust: int | None = None          # Доверие
+    affection: int | None = None      # Привязанность
+    arousal: int | None = None        # Уровень возбуждения
+    comfort: int | None = None        # Комфорт в присутствии пользователя
 
     # Текущее состояние
-    mood: Mood = Mood.PROFESSIONAL
+    mood: Mood | None = None
 
     # Флаги важных событий
     first_touch: bool = False
@@ -48,6 +48,19 @@ class CharacterState:
 
     # История важных моментов
     memorable_events: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Устанавливает значения по умолчанию, если не заданы."""
+        if self.trust is None:
+            self.trust = 25
+        if self.affection is None:
+            self.affection = 10
+        if self.arousal is None:
+            self.arousal = 0
+        if self.comfort is None:
+            self.comfort = 30
+        if self.mood is None:
+            self.mood = Mood.PROFESSIONAL
 
     @property
     def relationship_stage(self) -> RelationshipStage:

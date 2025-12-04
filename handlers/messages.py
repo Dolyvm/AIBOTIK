@@ -147,18 +147,14 @@ class MessageHandler:
             if "404" in error_msg and "No endpoints found" in error_msg:
                 user_msg = (
                     "⚠️ Модель LLM временно недоступна.\n\n"
-                    "Администратор: проверьте настройку LLM_MODEL в .env файле."
                 )
             elif "401" in error_msg or "403" in error_msg:
                 user_msg = (
                     "⚠️ Ошибка авторизации API.\n\n"
-                    "Администратор: проверьте OPENROUTER_API_KEY в .env файле."
                 )
-            elif "429" in error_msg:
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
                 user_msg = (
-                    "⚠️ Модель перегружена (rate limit).\n\n"
-                    "Попробуй ещё раз через 10-30 секунд, или администратор может "
-                    "переключиться на другую модель в .env файле."
+                    "⚠️ Все доступные модели временно перегружены."
                 )
             else:
                 user_msg = (

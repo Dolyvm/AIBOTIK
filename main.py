@@ -17,6 +17,8 @@ from services.character_manager import CharacterManager
 from storage.memory import InMemoryStorage
 from handlers.messages import MessageHandler, router as message_router
 from handlers.commands import router as command_router
+from handlers.webapp import router as webapp_router
+from web.server import create_app, run_server
 
 # Настройка логирования
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
@@ -92,6 +94,7 @@ async def main():
 
     # Регистрация роутеров
     dp.include_router(command_router)
+    dp.include_router(webapp_router)
     dp.include_router(message_router)
 
     # Передача зависимостей в middleware через router
@@ -105,10 +108,17 @@ async def main():
         data["character_manager"] = character_manager
         return await handler(event, data)
 
-    # Запуск бота
-    logger.info("Bot is starting...")
+    # Создание WebApp сервера
+    webapp = create_app(storage, character_manager)
+
+    # Запуск бота и WebApp сервера
+    logger.info("Starting bot and WebApp server...")
     try:
-        await dp.start_polling(bot)
+        # Запускаем оба сервера параллельно
+        await asyncio.gather(
+            dp.start_polling(bot),
+            run_server(webapp, host="0.0.0.0", port=8080)
+        )
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:

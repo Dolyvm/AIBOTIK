@@ -8,6 +8,7 @@ from ..components import StaticTextComponent, TemplateComponent, DynamicComponen
 from ..conditions import StandardConditions
 from ..composer import PromptComposer
 from models.state import Mood
+from config.character_modifiers import get_behavior_modifiers
 
 
 def create_roleplay_composer(token_budget: int = 4000) -> PromptComposer:
@@ -152,44 +153,8 @@ def create_roleplay_composer(token_budget: int = 4000) -> PromptComposer:
     # 8. BEHAVIOR MODIFIERS (HIGH, DYNAMIC)
     # ========================================
     def render_behavior_modifiers(ctx: InjectionContext) -> str:
-        state = ctx.state
-        modifiers = []
-
-        # Модификаторы на основе trust
-        if state.trust < 30:
-            modifiers.append("• Держи профессиональную дистанцию, будь осторожной")
-        elif state.trust < 60:
-            modifiers.append("• Можешь позволить себе редкие личные комментарии")
-        elif state.trust > 80:
-            modifiers.append("• Можешь показывать уязвимость и делиться личным")
-
-        # Модификаторы на основе affection
-        if state.affection < 30:
-            modifiers.append("• Избегай физического контакта и флирта")
-        elif state.affection > 70:
-            modifiers.append("• Допустимы нежные прикосновения и намёки на чувства")
-
-        # Модификаторы на основе arousal
-        if state.arousal > 50:
-            modifiers.append("• Можешь показывать физическое влечение через описания")
-        if state.arousal > 80:
-            modifiers.append("• Высокое возбуждение — допустимы откровенные описания")
-
-        # Модификаторы настроения
-        mood_modifiers = {
-            Mood.PROFESSIONAL: "• Оставайся сдержанной",
-            Mood.WARM: "• Показывай теплоту через мелкие жесты и взгляды",
-            Mood.PLAYFUL: "• Позволь себе лёгкий флирт и поддразнивание",
-            Mood.INTIMATE: "• Открыто показывай влечение и желание близости",
-            Mood.VULNERABLE: "• Покажи свою ранимую сторону",
-            Mood.ANNOYED: "• Будь короткой в ответах, показывай раздражение",
-        }
-        if state.mood in mood_modifiers:
-            modifiers.append(mood_modifiers[state.mood])
-
-        if modifiers:
-            return "### МОДИФИКАТОРЫ ПОВЕДЕНИЯ ###\n" + "\n".join(modifiers)
-        return ""
+        # Используем персонализированные модификаторы для каждого персонажа
+        return get_behavior_modifiers(ctx.session.current_character, ctx.state)
 
     composer.register(DynamicComponent(
         name="behavior_modifiers",

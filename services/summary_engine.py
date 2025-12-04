@@ -107,7 +107,7 @@ class SummaryEngine:
         try:
             response = await self.llm_client.generate(
                 messages=[{"role": "user", "content": context + prompt}],
-                max_tokens=300,
+                max_tokens=250,
                 temperature=0.3  # Низкая температура для фактичности
             )
             logger.info(f"✅ Summary created: {len(response)} chars")

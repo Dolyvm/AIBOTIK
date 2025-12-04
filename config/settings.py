@@ -11,6 +11,7 @@ class Settings(BaseSettings):
 
     # Telegram Bot
     TELEGRAM_BOT_TOKEN: str
+    WEBAPP_URL: str = "http://localhost:8080"
 
     # OpenRouter API
     OPENROUTER_API_KEY: str

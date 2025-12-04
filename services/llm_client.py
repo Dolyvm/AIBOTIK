@@ -1,5 +1,6 @@
 """Клиент для OpenRouter API."""
 
+import asyncio
 import logging
 from typing import List, Dict, Optional
 
@@ -17,17 +18,19 @@ class OpenRouterClient:
         self,
         api_key: str,
         model: str,
-        
+
         default_params: Optional[Dict] = None
     ):
         self.api_key = api_key
         self.model = model
+        self.fallback_models = [
+            "nousresearch/hermes-3-llama-3.1-405b:free",  
+        ]
         self.default_params = default_params or {
             "temperature": 0.80,
             "top_p": 0.9,
             "max_tokens": 250,
             "repetition_penalty": 1.15,
-            # Убираем агрессивные stop sequences - только критически важные
             "stop": ["{{user}}:", "{{char}}:", "<USER>:", "<BOT>:"]
         }
         self._session: Optional[aiohttp.ClientSession] = None
@@ -67,13 +70,11 @@ class OpenRouterClient:
         """
         session = await self._get_session()
 
-        # Формируем messages с system prompt
         full_messages = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages)
 
-        # Объединяем параметры
         params = {**self.default_params, **kwargs}
 
         payload = {
@@ -89,37 +90,67 @@ class OpenRouterClient:
         logger.info(f"  Temperature: {params.get('temperature', 'default')}")
         logger.debug(f"  Full payload: {payload}")
 
-        try:
-            async with session.post(
-                f"{self.BASE_URL}/chat/completions",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=60)
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    logger.error(f"OpenRouter API error: {response.status} - {error_text}")
-                    raise Exception(f"OpenRouter API error: {response.status} - {error_text}")
+        max_retries = 5
+        models_to_try = [self.model] + self.fallback_models
 
-                data = await response.json()
-                choice = data["choices"][0]
-                generated_text = choice["message"]["content"]
-                finish_reason = choice.get("finish_reason", "unknown")
+        for model_idx, current_model in enumerate(models_to_try):
+            payload["model"] = current_model
 
-                logger.info(f"✅ Received response: {len(generated_text)} chars")
-                logger.info(f"  Finish reason: {finish_reason}")
+            for attempt in range(max_retries):
+                try:
+                    async with session.post(
+                        f"{self.BASE_URL}/chat/completions",
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=60)
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            choice = data["choices"][0]
+                            generated_text = choice["message"]["content"]
+                            finish_reason = choice.get("finish_reason", "unknown")
 
-                # Предупреждение если текст обрезан
-                if finish_reason == "length":
-                    logger.warning(f"⚠️ Response was cut off due to max_tokens limit!")
-                elif finish_reason == "stop":
-                    logger.info(f"  Generation stopped by stop sequence")
+                            if model_idx > 0:
+                                logger.warning(f"⚠️ Using fallback model: {current_model}")
 
-                logger.debug(f"\n{'='*80}\nGENERATED RESPONSE:\n{'='*80}\n{generated_text}\n{'='*80}")
-                return generated_text
+                            logger.info(f"✅ Received response: {len(generated_text)} chars")
+                            logger.info(f"  Finish reason: {finish_reason}")
 
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error: {e}")
-            raise Exception(f"Ошибка сети при обращении к OpenRouter: {e}")
+                            if finish_reason == "length":
+                                logger.warning(f"⚠️ Response was cut off due to max_tokens limit!")
+                            elif finish_reason == "stop":
+                                logger.info(f"  Generation stopped by stop sequence")
+
+                            logger.debug(f"\n{'='*80}\nGENERATED RESPONSE:\n{'='*80}\n{generated_text}\n{'='*80}")
+                            return generated_text
+
+                        elif response.status == 429:
+                            error_text = await response.text()
+                            logger.warning(f"⚠️ Rate limit (429) from {current_model} (attempt {attempt + 1}/{max_retries})")
+                            logger.debug(f"Error details: {error_text}")
+
+                            if attempt == max_retries - 1:
+                                logger.warning(f"Max retries reached for {current_model}, trying fallback...")
+                                break
+
+                            wait_time = 2 + 1
+                            logger.info(f"Waiting {wait_time}s before retry...")
+                            await asyncio.sleep(wait_time)
+                            continue
+
+                        else:
+                            error_text = await response.text()
+                            logger.error(f"OpenRouter API error: {response.status} - {error_text}")
+                            raise Exception(f"OpenRouter API error: {response.status} - {error_text}")
+
+                except aiohttp.ClientError as e:
+                    logger.error(f"Network error: {e}")
+                    if attempt == max_retries - 1:
+                        raise Exception(f"Ошибка сети при обращении к OpenRouter: {e}")
+                    await asyncio.sleep(2 ** (attempt + 1))
+
+        raise Exception(
+            f"⚠️ Все модели недоступны из-за rate limiting. "
+        )
 
     async def close(self):
         """Закрывает сессию."""

@@ -34,7 +34,7 @@ class CharacterManager:
         for png_file in png_files:
             try:
                 character_data = CharacterCardParser.extract_from_png(png_file)
-                character_id = png_file.stem  # Имя файла без расширения
+                character_id = png_file.stem  
                 self.characters[character_id] = character_data
                 logger.info(f"Loaded character: {character_data.name} (ID: {character_id})")
             except Exception as e:

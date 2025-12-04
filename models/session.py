@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List
 
 from .state import CharacterState
+from config.scenario_states import get_initial_state
 
 
 @dataclass
@@ -83,7 +84,11 @@ class UserSession:
         self.scenario_index = scenario_index
         # Сбрасываем историю при смене сценария
         self.messages = []
-        self.character_state = CharacterState()
+
+        # Получаем начальные значения для этого сценария
+        initial_state = get_initial_state(self.current_character, scenario_index)
+        self.character_state = CharacterState(**initial_state)
+
         self.summary = None
         self.summary_created_at = 0
         self.message_count = 0
