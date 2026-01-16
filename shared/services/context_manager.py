@@ -37,7 +37,6 @@ class ContextManager:
 
         if msgs_since_summary >= self.summary_threshold and len(history) > MAX_HISTORY_LENGTH:
             summary = await self._summarize_history(history, summary, state, character, world)
-            history = history[-5:]
             msgs_since_summary = 0
 
         history.append({"role": "user", "content": user_input})

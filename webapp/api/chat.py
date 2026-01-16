@@ -46,7 +46,13 @@ async def get_history(chat_id: int):
             raise HTTPException(status_code=404, detail="Chat not found")
 
         history = json.loads(chat.history)
-        return {"history": history, "target_id": chat.target_id, "type": chat.chat_type}
+        return {
+            "history": history,
+            "target_id": chat.target_id,
+            "type": chat.chat_type,
+            "summary": chat.summary or "",
+            "msg_count": chat.msg_count
+        }
     finally:
         await session.close()
 
