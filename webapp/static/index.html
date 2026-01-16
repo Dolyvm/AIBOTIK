@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Roleplay</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <!-- Библиотеки для форматирования текста -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app" v-cloak>
+        
+        <!-- View: Selection (Characters/Worlds) -->
+        <div v-if="currentView === 'selection'" class="selection-view">
+            <div class="tabs">
+                <button :class="{active: tab === 'characters'}" @click="tab = 'characters'">Персонажи</button>
+                <button :class="{active: tab === 'worlds'}" @click="tab = 'worlds'">Миры</button>
+                <button :class="{active: tab === 'chats'}" @click="loadChats">Мои чаты</button>
+            </div>
+
+            <div class="grid-container">
+                <div v-if="tab === 'characters'" class="grid">
+                    <div v-for="char in characters" :key="char.id" class="card" @click="selectItem('character', char)">
+                        <img :src="char.image_url" loading="lazy">
+                        <div class="card-title">{{ char.name }}</div>
+                    </div>
+                </div>
+
+                <div v-if="tab === 'worlds'" class="grid">
+                    <div v-for="world in worlds" :key="world.id" class="card" @click="selectItem('world', world)">
+                        <img :src="world.cover_image" loading="lazy">
+                        <div class="card-title">{{ world.name }}</div>
+                    </div>
+                </div>
+
+                <div v-if="tab === 'chats'" class="chats-list">
+                    <div v-for="chat in activeChats" :key="chat.id" class="chat-row" @click="openChat(chat.id)">
+                        <div class="chat-row-avatar">
+                            <img :src="chat.image_url || 'https://via.placeholder.com/50'">
+                        </div>
+                        <div class="chat-row-info">
+                            <div class="chat-row-name">{{ chat.name }}</div>
+                            <div class="chat-row-date">{{ formatDate(chat.updated_at) }}</div>
+                        </div>
+                    </div>
+                    <div v-if="activeChats.length === 0" class="empty-state">Нет активных чатов</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- View: Chat -->
+        <div v-if="currentView === 'chat'" class="chat-view">
+            <div class="chat-header">
+                <button @click="backToMenu" class="back-btn"><i class="fas fa-arrow-left"></i></button>
+                <div class="header-info">
+                    <span class="header-name">{{ currentChatName }}</span>
+                    <span class="header-status">bot</span>
+                </div>
+                <button @click="resetChat" class="reset-btn" title="Сбросить диалог">
+                    <i class="fas fa-redo"></i>
+                </button>
+                <div class="header-avatar" v-if="currentChatAvatar">
+                    <img :src="currentChatAvatar">
+                </div>
+            </div>
+
+            <div class="messages-container" ref="messagesContainer">
+                <div v-for="(msg, index) in chatHistory" :key="index" 
+                     class="message-wrapper" 
+                     :class="msg.role === 'user' ? 'own' : 'foreign'">
+                    <div class="message-bubble">
+                        <!-- ЗДЕСЬ ИЗМЕНЕНИЕ: v-html вместо интерполяции -->
+                        <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
+                    </div>
+                </div>
+                
+                <div v-if="isWaitingResponse && !isStreaming" class="message-wrapper foreign">
+                    <div class="message-bubble typing">
+                        <span>.</span><span>.</span><span>.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <button @click="generatePhoto" :disabled="isWaitingResponse || isStreaming" class="camera-btn" title="Сгенерировать фото (50 токенов)">
+                    <i class="fas fa-camera"></i>
+                </button>
+                <textarea
+                    v-model="inputMessage"
+                    @keydown.enter.prevent="sendMessage"
+                    placeholder="Сообщение..."
+                    rows="1"
+                    ref="inputField"
+                ></textarea>
+                <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Modal: Scenario Selection -->
+        <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
+            <div class="modal-content">
+                <button class="modal-close" @click="closeModal">
+                    <i class="fas fa-times"></i>
+                </button>
+
+                <div v-if="selectedCharacter" class="modal-body">
+                    <div class="modal-character-header">
+                        <img :src="selectedCharacter.image_url" class="modal-character-image" alt="Character">
+                        <div class="modal-character-info">
+                            <h2>{{ selectedCharacter.name }}</h2>
+                            <p class="modal-character-description">{{ selectedCharacter.description }}</p>
+                        </div>
+                    </div>
+
+                    <div class="modal-scenarios">
+                        <h3>Выберите сценарий:</h3>
+                        <div v-for="scenario in selectedCharacter.scenarios" :key="scenario.index"
+                             class="scenario-card"
+                             @click="startChatWithScenario(scenario.index)">
+                            <div class="scenario-header">
+                                <span class="scenario-icon">
+                                    {{ scenario.index === 0 ? '🎬' : '🔀' }}
+                                </span>
+                                <span class="scenario-name">{{ scenario.name }}</span>
+                            </div>
+                            <p class="scenario-preview">{{ scenario.preview }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isLoadingScenarios" class="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Загрузка сценариев...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, nextTick } = Vue;
+
+        // Настройка marked.js, чтобы он переносил строки по Enter
+        marked.setOptions({
+            breaks: true, // Превращает \n в <br>
+            gfm: true     // GitHub Flavored Markdown
+        });
+
+        createApp({
+            setup() {
+                const currentView = ref('selection');
+                const tab = ref('characters');
+                const characters = ref([]);
+                const worlds = ref([]);
+                const activeChats = ref([]);
+                const userId = ref(null);
+                
+                const currentChatId = ref(null);
+                const currentChatName = ref('');
+                const currentChatAvatar = ref('');
+                const chatHistory = ref([]);
+                const inputMessage = ref('');
+                const isWaitingResponse = ref(false);
+                const isStreaming = ref(false);
+                const messagesContainer = ref(null);
+
+                // Modal state
+                const showScenarioModal = ref(false);
+                const selectedCharacter = ref(null);
+                const isLoadingScenarios = ref(false);
+
+                onMounted(async () => {
+                    const tg = window.Telegram.WebApp;
+                    tg.ready();
+                    tg.expand();
+                    
+                    const urlParams = new URLSearchParams(window.location.search);
+                    userId.value = tg.initDataUnsafe?.user?.id || urlParams.get('user_id');
+
+                    await Promise.all([loadCharacters(), loadWorlds()]);
+                });
+
+                const loadCharacters = async () => {
+                    const res = await axios.get('/api/characters');
+                    characters.value = res.data.characters;
+                };
+
+                const loadWorlds = async () => {
+                    const res = await axios.get('/api/worlds');
+                    worlds.value = res.data.worlds;
+                };
+
+                const loadChats = async () => {
+                    tab.value = 'chats';
+                    if (!userId.value) return;
+                    const res = await axios.get(`/api/user/${userId.value}/chats`);
+                    activeChats.value = res.data.chats;
+                };
+
+                const selectItem = async (type, item) => {
+                    if (!userId.value) {
+                        alert('Ошибка: user_id не найден');
+                        return;
+                    }
+
+                    // For both characters and worlds, show scenario selection modal
+                    showScenarioModal.value = true;
+                    isLoadingScenarios.value = true;
+
+                    try {
+                        // Fetch details including scenarios
+                        const endpoint = type === 'character' ? `/api/characters/${item.id}` : `/api/worlds/${item.id}`;
+                        const res = await axios.get(endpoint);
+                        selectedCharacter.value = {
+                            ...res.data,
+                            type: type  // Store type for later use
+                        };
+                        isLoadingScenarios.value = false;
+                    } catch (e) {
+                        console.error(e);
+                        alert('Ошибка загрузки сценариев');
+                        showScenarioModal.value = false;
+                        isLoadingScenarios.value = false;
+                    }
+                };
+
+                const openChat = async (chatId) => {
+                    currentChatId.value = chatId;
+                    isWaitingResponse.value = true;
+                    
+                    const chatMeta = activeChats.value.find(c => c.id === chatId);
+                    if (chatMeta) {
+                        currentChatName.value = chatMeta.name;
+                        currentChatAvatar.value = chatMeta.image_url;
+                    }
+
+                    try {
+                        const res = await axios.get(`/api/chat/${chatId}/history`);
+                        chatHistory.value = res.data.history;
+                        currentView.value = 'chat';
+                        await nextTick();
+                        scrollToBottom();
+                    } catch (e) {
+                        alert('Ошибка открытия чата');
+                    } finally {
+                        isWaitingResponse.value = false;
+                    }
+                };
+
+                const backToMenu = () => {
+                    currentView.value = 'selection';
+                    chatHistory.value = [];
+                    loadChats();
+                };
+
+                const sendMessage = async () => {
+                    const text = inputMessage.value.trim();
+                    if (!text || isWaitingResponse.value || isStreaming.value) return;
+
+                    chatHistory.value.push({ role: 'user', content: text });
+                    inputMessage.value = '';
+                    isWaitingResponse.value = true;
+                    scrollToBottom();
+
+                    try {
+                        const res = await axios.post(`/api/chat/${currentChatId.value}/send`, { text });
+                        const fullResponse = res.data.response;
+                        
+                        isWaitingResponse.value = false;
+                        isStreaming.value = true;
+                        await typeWriter(fullResponse);
+                        isStreaming.value = false;
+                    } catch (e) {
+                        console.error(e);
+                        chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                        isWaitingResponse.value = false;
+                    }
+                };
+
+                const typeWriter = async (text) => {
+                    const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
+                    const speed = 10; // чуть быстрее
+
+                    for (let i = 0; i < text.length; i++) {
+                        chatHistory.value[msgIndex].content += text.charAt(i);
+                        // Прокручиваем реже, чтобы не дергалось
+                        if (i % 5 === 0) scrollToBottom(); 
+                        await new Promise(r => setTimeout(r, speed));
+                    }
+                    scrollToBottom();
+                };
+
+                const scrollToBottom = () => {
+                    if (messagesContainer.value) {
+                        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+                    }
+                };
+                
+                const formatDate = (isoStr) => {
+                    const d = new Date(isoStr);
+                    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+                };
+
+                const resetChat = async () => {
+                    if (!confirm('Сбросить всю историю диалога? Это действие нельзя отменить.')) {
+                        return;
+                    }
+
+                    try {
+                        await axios.post(`/api/chat/${currentChatId.value}/reset`);
+                        chatHistory.value = [];
+                        alert('История диалога сброшена');
+                    } catch (e) {
+                        console.error(e);
+                        alert('Ошибка сброса диалога');
+                    }
+                };
+
+                const generatePhoto = async () => {
+                    if (isWaitingResponse.value || isStreaming.value) return;
+
+                    isWaitingResponse.value = true;
+                    scrollToBottom();
+
+                    try {
+                        const res = await axios.post(`/api/chat/${currentChatId.value}/photo`);
+
+                        // Add image message to chat history
+                        chatHistory.value.push({
+                            role: 'assistant',
+                            content: `![Generated Photo](${res.data.image_url})`
+                        });
+
+                        // Scroll to show the new image
+                        await nextTick();
+                        scrollToBottom();
+
+                        // Optionally show remaining balance
+                        console.log(`Photo generated. Remaining balance: ${res.data.remaining_balance} tokens`);
+
+                    } catch (e) {
+                        console.error(e);
+
+                        // Handle specific error cases
+                        if (e.response?.status === 402) {
+                            alert('Недостаточно токенов для генерации фото. Требуется 50 токенов.');
+                        } else if (e.response?.status === 400) {
+                            alert('Генерация фото доступна только для персонажей.');
+                        } else {
+                            alert('Ошибка генерации фото. Попробуйте позже.');
+                        }
+                    } finally {
+                        isWaitingResponse.value = false;
+                    }
+                };
+
+                // === НОВАЯ ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ ===
+                const formatMessage = (text) => {
+                    if (!text) return '';
+                    // 1. Парсим Markdown в HTML
+                    const rawHtml = marked.parse(text);
+                    // 2. Чистим HTML от XSS
+                    return DOMPurify.sanitize(rawHtml);
+                };
+
+                // === MODAL FUNCTIONS ===
+                const closeModal = () => {
+                    showScenarioModal.value = false;
+                    selectedCharacter.value = null;
+                };
+
+                const startChatWithScenario = async (scenarioIndex) => {
+                    if (!selectedCharacter.value) return;
+
+                    try {
+                        const chatType = selectedCharacter.value.type || 'character';
+
+                        const res = await axios.post('/api/chat/create', {
+                            user_id: userId.value,
+                            chat_type: chatType,
+                            target_id: selectedCharacter.value.id,
+                            scenario_index: scenarioIndex
+                        });
+
+                        currentChatName.value = selectedCharacter.value.name;
+                        currentChatAvatar.value = selectedCharacter.value.image_url || selectedCharacter.value.cover_image;
+
+                        closeModal();
+                        await openChat(res.data.chat_id);
+                    } catch (e) {
+                        console.error(e);
+                        alert('Ошибка создания чата');
+                    }
+                };
+
+                return {
+                    currentView, tab, characters, worlds, activeChats,
+                    loadChats, selectItem, openChat, backToMenu,
+                    chatHistory, inputMessage, sendMessage,
+                    currentChatName, currentChatAvatar,
+                    isWaitingResponse, isStreaming, messagesContainer, formatDate,
+                    formatMessage, resetChat, generatePhoto,
+                    // Modal
+                    showScenarioModal, selectedCharacter, isLoadingScenarios,
+                    closeModal, startChatWithScenario
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

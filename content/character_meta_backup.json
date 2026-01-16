@@ -1,0 +1,169 @@
+{
+"alexis": {
+  "model_type": "anime",
+  "visual_prompt": "1girl, anime style, european girl, caucasian, fair skin, short black hair, purple eyes, slim waist, large breasts, white crop top, black panties, lying pose, bedroom, seductive expression, masterpiece, best quality",
+    "negative_prompt": "asian, chinese, japanese, korean, monolid eyes, dark skin, black skin, low quality, bad anatomy, extra fingers, text, watermark, blurry, ugly face, disfigured, small breasts, flat chest",
+    "nsfw_tags": ["Erotic", "Anime"]
+  },
+"main_victoria-crazy-ex-f89128ce231f_spec_v2": {
+"model_type": "real",
+"visual_prompt": "instagram selfie, iphone photo, selfie from below angle, (20 year old girl:1.4), (young woman:1.3), (baby face:1.4), (cute face:1.5), (innocent look:1.3), (fair skin:1.4), (light skin:1.3), (porcelain skin:1.2), short black bob hair with bangs, (big almond shaped brown eyes:1.4), (thick eyebrows:1.2), (full plump glossy lips:1.5), (big lips:1.4), long eyelashes, winged eyeliner, high cheekbones, black lace choker with ring, small gold hoop earrings, (impossibly gigantic breasts:1.7), (hyper massive cleavage:1.6), (breasts overflowing tiny bikini:1.3), (tiny white lace micro bikini:1.5), barely covering nipples, visible nipple outline through fabric, (extremely slim waist:1.6), (very wide hips:1.5), (thick thighs:1.5), (exaggerated hourglass body:1.6), (glowing shiny skin:1.4), (oiled body:1.3), sitting in car, black leather seats, looking at camera, cute smile, flirty seductive expression, natural daylight, photorealistic, raw photo, 8k",
+"negative_prompt": "(dark skin:1.5), (tan skin:1.5), (tanned:1.5), (brown skin:1.4), asian, chinese, japanese, latina, indian, (old:1.4), (mature:1.4), (aged:1.3), wrinkles, (thin lips:1.3), child, painting, cartoon, 3d, render, bad anatomy, deformed, blur, watermark, text, small breasts:1.5, medium breasts:1.4, flat chest, (skinny:1.3), (bony:1.3), modest clothing, dry skin, matte skin, asymmetrical body",
+"nsfw_tags": ["Drama", "Ex-Girlfriend", "Realistic", "Erotic"],
+"variations": {
+"car_white_bikini": "instagram selfie, iphone photo, from below, (20 year old girl:1.4), (cute baby face:1.4), (fair skin:1.4), short black bob hair, (big almond shaped brown eyes:1.4), (full plump glossy lips:1.5), black choker, (impossibly gigantic breasts:1.7), (tiny white string bikini:1.5), barely covering nipples, visible nipple outline, breasts spilling out, (extremely slim waist:1.6), (very wide hips:1.5), (glowing shiny skin:1.4), (oiled body:1.3), sitting in car, natural daylight, cute flirty smile, photorealistic, 8k",
+"car_black_lingerie": "instagram selfie, from below angle, (20 year old girl:1.4), (innocent cute face:1.4), (fair porcelain skin:1.4), short black bob hair with bangs, (plump glossy lips:1.5), black lace choker, gold earrings, (impossibly gigantic breasts:1.7), (black lace bralette:1.5), see through, barely covering nipples, visible areola, (extremely slim waist:1.6), (curvy hips:1.5), sitting in car seat, biting lip, natural light, photorealistic, 8k",
+"street_micro_bikini": "full body photo, (20 year old girl:1.4), (cute young face:1.4), (fair skin:1.4), short black bob hair, black choker, (impossibly gigantic breasts:1.7), (extreme micro bikini:1.5), (slingshot bikini:1.4), barely any coverage, nipples almost visible, (extremely slim waist:1.6), (very wide hips:1.5), (thick thighs:1.4), belly piercing, standing in european alley, daylight, cute expression, photorealistic, 8k",
+"bedroom_sheer": "instagram photo, laying on bed, (20 year old girl:1.4), (cute innocent face:1.4), (fair skin:1.4), short black bob hair, (impossibly gigantic breasts:1.7), (sheer black lingerie:1.4), see through, barely covering, visible nipples through fabric, (extremely slim waist:1.6), (very wide hips:1.5), white sheets, seductive but cute pose, soft lighting, photorealistic, 8k",
+"mirror_selfie": "mirror selfie, bathroom, (20 year old girl:1.4), (baby face:1.4), (fair skin:1.4), short black bob hair, black choker, (impossibly gigantic breasts:1.7), (tiny bikini top:1.5), (micro thong:1.4), barely covering, (extremely slim waist:1.6), (very wide hips:1.5), holding phone, cute pouty expression, bright lighting, iphone quality, 8k",
+"pool_wet": "poolside photo, (20 year old girl:1.4), (cute face:1.4), (fair skin:1.4), wet black bob hair, (impossibly gigantic breasts:1.7), (white wet bikini:1.5), see through when wet, barely covering, visible nipples, (extremely slim waist:1.6), (curvy hips:1.5), water droplets on skin, sitting by pool edge, sunny day, flirty smile, photorealistic, 8k"
+}
+},
+
+  "maya": {
+    "model_type": "real",
+    "visual_prompt": "fantasy photo, dark skin, african american woman, long dark wavy hair, amber eyes, silver armor, large breasts, slim waist, warrior woman, forest, serious expression, detailed armor",
+    "negative_prompt": "asian, pale skin, white skin, low quality, bad anatomy, text, watermark, blurry, small breasts",
+    "nsfw_tags": ["Fantasy", "Dominant", "Warrior"]
+  },
+
+  "emily": {
+    "model_type": "real",
+    "base_prompt": "27 year old woman, slim athletic build, long blonde hair, blue eyes, fair skin, professional makeup, high cheekbones, full lips, toned body, medium breasts, confident expression",
+    "visual_prompt": "27 year old woman, slim athletic build, long blonde hair, blue eyes, fair skin, professional makeup, high cheekbones, full lips, toned body, medium breasts, confident expression",
+    "negative_prompt": "child, young girl, asian, dark skin, overweight, obese, cartoon, anime, painting, low quality",
+    "nsfw_tags": ["Realistic", "Professional", "Erotic", "Drama"],
+    "scenarios": {
+      "0": {
+        "name": "Business Trip",
+        "description": "Hotel encounter during a business conference",
+        "levels": {
+          "level_1": {
+            "description": "Soft - Meeting at hotel bar",
+            "prompts": [
+              "sitting at hotel bar, elegant black business dress, professional appearance, wine glass, ambient lighting, business casual",
+              "hotel lobby, designer business suit, pencil skirt, white blouse, confident pose, evening atmosphere",
+              "bar counter, cocktail dress, subtle cleavage, relaxed professional demeanor, warm lighting"
+            ]
+          },
+          "level_2": {
+            "description": "Risqué - Getting more comfortable",
+            "prompts": [
+              "hotel room doorway, unbuttoning white blouse, loosened hair, flirty smile, dim room lighting",
+              "sitting on hotel bed edge, dress strap sliding off shoulder, seductive gaze, intimate lighting",
+              "standing by window, blouse partially open, black lace bra visible, city lights background, suggestive pose"
+            ]
+          },
+          "level_3": {
+            "description": "Explicit - Hotel room intimacy",
+            "prompts": [
+              "hotel room bed, completely nude, lying on white sheets, seductive expression, soft bedroom lighting, exposed breasts",
+              "hotel bathroom, naked in shower, wet hair, water droplets on body, glass door, steamy atmosphere, full nudity",
+              "bedroom, naked on bed, legs slightly apart, intimate pose, sensual lighting, completely exposed"
+            ]
+          }
+        }
+      },
+      "1": {
+        "name": "Gym Meeting",
+        "description": "Encounter at the fitness center",
+        "levels": {
+          "level_1": {
+            "description": "Soft - Working out",
+            "prompts": [
+              "gym, tight black sports bra, yoga pants, athletic pose, treadmill, fit body, determined expression",
+              "fitness center, workout attire, stretching, yoga mat, athletic build, focused demeanor",
+              "gym mirror selfie, sports outfit, toned abs visible, confident smile, athletic wear"
+            ]
+          },
+          "level_2": {
+            "description": "Risqué - Sauna encounter",
+            "prompts": [
+              "sauna room, white towel wrapped around body, cleavage visible, sitting on bench, steamy atmosphere, flushed skin",
+              "gym sauna, towel barely covering, sweaty skin, intimate setting, wooden benches, sensual pose",
+              "spa area, loose towel, exposed shoulders and legs, relaxed seductive expression, warm lighting"
+            ]
+          },
+          "level_3": {
+            "description": "Explicit - Locker room privacy",
+            "prompts": [
+              "locker room, completely nude, changing area, full body visible, athletic body exposed, private moment",
+              "gym shower, naked, wet athletic body, water running, intimate setting, full nudity, steamy atmosphere",
+              "locker room bench, nude, sitting casually, exposed breasts and body, natural pose, private space"
+            ]
+          }
+        }
+      }
+    }
+  },
+
+  "aiko": {
+    "model_type": "anime",
+    "base_prompt": "1girl, 18 year old japanese student, bob cut brown hair, green eyes, fair skin, petite body, small breasts, cute face, anime style",
+    "visual_prompt": "1girl, 18 year old japanese student, bob cut brown hair, green eyes, fair skin, petite body, small breasts, cute face, anime style",
+    "negative_prompt": "realistic, photo, 3d, mature, old, muscular, large breasts, western, child, loli",
+    "nsfw_tags": ["Anime", "Student", "Cute", "Erotic"],
+    "scenarios": {
+      "0": {
+        "name": "After School",
+        "description": "Staying late for extra lessons",
+        "levels": {
+          "level_1": {
+            "description": "Soft - Classroom studying",
+            "prompts": [
+              "classroom, school uniform, white shirt, plaid skirt, sitting at desk, studying, afternoon sunlight, innocent expression",
+              "after school, school library, uniform, reading book, cute concentrated face, quiet atmosphere",
+              "classroom desk, proper uniform, textbooks, slight blush, shy demeanor, golden hour lighting"
+            ]
+          },
+          "level_2": {
+            "description": "Risqué - Uniform loosening",
+            "prompts": [
+              "classroom, school uniform unbuttoned, loose tie, skirt hiked up slightly, sitting on desk, flirty expression, evening light",
+              "empty classroom, shirt partially open, bra visible, flushed cheeks, sitting provocatively on chair, suggestive pose",
+              "school desk, loosened uniform, exposed shoulders, playful smile, intimate classroom setting"
+            ]
+          },
+          "level_3": {
+            "description": "Explicit - Private moment",
+            "prompts": [
+              "classroom, completely nude, sitting on teacher's desk, exposed small breasts, legs apart, flushed expression, after hours",
+              "empty classroom, naked, standing by window, full body visible, petite figure exposed, sunset lighting, explicit pose",
+              "school desk, nude, lying on desk surface, fully exposed body, intimate expression, private moment"
+            ]
+          }
+        }
+      },
+      "1": {
+        "name": "Cosplay Event",
+        "description": "Preparing for or at a cosplay convention",
+        "levels": {
+          "level_1": {
+            "description": "Soft - Costume preparation",
+            "prompts": [
+              "convention hall, anime cosplay outfit, cute character costume, posing happily, colorful setting, excited expression",
+              "cosplay event, magical girl outfit, wand prop, confident pose, convention background, cheerful demeanor",
+              "dressing room, trying on costume, partially dressed, mirror reflection, excited smile, convention prep"
+            ]
+          },
+          "level_2": {
+            "description": "Risqué - Changing room peek",
+            "prompts": [
+              "changing room, half-dressed in cosplay, bra and panties visible, costume pieces around, caught changing, embarrassed blush",
+              "convention backstage, cosplay outfit half on, exposed midriff, tight costume pieces, suggestive changing pose",
+              "dressing area, removing costume top, cute underwear visible, flustered expression, semi-private space"
+            ]
+          },
+          "level_3": {
+            "description": "Explicit - Private photo shoot",
+            "prompts": [
+              "hotel room, completely nude, cosplay wig still on, full body exposed, lying on bed, intimate photo shoot, explicit pose",
+              "private room, naked, small breasts visible, removed all costume, lewd expression, after-event privacy, full nudity",
+              "backstage area, nude, petite body fully exposed, cosplay accessories scattered around, explicit private moment"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

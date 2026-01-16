@@ -1,0 +1,9 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+sqlalchemy==2.0.27
+asyncpg==0.29.0
+pillow==10.2.0
+python-dotenv==1.0.1
+httpx==0.26.0
+fal-client==0.2.1
+tenacity==8.2.3 

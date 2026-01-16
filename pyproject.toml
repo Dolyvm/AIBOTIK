@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nsfw-ai-rp-bot"
+version = "1.0.0"
+description = "NSFW AI RP Bot - Telegram bot for AI roleplay"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    {name = "AI RP Bot Team"}
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+bot = [
+    "aiogram==3.4.1",
+    "sqlalchemy==2.0.27",
+    "asyncpg==0.29.0",
+    "httpx==0.26.0",
+    "pillow==10.2.0",
+    "python-dotenv==1.0.1",
+    "fal-client==0.2.1",
+    "pydantic==2.6.1",
+    "tenacity==8.2.3",
+]
+
+webapp = [
+    "fastapi==0.109.2",
+    "uvicorn==0.27.1",
+    "sqlalchemy==2.0.27",
+    "asyncpg==0.29.0",
+    "pillow==10.2.0",
+    "python-dotenv==1.0.1",
+    "pydantic==2.6.1",
+]
+
+dev = [
+    "pytest==7.4.4",
+    "pytest-asyncio==0.23.3",
+    "httpx==0.26.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "bot*", "webapp*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100

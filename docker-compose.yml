@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: rpbot
+      POSTGRES_USER: rpbot
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  webapp:
+    build: ./webapp
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - MODELSLAB_API_KEY=${MODELSLAB_API_KEY}
+      - FAL_KEY=${FAL_KEY}
+    volumes:
+      - ./content:/app/content:ro
+      - ./shared:/app/shared:ro
+      - ./bot:/app/bot:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bot:
+    build: ./bot
+    environment:
+      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - MODELSLAB_API_KEY=${MODELSLAB_API_KEY}
+      - FAL_KEY=${FAL_KEY}
+      - WEBAPP_URL=${WEBAPP_URL}
+    volumes:
+      - ./content:/app/content:ro
+      - ./shared:/app/shared:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      webapp:
+        condition: service_started
+
+volumes:
+  postgres_data:
