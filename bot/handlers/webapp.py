@@ -14,7 +14,6 @@ router = Router()
 
 
 def load_world(world_id: str) -> dict:
-    """Load world from JSON file"""
     world_path = Path("/app/content/worlds") / f"{world_id}.json"
     with open(world_path) as f:
         return json.load(f)
@@ -22,11 +21,9 @@ def load_world(world_id: str) -> dict:
 
 @router.message(F.web_app_data)
 async def handle_webapp_data(message: Message):
-    """Handle data from WebApp"""
     data = json.loads(message.web_app_data.data)
     user_id = message.from_user.id
 
-    # {action: "start_chat", type: "character", id: "alexis", scenario: 0}
     if data.get("action") == "start_chat":
         chat = await create_or_reset_chat(
             user_id=user_id,
@@ -35,7 +32,6 @@ async def handle_webapp_data(message: Message):
             scenario_index=data.get("scenario", 0)
         )
 
-        # Get greeting
         if data["type"] == "character":
             character = get_character(Path("/app/content/characters"), data["id"])
             if not character:
@@ -54,11 +50,9 @@ async def handle_webapp_data(message: Message):
             world = load_world(data["id"])
             greeting = world["intro_message"]
 
-        # Replace placeholders
         greeting = greeting.replace("{{user}}", message.from_user.first_name)
         greeting = greeting.replace("{{char}}", character.get("name", "") if data["type"] == "character" else "")
 
-        # Save greeting to history
         history = [{"role": "assistant", "content": greeting}]
         await update_chat_history(chat.id, history, 0)
 

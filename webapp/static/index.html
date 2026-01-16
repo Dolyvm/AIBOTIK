@@ -89,9 +89,6 @@
             </div>
 
             <div class="input-area">
-                <button @click="generatePhoto" :disabled="isWaitingResponse || isStreaming" class="camera-btn" title="Сгенерировать фото (50 токенов)">
-                    <i class="fas fa-camera"></i>
-                </button>
                 <textarea
                     v-model="inputMessage"
                     @keydown.enter.prevent="sendMessage"
@@ -325,45 +322,7 @@
                     }
                 };
 
-                const generatePhoto = async () => {
-                    if (isWaitingResponse.value || isStreaming.value) return;
-
-                    isWaitingResponse.value = true;
-                    scrollToBottom();
-
-                    try {
-                        const res = await axios.post(`/api/chat/${currentChatId.value}/photo`);
-
-                        // Add image message to chat history
-                        chatHistory.value.push({
-                            role: 'assistant',
-                            content: `![Generated Photo](${res.data.image_url})`
-                        });
-
-                        // Scroll to show the new image
-                        await nextTick();
-                        scrollToBottom();
-
-                        // Optionally show remaining balance
-                        console.log(`Photo generated. Remaining balance: ${res.data.remaining_balance} tokens`);
-
-                    } catch (e) {
-                        console.error(e);
-
-                        // Handle specific error cases
-                        if (e.response?.status === 402) {
-                            alert('Недостаточно токенов для генерации фото. Требуется 50 токенов.');
-                        } else if (e.response?.status === 400) {
-                            alert('Генерация фото доступна только для персонажей.');
-                        } else {
-                            alert('Ошибка генерации фото. Попробуйте позже.');
-                        }
-                    } finally {
-                        isWaitingResponse.value = false;
-                    }
-                };
-
-                // === НОВАЯ ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ ===
+                // === ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ ===
                 const formatMessage = (text) => {
                     if (!text) return '';
                     // 1. Парсим Markdown в HTML
@@ -408,7 +367,7 @@
                     chatHistory, inputMessage, sendMessage,
                     currentChatName, currentChatAvatar,
                     isWaitingResponse, isStreaming, messagesContainer, formatDate,
-                    formatMessage, resetChat, generatePhoto,
+                    formatMessage, resetChat,
                     // Modal
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario

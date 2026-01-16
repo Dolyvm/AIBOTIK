@@ -17,18 +17,6 @@ class LLMClient:
         max_tokens: int = 300,
         temperature: float = 0.8
     ) -> str:
-        """
-        Generate response from LLM.
-
-        Args:
-            system_prompt: System prompt with instructions
-            messages: History [{"role": "user/assistant", "content": "..."}]
-            max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
-
-        Returns:
-            Generated text
-        """
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
         payload = {

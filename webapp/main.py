@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.repository import init_db
-from api import characters, worlds, user, chat, image
+from api import characters, worlds, user, chat
 
 app = FastAPI(title="AI RP Bot WebApp")
 
@@ -17,7 +17,6 @@ app.include_router(characters.router)
 app.include_router(worlds.router)
 app.include_router(user.router)
 app.include_router(chat.router)
-app.include_router(image.router)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

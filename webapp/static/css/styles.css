@@ -327,42 +327,6 @@ body {
     font-weight: 700;
 }
 
-/* === Camera Button === */
-.camera-btn {
-    background: transparent !important;
-    border: none;
-    color: var(--tg-theme-link-color);
-    font-size: 20px;
-    padding: 0 8px 4px 0;
-    cursor: pointer;
-    margin-right: 8px;
-    transition: color 0.2s ease;
-}
-
-.camera-btn:hover:not(:disabled) {
-    color: var(--tg-theme-button-color);
-}
-
-.camera-btn:disabled {
-    color: var(--tg-theme-hint-color);
-    cursor: not-allowed;
-}
-
-/* === Image Styling in Chat === */
-.markdown-content img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin: 8px 0;
-    display: block;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
-/* Ensure images in chat bubbles don't overflow */
-.message-bubble img {
-    max-width: 100%;
-    border-radius: 8px;
-}
 
 /* === Scenario Selection Modal === */
 .modal-overlay {

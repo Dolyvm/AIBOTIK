@@ -15,16 +15,8 @@ from shared.card_parser import get_character
 
 
 class ContextManager:
-    """Manages conversation context, state, and memory for chats"""
 
     def __init__(self, llm_client: LLMClient, summary_threshold: int = 15):
-        """
-        Initialize ContextManager.
-
-        Args:
-            llm_client: LLM client for generating responses and summaries
-            summary_threshold: Number of messages before triggering summarization
-        """
         self.llm = llm_client
         self.summary_threshold = summary_threshold
 
@@ -36,36 +28,19 @@ class ContextManager:
         world: Optional[dict] = None,
         user_name: str = "User"
     ) -> Tuple[str, dict, list, str, int]:
-        """
-        Process a single conversation turn.
 
-        Args:
-            chat: Chat object from database
-            user_input: User's message
-            character: Character data (for character chats)
-            world: World data (for world chats)
-            user_name: User's display name
-
-        Returns:
-            Tuple of (clean_response_text, updated_state, updated_history, summary, msgs_since_summary)
-        """
-        # Parse current state
         state = json.loads(chat.state) if isinstance(chat.state, str) else chat.state
         history = json.loads(chat.history) if isinstance(chat.history, str) else chat.history
         summary = chat.summary or ""
         msgs_since_summary = chat.msgs_since_summary
 
-        # Check if summarization is needed
         if msgs_since_summary >= self.summary_threshold and len(history) > 10:
             summary = await self._summarize_history(history, summary, state, character, world)
-            # Keep only the most recent messages
-            history = history[-5:]  # Keep last 5 messages as context
+            history = history[-5:]  
             msgs_since_summary = 0
 
-        # Add user input to history
         history.append({"role": "user", "content": user_input})
 
-        # Build system prompt with state and summary
         if character:
             system_prompt = build_character_prompt(
                 character=character,
@@ -78,16 +53,13 @@ class ContextManager:
         else:
             raise ValueError("Either character or world must be provided")
 
-        # Generate response
         response = await self.llm.generate(
             system_prompt=system_prompt,
-            messages=history[-10:],  # Use last 10 messages for context
+            messages=history[-10:],  
         )
 
-        # Parse metadata from response
         clean_text, state_updates = self._parse_meta(response)
 
-        # Update state based on parsed metadata
         if state_updates:
             if "affinity_change" in state_updates:
                 state["affinity"] = max(0, min(100, state.get("affinity", 0) + state_updates["affinity_change"]))
@@ -96,7 +68,6 @@ class ContextManager:
             if "mood" in state_updates:
                 state["mood"] = state_updates["mood"]
 
-        # Add assistant response to history
         history.append({"role": "assistant", "content": clean_text})
 
         # Increment counters
@@ -112,23 +83,8 @@ class ContextManager:
         character: Optional[dict] = None,
         world: Optional[dict] = None
     ) -> str:
-        """
-        Compress conversation history into a summary.
-
-        Args:
-            history: Full conversation history
-            existing_summary: Previous summary (if any)
-            state: Current emotional state
-            character: Character data (if applicable)
-            world: World data (if applicable)
-
-        Returns:
-            Updated summary text
-        """
-        # Take the oldest half of messages for summarization
         messages_to_summarize = history[:len(history) // 2]
 
-        # Build context for summarization
         context_name = character["name"] if character else world["name"]
 
         summary_prompt = f"""You are summarizing a conversation between a user and {context_name}.

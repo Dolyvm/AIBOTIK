@@ -24,8 +24,6 @@ services:
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - MODELSLAB_API_KEY=${MODELSLAB_API_KEY}
-      - FAL_KEY=${FAL_KEY}
     volumes:
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
@@ -40,8 +38,6 @@ services:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - MODELSLAB_API_KEY=${MODELSLAB_API_KEY}
-      - FAL_KEY=${FAL_KEY}
       - WEBAPP_URL=${WEBAPP_URL}
     volumes:
       - ./content:/app/content:ro

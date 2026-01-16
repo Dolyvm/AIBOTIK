@@ -22,7 +22,6 @@ bot = [
     "httpx==0.26.0",
     "pillow==10.2.0",
     "python-dotenv==1.0.1",
-    "fal-client==0.2.1",
     "pydantic==2.6.1",
     "tenacity==8.2.3",
 ]

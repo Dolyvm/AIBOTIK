@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 from pathlib import Path
-import json
 import sys
 
 # Add parent directory to path for shared package
@@ -13,8 +12,8 @@ router = APIRouter(prefix="/api/characters", tags=["characters"])
 # Load once at startup
 CHARACTERS = get_all_characters(Path("/app/content/characters"))
 
-with open("/app/content/character_meta.json") as f:
-    CHARACTER_META = json.load(f)
+# Character metadata dictionary (no longer loaded from file)
+CHARACTER_META = {}
 
 
 @router.get("")

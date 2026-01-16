@@ -11,14 +11,8 @@ from shared.repository import get_session, create_or_reset_chat, get_user, updat
 from shared.models import Chat, User
 from shared.card_parser import get_character
 from services.chat_logic import generate_response
-from bot.services.imagegen import ImageGenerator
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-# Initialize ImageGenerator
-MODELSLAB_API_KEY = os.getenv("MODELSLAB_API_KEY", "")
-FAL_KEY = os.getenv("FAL_KEY", "")
-image_generator = ImageGenerator(api_key=MODELSLAB_API_KEY, fal_key=FAL_KEY)
 
 
 class MessageRequest(BaseModel):
@@ -180,81 +174,3 @@ async def reset_chat(chat_id: int):
         await session.close()
 
 
-@router.post("/{chat_id}/photo")
-async def generate_photo(chat_id: int):
-    """
-    Generate a photo based on current scenario and arousal level.
-    Costs 50 tokens per generation.
-    """
-    session = await get_session()
-    try:
-        # Fetch chat from database
-        chat = await session.get(Chat, chat_id)
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found")
-
-        # Only support character chats
-        if chat.chat_type != "character":
-            raise HTTPException(status_code=400, detail="Photo generation only available for character chats")
-
-        # Fetch user
-        user = await session.get(User, chat.user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        # Check balance
-        PHOTO_COST = 50
-        if user.balance < PHOTO_COST:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Insufficient balance. Need {PHOTO_COST} tokens, have {user.balance}"
-            )
-
-        # Parse chat state to get arousal
-        try:
-            state = json.loads(chat.state)
-            arousal = state.get("arousal", 0)
-        except:
-            arousal = 0
-
-        # Get scenario index
-        scenario_index = chat.scenario_index or 0
-
-        # Generate image
-        try:
-            image_url = await image_generator.generate(
-                character_id=chat.target_id,
-                scenario_index=scenario_index,
-                arousal=arousal
-            )
-        except Exception as e:
-            print(f"Image generation error: {e}")
-            raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
-
-        # Deduct tokens
-        user.balance -= PHOTO_COST
-
-        # Add image to chat history as assistant message
-        history = json.loads(chat.history)
-        history.append({
-            "role": "assistant",
-            "content": f"![Generated Photo]({image_url})"
-        })
-        chat.history = json.dumps(history, ensure_ascii=False)
-
-        await session.commit()
-
-        return {
-            "success": True,
-            "image_url": image_url,
-            "remaining_balance": user.balance,
-            "cost": PHOTO_COST
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error generating photo: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        await session.close()
