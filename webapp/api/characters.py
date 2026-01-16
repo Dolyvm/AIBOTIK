@@ -19,7 +19,7 @@ CHARACTER_META = {}
 @router.get("")
 async def list_characters(
     genre: str = None,
-    style: str = None  # anime/real
+    style: str = None 
 ):
     """List all characters with filtering"""
     result = []
@@ -29,7 +29,6 @@ async def list_characters(
         tags = meta.get("nsfw_tags", [])
         model_type = meta.get("model_type", "real")
 
-        # Filtering
         if genre and genre not in tags:
             continue
         if style and style != model_type:

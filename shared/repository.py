@@ -132,7 +132,6 @@ async def create_or_reset_chat(
         existing_chat = result.scalar_one_or_none()
 
         if existing_chat:
-            # Reset existing chat
             existing_chat.scenario_index = scenario_index
             existing_chat.msg_count = 0
             existing_chat.history = "[]"
