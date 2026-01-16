@@ -10,8 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from services.llm import LLMClient
-from services.context_manager import ContextManager
+from shared.services.llm import LLMClient
+from shared.services.context_manager import ContextManager
 
 router = Router()
 

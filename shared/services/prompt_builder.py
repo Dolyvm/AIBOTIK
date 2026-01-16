@@ -1,13 +1,4 @@
-import sys
-from pathlib import Path
-
-# Add parent directory to path for shared package
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-
-# ============================================================================
-# КОНСТАНТЫ СТИЛЯ И ПРОТОКОЛА
-# ============================================================================
+from shared.constants import get_modifier_for_stage
 
 COMMON_STYLE_GUIDE = """
 ### СТИЛЬ И ОФОРМЛЕНИЕ (СТРОГОЕ СОБЛЮДЕНИЕ) ###
@@ -55,24 +46,10 @@ META_INSTRUCTION = """
 """
 
 
-# ============================================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================================
 
 def _get_character_behavior(affinity: int, arousal: int) -> str:
-    """
-    Generate behavior instructions based on current relationship stats.
-
-    Args:
-        affinity: Affinity level (0-100)
-        arousal: Arousal level (0-100)
-
-    Returns:
-        Formatted behavior instruction string
-    """
     instruction = ""
 
-    # Реакция на симпатию
     if affinity < 20:
         instruction += "- Ты не доверяешь Игроку. Держи дистанцию, отвечай холодно или с опаской.\n"
     elif affinity < 50:
@@ -82,16 +59,12 @@ def _get_character_behavior(affinity: int, arousal: int) -> str:
     else:
         instruction += "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n"
 
-    # Реакция на возбуждение (перекрывает обычное поведение)
     if arousal > 50:
         instruction += "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n"
 
     return instruction
 
 
-# ============================================================================
-# ОСНОВНЫЕ ФУНКЦИИ ПОСТРОЕНИЯ ПРОМПТОВ
-# ============================================================================
 
 def build_character_prompt(
     character: dict,
@@ -99,27 +72,23 @@ def build_character_prompt(
     summary: str = "",
     user_name: str = "User"
 ) -> str:
-    """
-    Build system prompt for character with literary style and strict Russian language.
+    
 
-    Args:
-        character: Data from TavernCard
-        state: Current emotional state (affinity, arousal, mood)
-        summary: Compressed conversation history
-        user_name: User's name
-
-    Returns:
-        System prompt string with literary novel style
-    """
-    # Извлекаем статы, дефолт 0
     affinity = state.get("affinity", 0)
     arousal = state.get("arousal", 0)
     mood = state.get("mood", "neutral")
 
-    # Получаем инструкцию поведения на основе статов
     behavior_instruction = _get_character_behavior(affinity, arousal)
 
-    # Заменяем плейсхолдеры
+    char_id = character.get("id", "")
+    modifier = get_modifier_for_stage(char_id, state)
+
+    modifier_text = ""
+    if modifier:
+        modifier_text = f"\n\n### ТЕКУЩАЯ СТАДИЯ ОТНОШЕНИЙ ###\n{modifier['instruction']}"
+        if modifier.get('allowed_actions'):
+            modifier_text += f"\nДопустимые действия: {', '.join(modifier['allowed_actions'])}"
+
     char_name = character["name"]
     description = character["description"].replace("{{user}}", user_name).replace("{{char}}", char_name)
     personality = character["personality"].replace("{{user}}", user_name).replace("{{char}}", char_name)
@@ -145,7 +114,7 @@ def build_character_prompt(
 Настроение: {mood}
 
 **Инструкция по поведению:**
-{behavior_instruction}
+{behavior_instruction}{modifier_text}
 
 {COMMON_STYLE_GUIDE}
 

@@ -1,22 +1,15 @@
 from fastapi import APIRouter
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from shared.services.content_loader import get_all_worlds
 
 router = APIRouter(prefix="/api/worlds", tags=["worlds"])
 
-
-def load_worlds():
-    """Load all worlds from JSON files"""
-    worlds = {}
-    worlds_dir = Path("/app/content/worlds")
-    for json_file in worlds_dir.glob("*.json"):
-        with open(json_file) as f:
-            world = json.load(f)
-            worlds[world["id"]] = world
-    return worlds
-
-
-WORLDS = load_worlds()
+WORLDS = get_all_worlds()
 
 
 @router.get("")
@@ -55,14 +48,12 @@ async def get_world_detail(world_id: str):
     if not world:
         return {"error": "Not found"}, 404
 
-    # Build scenarios list with full text (no truncation)
     scenarios = [{
         "index": 0,
         "name": "Основной",
         "preview": world.get("intro_message", "")
     }]
 
-    # Add alternate scenarios if they exist
     for i, alt in enumerate(world.get("alternate_scenarios", []), 1):
         scenarios.append({
             "index": i,
@@ -70,7 +61,6 @@ async def get_world_detail(world_id: str):
             "preview": alt.get("intro", "")
         })
 
-    # Return world data with scenarios
     return {
         **world,
         "scenarios": scenarios

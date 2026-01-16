@@ -4,21 +4,22 @@ Context Manager - Handles memory management, state parsing, and summarization
 import json
 import re
 from typing import Tuple, Optional
-from pathlib import Path
-import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
-from services.llm import LLMClient
-from services.prompt_builder import build_character_prompt, build_world_prompt
-from shared.card_parser import get_character
+from shared.services.llm import LLMClient
+from shared.services.prompt_builder import build_character_prompt, build_world_prompt
+from shared.config import (
+    SUMMARY_THRESHOLD,
+    MAX_HISTORY_LENGTH,
+    LLM_MAX_TOKENS_CHARACTER,
+    LLM_MAX_TOKENS_WORLD,
+)
 
 
 class ContextManager:
 
-    def __init__(self, llm_client: LLMClient, summary_threshold: int = 15):
+    def __init__(self, llm_client: LLMClient, summary_threshold: int = None):
         self.llm = llm_client
-        self.summary_threshold = summary_threshold
+        self.summary_threshold = summary_threshold or SUMMARY_THRESHOLD
 
     async def process_turn(
         self,
@@ -34,14 +35,15 @@ class ContextManager:
         summary = chat.summary or ""
         msgs_since_summary = chat.msgs_since_summary
 
-        if msgs_since_summary >= self.summary_threshold and len(history) > 10:
+        if msgs_since_summary >= self.summary_threshold and len(history) > MAX_HISTORY_LENGTH:
             summary = await self._summarize_history(history, summary, state, character, world)
-            history = history[-5:]  
+            history = history[-5:]
             msgs_since_summary = 0
 
         history.append({"role": "user", "content": user_input})
 
         if character:
+            max_tokens = LLM_MAX_TOKENS_CHARACTER
             system_prompt = build_character_prompt(
                 character=character,
                 state=state,
@@ -49,13 +51,15 @@ class ContextManager:
                 user_name=user_name
             )
         elif world:
-            system_prompt = build_world_prompt(world, user_name)
+            max_tokens = LLM_MAX_TOKENS_WORLD
+            system_prompt = build_world_prompt(world, summary, user_name)
         else:
             raise ValueError("Either character or world must be provided")
 
         response = await self.llm.generate(
             system_prompt=system_prompt,
-            messages=history[-10:],  
+            messages=history[-MAX_HISTORY_LENGTH:],
+            max_tokens=max_tokens,
         )
 
         clean_text, state_updates = self._parse_meta(response)
@@ -144,7 +148,6 @@ Write in Russian. Output ONLY the summary, no meta-commentary."""
         state_updates = {}
 
         if matches:
-            # Parse JSON from meta tags
             for match in matches:
                 try:
                     updates = json.loads(match.strip())

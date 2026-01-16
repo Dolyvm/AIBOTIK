@@ -23,18 +23,15 @@ def parse_tavern_card(filepath: Path) -> dict:
     """
     img = Image.open(filepath)
 
-    # Look for tEXt chunk with key 'chara' or 'ccv3'
     metadata = img.info
 
     chara_data = metadata.get('chara') or metadata.get('ccv3')
     if not chara_data:
         raise ValueError(f"No character data in {filepath}")
 
-    # Base64 decode -> JSON
     json_str = base64.b64decode(chara_data).decode('utf-8')
     data = json.loads(json_str)
 
-    # TavernCard V2 structure
     if 'data' in data:
         data = data['data']
 
@@ -55,7 +52,7 @@ def get_all_characters(characters_dir: Path) -> Dict[str, dict]:
     characters = {}
     for png_file in characters_dir.glob("*.png"):
         try:
-            char_id = png_file.stem  # filename without .png
+            char_id = png_file.stem  
             characters[char_id] = parse_tavern_card(png_file)
             characters[char_id]["id"] = char_id
             characters[char_id]["image_url"] = f"/content/characters/{png_file.name}"

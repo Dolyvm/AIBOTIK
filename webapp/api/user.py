@@ -7,21 +7,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.repository import get_user, get_user_chats
-from shared.card_parser import get_character
+from shared.services.content_loader import get_character, get_world, get_all_worlds
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
 # Load worlds for name resolution
-def load_worlds():
-    worlds = {}
-    worlds_dir = Path("/app/content/worlds")
-    for json_file in worlds_dir.glob("*.json"):
-        with open(json_file) as f:
-            world = json.load(f)
-            worlds[world["id"]] = world
-    return worlds
-
-WORLDS = load_worlds()
+WORLDS = get_all_worlds()
 
 
 @router.get("/{user_id}")
@@ -46,7 +37,6 @@ async def get_user_active_chats(user_id: int):
     chats = await get_user_chats(user_id)
 
     result = []
-    characters_dir = Path("/app/content/characters")
 
     for chat in chats:
         chat_data = {
@@ -55,12 +45,12 @@ async def get_user_active_chats(user_id: int):
             "target_id": chat.target_id,
             "is_active": chat.is_active,
             "updated_at": chat.updated_at.isoformat(),
-            "name": chat.target_id  # Default to target_id
+            "name": chat.target_id  
         }
 
         # Resolve name
         if chat.chat_type == "character":
-            character = get_character(characters_dir, chat.target_id)
+            character = get_character(chat.target_id)
             if character:
                 chat_data["name"] = character["name"]
                 chat_data["image_url"] = character["image_url"]

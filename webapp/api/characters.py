@@ -5,12 +5,12 @@ import sys
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.card_parser import get_all_characters
+from shared.services.content_loader import get_all_characters
 
 router = APIRouter(prefix="/api/characters", tags=["characters"])
 
 # Load once at startup
-CHARACTERS = get_all_characters(Path("/app/content/characters"))
+CHARACTERS = get_all_characters()
 
 # Character metadata dictionary (no longer loaded from file)
 CHARACTER_META = {}
@@ -56,7 +56,6 @@ async def get_character_detail(character_id: str):
 
     meta = CHARACTER_META.get(character_id, {})
 
-    # Build scenarios list with full text (no truncation)
     scenarios = [{
         "index": 0,
         "name": "Основной",
