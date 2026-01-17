@@ -26,7 +26,7 @@ async def list_characters(
 
     for char_id, char in CHARACTERS.items():
         meta = CHARACTER_META.get(char_id, {})
-        tags = meta.get("nsfw_tags", [])
+        tags = meta.get("tags", [])  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
         model_type = meta.get("model_type", "real")
 
         if genre and genre not in tags:
@@ -74,8 +74,10 @@ async def get_character_detail(character_id: str):
         "description": char["description"][:500] if len(char["description"]) > 500 else char["description"],
         "personality": char["personality"],
         "image_url": char["image_url"],
-        "tags": meta.get("nsfw_tags", []),
-        "scenarios": scenarios
+        "tags": meta.get("tags", []),  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
+        "scenarios": scenarios,
+        "appearance": char["appearance"],
+        "model_type": char["model_type"]
     }
 
 
@@ -87,7 +89,7 @@ async def get_filter_options():
 
     for char_id in CHARACTERS:
         meta = CHARACTER_META.get(char_id, {})
-        all_tags.update(meta.get("nsfw_tags", []))
+        all_tags.update(meta.get("tags", []))  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
         styles.add(meta.get("model_type", "real"))
 
     return {

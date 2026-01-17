@@ -29,7 +29,4 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Content (characters are sensitive)
-content/characters/*.png
-
 repomix-output.xml

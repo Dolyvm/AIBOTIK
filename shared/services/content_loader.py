@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional
@@ -9,18 +10,28 @@ from shared.card_parser import parse_tavern_card
 
 @lru_cache(maxsize=32)
 def get_character(character_id: str) -> Optional[dict]:
-    char_path = CONTENT_BASE_PATH / "characters" / f"{character_id}.png"
+    char_path = CONTENT_BASE_PATH / "characters" / f"{character_id}.json"
     if not char_path.exists():
         return None
-
     try:
-        char = parse_tavern_card(char_path)
-        char["id"] = character_id
-        char["image_url"] = f"/content/characters/{char_path.name}"
-        return char
+        with open(char_path, encoding='utf-8') as file:
+            char = json.load(file)
     except Exception as e:
         print(f"Failed to parse {char_path}: {e}")
         return None
+
+    char["id"] = character_id  # char["image_url"] уже есть в файле .json
+    return char
+
+    # убрал пока эту хуйню, буду все то же самое брать из json
+    # try:
+    #     char = parse_tavern_card(char_path)
+    #     char["id"] = character_id
+    #     char["image_url"] = f"/content/characters/{char_path.name}"
+    #     return char
+    # except Exception as e:
+    #     print(f"Failed to parse {char_path}: {e}")
+    #     return None
 
 
 @lru_cache(maxsize=32)
@@ -45,6 +56,7 @@ def get_all_characters() -> dict[str, dict]:
         return characters
 
     for png_file in chars_dir.glob("*.png"):
+        logging.info(png_file.stem)
         char_id = png_file.stem
         char_data = get_character(char_id)
         if char_data:

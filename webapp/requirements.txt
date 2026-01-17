@@ -6,4 +6,5 @@ pillow==10.2.0
 python-dotenv==1.0.1
 httpx==0.26.0
 fal-client==0.2.1
-tenacity==8.2.3 
+tenacity==8.2.3
+replicate~=1.0.7

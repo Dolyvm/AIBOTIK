@@ -24,7 +24,7 @@ def parse_tavern_card(filepath: Path) -> dict:
     img = Image.open(filepath)
 
     metadata = img.info
-
+    print(metadata)
     chara_data = metadata.get('chara') or metadata.get('ccv3')
     if not chara_data:
         raise ValueError(f"No character data in {filepath}")
@@ -52,7 +52,7 @@ def get_all_characters(characters_dir: Path) -> Dict[str, dict]:
     characters = {}
     for png_file in characters_dir.glob("*.png"):
         try:
-            char_id = png_file.stem  
+            char_id = png_file.stem
             characters[char_id] = parse_tavern_card(png_file)
             characters[char_id]["id"] = char_id
             characters[char_id]["image_url"] = f"/content/characters/{png_file.name}"
@@ -75,3 +75,8 @@ def get_character(characters_dir: Path, char_id: str) -> Optional[dict]:
     except Exception as e:
         print(f"Failed to parse {png_file}: {e}")
         return None
+
+
+if __name__ == "__main__":
+    path = Path.cwd().parent / "content" / "characters" / "emily.png"
+    print(parse_tavern_card(path))

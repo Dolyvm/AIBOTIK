@@ -34,6 +34,7 @@ webapp = [
     "pillow==10.2.0",
     "python-dotenv==1.0.1",
     "pydantic==2.6.1",
+    "replicate~=1.0.7"
 ]
 
 dev = [
