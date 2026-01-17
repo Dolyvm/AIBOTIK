@@ -27,6 +27,7 @@ services:
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
       - FAL_KEY=${FAL_KEY}
     volumes:
+      - ./webapp:/app
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
       - ./bot:/app/bot:ro
@@ -42,6 +43,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - WEBAPP_URL=${WEBAPP_URL}
     volumes:
+      - ./bot:/app
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
     depends_on:

@@ -29,5 +29,4 @@ def load_world(world_id: str) -> dict:
 async def handle_message(message: Message):
     await message.answer(
         "💬 Все диалоги теперь доступны только в WebApp!\n\n"
-        "👉 Нажмите кнопку меню внизу или команду /start чтобы открыть WebApp"
     )
