@@ -71,26 +71,26 @@ NSFW_LEVELS_LIST = [
         negative_prompt="nudity, sexual act"
     ),
     PromptLayer(
-        prompt="aroused, wearing beautiful underwear, touching herself",
+        prompt="aroused, showing her bra, touching her ass",
         negative_prompt="nsfw"
     ),
     PromptLayer(
-        prompt="full nudity, erotic, nsfw",
+        prompt="showing her naked body",
         negative_prompt="penetration, explicit sex"
     ),
     PromptLayer(
-        prompt="explicit, erotic, nsfw, full nudity, orgasm, masturbating, wet pussy, wet body",
-        negative_prompt="violence"
+        prompt="showing her naked body and shaved pussy, no clothes",
+        negative_prompt=""
     ),
     PromptLayer(
-        prompt="extreme erotic, fetish, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
+        prompt="extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
         negative_prompt=""
     )
 ]
 
 
 ANIME_BASE_POS = "(anime style:1.2), 1girl, masterpiece, absurdres, best quality, amazing quality"
-ANIME_BASE_NEG = "2girls, blurry face, blurry eyes, lowres, worst quality, low quality, bad anatomy, bad hands, multiple people"
+ANIME_BASE_NEG = "2girls, blurry face, blurry eyes, lowres, worst quality, low quality, bad anatomy, bad hands"
 REAL_BASE_POS = ""
 REAL_BASE_NEG = ""
 
