@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Character Schema",
+  "description": "JSON Schema для структуры персонажа с визуальными данными",
+  "type": "object",
+  "required": ["name", "description", "personality", "scenario", "first_mes"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Имя персонажа"
+    },
+    "description": {
+      "type": "string",
+      "description": "Описание персонажа на русском языке"
+    },
+    "personality": {
+      "type": "string",
+      "description": "Характер и личностные черты персонажа"
+    },
+    "scenario": {
+      "type": "string",
+      "description": "Сценарий начала взаимодействия"
+    },
+    "first_mes": {
+      "type": "string",
+      "description": "Первое сообщение персонажа"
+    },
+    "alternate_greetings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Альтернативные приветствия"
+    },
+    "example_dialogue": {
+      "type": "string",
+      "description": "Примеры диалогов"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Теги для категоризации"
+    },
+    "avatar": {
+      "type": "string",
+      "description": "Путь к изображению аватара"
+    },
+    "model_type": {
+      "type": "string",
+      "enum": ["anime", "real"],
+      "description": "Тип модели для генерации изображений"
+    },
+    "appearance": {
+      "type": "string",
+      "description": "DEPRECATED: Используйте visual секцию. Базовое описание внешности (EN)"
+    },
+    "visual": {
+      "type": "object",
+      "description": "Структурированные визуальные данные для генерации изображений",
+      "properties": {
+        "body": {
+          "type": "string",
+          "description": "Физические характеристики (EN): возраст, телосложение, рост, волосы"
+        },
+        "face": {
+          "type": "string",
+          "description": "Черты лица (EN): глаза, кожа, выражение"
+        },
+        "default_outfit": {
+          "type": "string",
+          "description": "Одежда по умолчанию (EN)"
+        },
+        "wardrobe": {
+          "type": "object",
+          "description": "Гардероб персонажа с различными outfit-ами",
+          "properties": {
+            "casual": {
+              "type": "string",
+              "description": "Повседневная одежда"
+            },
+            "formal": {
+              "type": "string",
+              "description": "Формальная/деловая одежда"
+            },
+            "gym": {
+              "type": "string",
+              "description": "Спортивная одежда"
+            },
+            "swimwear": {
+              "type": "string",
+              "description": "Купальник"
+            },
+            "sleepwear": {
+              "type": "string",
+              "description": "Ночная одежда"
+            },
+            "underwear": {
+              "type": "string",
+              "description": "Нижнее бельё"
+            },
+            "nude": {
+              "type": "string",
+              "description": "Без одежды"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "description": "Дополнительные кастомные outfit-ы"
+          }
+        },
+        "style_tags": {
+          "type": "string",
+          "description": "Теги стиля генерации (anime style, photorealistic, soft lighting)"
+        }
+      }
+    }
+  }
+}

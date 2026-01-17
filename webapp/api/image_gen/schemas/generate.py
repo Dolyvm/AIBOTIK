@@ -89,8 +89,8 @@ NSFW_LEVELS_LIST = [
 ]
 
 
-ANIME_BASE_POS = "(anime style:1.2), 1girl, masterpiece, absurdres, best quality, amazing quality"
-ANIME_BASE_NEG = "2girls, blurry face, blurry eyes, lowres, worst quality, low quality, bad anatomy, bad hands"
+ANIME_BASE_POS = "(anime style:1.2), solo, 1girl, masterpiece, absurdres, best quality, amazing quality"
+ANIME_BASE_NEG = "2girls, multiple girls, multiple people, group, crowd, duo, pair, blurry face, blurry eyes, lowres, worst quality, low quality, bad anatomy, bad hands"
 REAL_BASE_POS = ""
 REAL_BASE_NEG = ""
 
@@ -107,11 +107,39 @@ class Prompt(BaseModel):
     style: Optional[str] = ""
     nsfw_level: int = 0
 
-    # @field_validator('nsfw_level', mode='before')
-    # def validate_nsfw_level(cls, v):
-    #     if isinstance(v, str):
-    #         return getattr(NSFWLevel, v)
-    #     raise ValueError
+    @classmethod
+    def from_character(
+        cls,
+        character: dict,
+        outfit_key: str = "default_outfit",
+        nsfw_level: int = 0,
+        environment: str = ""
+    ) -> "Prompt":
+        visual = character.get("visual", {})
+        model_type = character.get("model_type", "real")
+
+        if outfit_key == "default_outfit":
+            clothing = visual.get("default_outfit", "")
+        else:
+            wardrobe = visual.get("wardrobe", {})
+            clothing = wardrobe.get(outfit_key, visual.get("default_outfit", ""))
+
+        if model_type == "anime":
+            character_base = character.get("appearance", "")
+            style = ""  
+        else:
+            body = visual.get("body", character.get("appearance", ""))
+            face = visual.get("face", "")
+            style = visual.get("style_tags", "")
+            character_base = ", ".join(filter(None, [body, face]))
+
+        return cls(
+            character_base=character_base,
+            clothing=clothing,
+            style=style,
+            environment=environment,
+            nsfw_level=nsfw_level
+        )
 
     def build_prompt(self, build_as_type: ModelType = None) -> tuple[str, str]:
         prompt_parts = []
