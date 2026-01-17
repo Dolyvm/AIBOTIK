@@ -1,7 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
-import os
+from aiogram.types import Message
 import sys
 from pathlib import Path
 
@@ -19,21 +18,8 @@ async def cmd_start(message: Message):
         username=message.from_user.username
     )
 
-    webapp_url = os.getenv("WEBAPP_URL")
-
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(
-                text="🎭 Открыть меню",
-                web_app=WebAppInfo(url=f"{webapp_url}?user_id={message.from_user.id}")
-            )]
-        ],
-        resize_keyboard=True
-    )
-
     await message.answer(
         f"Привет, {message.from_user.first_name}! 👋\n\n"
         f"Твой баланс: {user.balance} токенов\n\n"
-        "Нажми кнопку ниже, чтобы выбрать персонажа или вселенную.",
-        reply_markup=keyboard
+        "Нажми кнопку меню внизу, чтобы выбрать персонажа или вселенную."
     )

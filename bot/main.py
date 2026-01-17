@@ -3,6 +3,8 @@ import logging
 import sys
 from pathlib import Path
 from aiogram import Bot, Dispatcher
+from aiogram.types import MenuButtonWebApp, WebAppInfo
+import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -23,10 +25,19 @@ async def main():
 
     bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher()
+    webapp_url = os.getenv("WEBAPP_URL")
 
     dp.include_router(commands.router)
     dp.include_router(webapp.router)
     dp.include_router(messages.router)
+
+    
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(
+            text="Меню",
+            web_app=WebAppInfo(url=f"{webapp_url}?user_id={{user_id}}")
+        )
+    )
 
     logger.info("Starting bot...")
     await dp.start_polling(bot)
