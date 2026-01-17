@@ -52,6 +52,8 @@ services:
       - ./bot/config.py:/app/config.py
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
     depends_on:
       postgres:
         condition: service_healthy

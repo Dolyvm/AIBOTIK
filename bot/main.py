@@ -8,7 +8,6 @@ import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.repository import init_db
 from handlers import commands, messages, webapp
 import config
 
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 async def main():
     logger.info("Initializing database...")
-    await init_db()
 
     bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher()

@@ -7,7 +7,6 @@ from pathlib import Path
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.repository import init_db
 from api import characters, worlds, user, chat
 from api.image_gen.routes.generate import router as image_router
 
@@ -25,10 +24,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/content", StaticFiles(directory="/app/content"), name="content")
 
 
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup"""
-    await init_db()
 
 
 @app.get("/")
