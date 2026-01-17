@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.repository import create_or_reset_chat, update_chat_history
-from shared.services.content_loader import get_character, get_world, get_first_message
+from shared.services.content_loader import get_first_message
 
 router = Router()
 
