@@ -45,7 +45,7 @@ async def get_user_active_chats(user_id: int):
             "target_id": chat.target_id,
             "is_active": chat.is_active,
             "updated_at": chat.updated_at.isoformat(),
-            "name": chat.target_id  
+            "name": chat.target_id
         }
 
         # Resolve name

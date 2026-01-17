@@ -243,6 +243,26 @@ body {
     color: #000000;
 }
 
+.message-bubble .message-photo {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 6px 0;
+    object-fit: contain;
+    /*background-color: #f5f5f5;*/
+}
+
+/* Для собственных сообщений (user) */
+.message-wrapper.own .message-bubble .message-photo {
+    border-radius: 8px 8px 0 8px;
+}
+
+/* Для сообщений от бота (assistant) */
+.message-wrapper.foreign .message-bubble .message-photo {
+    border-radius: 8px 8px 8px 0;
+}
+
+
 .own .message-bubble {
     background-color: var(--msg-own-bg);
     border-bottom-right-radius: 2px;

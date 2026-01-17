@@ -78,6 +78,7 @@
                     <div class="message-bubble">
                         <!-- ЗДЕСЬ ИЗМЕНЕНИЕ: v-html вместо интерполяции -->
                         <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
+                        <img class="message-photo" v-if="msg.image_url" :src="msg.image_url">
                     </div>
                 </div>
                 
@@ -98,6 +99,9 @@
                 ></textarea>
                 <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
                     <i class="fas fa-paper-plane"></i>
+                </button>
+                <button @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
+                    <i class="fas fa-camera"></i>
                 </button>
             </div>
         </div>
@@ -283,6 +287,20 @@
                     }
                 };
 
+                const requestPhoto = async () => {
+                    isWaitingResponse.value = true;
+                    try {
+                        const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
+                        const fullResponse = res.data;
+                        isWaitingResponse.value = false;
+                        chatHistory.value.push({ role: 'assistant', image_url: fullResponse });
+                    } catch (e) {
+                        console.error(e);
+                        chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                        isWaitingResponse.value = false;
+                    }
+                };
+
                 const typeWriter = async (text) => {
                     const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
                     const speed = 10; // чуть быстрее
@@ -364,7 +382,7 @@
                 return {
                     currentView, tab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
-                    chatHistory, inputMessage, sendMessage,
+                    chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar,
                     isWaitingResponse, isStreaming, messagesContainer, formatDate,
                     formatMessage, resetChat,
