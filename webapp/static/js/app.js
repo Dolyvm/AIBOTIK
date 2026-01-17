@@ -83,7 +83,7 @@ async function renderCharacters() {
             <div class="characters-grid">
                 ${data.characters.map(char => `
                     <div class="character-card" onclick="openCharacterModal('${char.id}')">
-                        <img src="${char.image_url}" alt="${char.name}">
+                        <img src="${char.avatar}" alt="${char.name}">
                         <div class="card-overlay">
                             <span class="card-name">${char.name}</span>
                         </div>
@@ -103,7 +103,7 @@ window.openCharacterModal = async function(charId) {
         const char = await fetch(`/api/characters/${charId}`).then(r => r.json());
 
         document.getElementById('modal-body').innerHTML = `
-            <img src="${char.image_url}" class="modal-image">
+            <img src="${char.avatar}" class="modal-image">
             <h2>${char.name}</h2>
             <p>${char.description}</p>
             <div class="tags">${char.tags.map(t => `<span class="tag">${t}</span>`).join('')}</div>
@@ -246,7 +246,7 @@ async function renderChats() {
             <div class="chats-list">
                 ${data.chats.map(chat => `
                     <div class="chat-item" onclick="continueChat(${chat.id})">
-                        ${chat.image_url ? `<img src="${chat.image_url}" class="chat-avatar">` : ''}
+                        ${chat.avatar ? `<img src="${chat.avatar}" class="chat-avatar">` : ''}
                         <div class="chat-info">
                             <h4>${chat.type === 'character' ? '👤' : '🌍'} ${chat.name}</h4>
                             <small>Обновлено: ${new Date(chat.updated_at).toLocaleString('ru')}</small>

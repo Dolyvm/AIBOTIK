@@ -37,7 +37,7 @@ async def list_characters(
         result.append({
             "id": char_id,
             "name": char["name"],
-            "image_url": char["image_url"],
+            "avatar": char["avatar"],
             "tags": tags,
             "model_type": model_type,
             "scenarios_count": 1 + len(char.get("alternate_greetings", []))
@@ -73,7 +73,7 @@ async def get_character_detail(character_id: str):
         "name": char["name"],
         "description": char["description"][:500] if len(char["description"]) > 500 else char["description"],
         "personality": char["personality"],
-        "image_url": char["image_url"],
+        "avatar": char["avatar"],
         "tags": meta.get("tags", []),  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
         "scenarios": scenarios,
         "appearance": char["appearance"],

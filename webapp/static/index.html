@@ -28,7 +28,7 @@
             <div class="grid-container">
                 <div v-if="tab === 'characters'" class="grid">
                     <div v-for="char in characters" :key="char.id" class="card" @click="selectItem('character', char)">
-                        <img :src="char.image_url" loading="lazy">
+                        <img :src="char.avatar" loading="lazy">
                         <div class="card-title">{{ char.name }}</div>
                     </div>
                 </div>
@@ -43,7 +43,7 @@
                 <div v-if="tab === 'chats'" class="chats-list">
                     <div v-for="chat in activeChats" :key="chat.id" class="chat-row" @click="openChat(chat.id)">
                         <div class="chat-row-avatar">
-                            <img :src="chat.image_url || 'https://via.placeholder.com/50'">
+                            <img :src="chat.avatar || 'https://via.placeholder.com/50'">
                         </div>
                         <div class="chat-row-info">
                             <div class="chat-row-name">{{ chat.name }}</div>
@@ -78,7 +78,7 @@
                     <div class="message-bubble">
                         <!-- ЗДЕСЬ ИЗМЕНЕНИЕ: v-html вместо интерполяции -->
                         <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
-                        <img class="message-photo" v-if="msg.image_url" :src="msg.image_url">
+                        <img class="message-photo" v-if="msg.avatar" :src="msg.avatar">
                     </div>
                 </div>
                 
@@ -115,7 +115,7 @@
 
                 <div v-if="selectedCharacter" class="modal-body">
                     <div class="modal-character-header">
-                        <img :src="selectedCharacter.image_url" class="modal-character-image" alt="Character">
+                        <img :src="selectedCharacter.avatar" class="modal-character-image" alt="Character">
                         <div class="modal-character-info">
                             <h2>{{ selectedCharacter.name }}</h2>
                             <p class="modal-character-description">{{ selectedCharacter.description }}</p>
@@ -241,7 +241,7 @@
                     const chatMeta = activeChats.value.find(c => c.id === chatId);
                     if (chatMeta) {
                         currentChatName.value = chatMeta.name;
-                        currentChatAvatar.value = chatMeta.image_url;
+                        currentChatAvatar.value = chatMeta.avatar;
                     }
 
                     try {
@@ -293,7 +293,7 @@
                         const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
                         const fullResponse = res.data;
                         isWaitingResponse.value = false;
-                        chatHistory.value.push({ role: 'assistant', image_url: fullResponse });
+                        chatHistory.value.push({ role: 'assistant', avatar: fullResponse });
                     } catch (e) {
                         console.error(e);
                         chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
@@ -369,7 +369,7 @@
                         });
 
                         currentChatName.value = selectedCharacter.value.name;
-                        currentChatAvatar.value = selectedCharacter.value.image_url || selectedCharacter.value.cover_image;
+                        currentChatAvatar.value = selectedCharacter.value.avatar || selectedCharacter.value.cover_image;
 
                         closeModal();
                         await openChat(res.data.chat_id);

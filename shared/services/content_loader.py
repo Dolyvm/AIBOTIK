@@ -1,12 +1,11 @@
 import json
 import logging
-from pathlib import Path
 from functools import lru_cache
 from typing import Optional
 
 from shared.config import CONTENT_BASE_PATH
-from shared.card_parser import parse_tavern_card
 
+logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=32)
 def get_character(character_id: str) -> Optional[dict]:
@@ -20,18 +19,8 @@ def get_character(character_id: str) -> Optional[dict]:
         print(f"Failed to parse {char_path}: {e}")
         return None
 
-    char["id"] = character_id  # char["image_url"] уже есть в файле .json
+    char["id"] = character_id  
     return char
-
-    # убрал пока эту хуйню, буду все то же самое брать из json
-    # try:
-    #     char = parse_tavern_card(char_path)
-    #     char["id"] = character_id
-    #     char["image_url"] = f"/content/characters/{char_path.name}"
-    #     return char
-    # except Exception as e:
-    #     print(f"Failed to parse {char_path}: {e}")
-    #     return None
 
 
 @lru_cache(maxsize=32)
@@ -52,16 +41,17 @@ def get_all_characters() -> dict[str, dict]:
     characters = {}
     chars_dir = CONTENT_BASE_PATH / "characters"
 
-    if not chars_dir.exists():
-        return characters
+    for json_file in chars_dir.glob("*.json"):
+        char_id = json_file.stem
+        try:
+            char_data = get_character(char_id)
+            if char_data:
+                characters[char_id] = char_data
+                logger.info(f"Loaded character: {char_id}")
+        except Exception as e:
+            logger.error(f"Failed to load character {char_id}: {e}")
 
-    for png_file in chars_dir.glob("*.png"):
-        logging.info(png_file.stem)
-        char_id = png_file.stem
-        char_data = get_character(char_id)
-        if char_data:
-            characters[char_id] = char_data
-
+    logger.info(f"Total characters loaded: {len(characters)}")
     return characters
 
 

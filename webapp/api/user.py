@@ -53,12 +53,12 @@ async def get_user_active_chats(user_id: int):
             character = get_character(chat.target_id)
             if character:
                 chat_data["name"] = character["name"]
-                chat_data["image_url"] = character["image_url"]
+                chat_data["avatar"] = character["avatar"]
         else:  # world
             world = WORLDS.get(chat.target_id)
             if world:
                 chat_data["name"] = world["name"]
-                chat_data["image_url"] = world.get("cover_image", "")
+                chat_data["avatar"] = world.get("cover_image", "")
 
         result.append(chat_data)
 

@@ -2,7 +2,6 @@ aiogram==3.4.1
 sqlalchemy==2.0.27
 asyncpg==0.29.0
 httpx==0.26.0
-pillow==10.2.0
 python-dotenv==1.0.1
 tenacity==8.2.3
 fal-client==0.2.1
