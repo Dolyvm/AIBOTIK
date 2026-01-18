@@ -1,7 +1,7 @@
 {
   "id": "indiana",
   "name": "Храм Забытого Бога",
-  "cover_image": "https://images.unsplash.com/photo-1551632811-561732d1e306?w=512&h=768&fit=crop",
+  "cover_image": "/content/worlds/indiana.jpg",
   "tags": ["Adventure", "Action", "1930s", "Archaeology"],
 
   "setting": {

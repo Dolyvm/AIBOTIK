@@ -14,17 +14,21 @@ WORLDS = get_all_worlds()
 
 @router.get("")
 async def list_worlds(
-    genre: str = None,
-    rating: str = None
+    tag: str = None,     # Переименовали genre -> tag
+    rating: str = None   # Оставляем рейтинг как опцию, если он есть в JSON
 ):
     """List all worlds"""
     result = []
 
     for world_id, world in WORLDS.items():
-        filters = world.get("filters", {})
+        world_tags = world.get("tags", [])
+        filters = world.get("filters", {}) # Оставляем для совместимости по рейтингу
 
-        if genre and filters.get("genre") != genre:
+        # Фильтрация по тегу (проверяем вхождение в массив)
+        if tag and tag not in world_tags:
             continue
+            
+        # Фильтрация по рейтингу (если нужно)
         if rating and filters.get("rating") != rating:
             continue
 
@@ -34,7 +38,7 @@ async def list_worlds(
             "id": world_id,
             "name": world["name"],
             "cover_image": world["cover_image"],
-            "tags": world["tags"],
+            "tags": world_tags,
             "description_short": description_short
         })
 
@@ -65,3 +69,16 @@ async def get_world_detail(world_id: str):
         **world,
         "scenarios": scenarios
     }
+
+
+@router.get("/filters/options")
+async def get_world_filter_options():
+    all_tags = set()
+    for world in WORLDS.values():
+        if "tags" in world:
+            all_tags.update(world["tags"])
+            
+    return {
+        "tags": sorted(list(all_tags))
+    }
+

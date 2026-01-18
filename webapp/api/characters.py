@@ -18,18 +18,19 @@ CHARACTER_META = {}
 
 @router.get("")
 async def list_characters(
-    genre: str = None,
+    tag: str = None,   # Переименовали genre -> tag
     style: str = None 
 ):
     """List all characters with filtering"""
     result = []
 
     for char_id, char in CHARACTERS.items():
-        meta = CHARACTER_META.get(char_id, {})
-        tags = meta.get("tags", [])  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
-        model_type = meta.get("model_type", "real")
+        # Читаем данные напрямую из загруженного JSON
+        char_tags = char.get("tags", [])
+        model_type = char.get("model_type", "real")
 
-        if genre and genre not in tags:
+        # Логика фильтрации
+        if tag and tag not in char_tags:
             continue
         if style and style != model_type:
             continue
@@ -38,12 +39,13 @@ async def list_characters(
             "id": char_id,
             "name": char["name"],
             "avatar": char["avatar"],
-            "tags": tags,
+            "tags": char_tags,
             "model_type": model_type,
             "scenarios_count": 1 + len(char.get("alternate_greetings", []))
         })
 
     return {"characters": result}
+
 
 
 @router.get("/{character_id}")
@@ -83,16 +85,19 @@ async def get_character_detail(character_id: str):
 
 @router.get("/filters/options")
 async def get_filter_options():
-    """Return available filter options"""
+    """Return available filter options dynamically from loaded JSONs"""
     all_tags = set()
     styles = set()
 
-    for char_id in CHARACTERS:
-        meta = CHARACTER_META.get(char_id, {})
-        all_tags.update(meta.get("tags", []))  # nsfw_tags -> tags, не увидел nsfw_tags в файле.
-        styles.add(meta.get("model_type", "real"))
+    for char in CHARACTERS.values():
+        # Собираем уникальные теги
+        if "tags" in char:
+            all_tags.update(char["tags"])
+        
+        # Собираем стили
+        styles.add(char.get("model_type", "real"))
 
     return {
-        "genres": sorted(list(all_tags)),
+        "tags": sorted(list(all_tags)), # Переименовали genres -> tags
         "styles": sorted(list(styles))
     }

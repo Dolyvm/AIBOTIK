@@ -62,6 +62,30 @@ body {
     padding-bottom: 40px;
 }
 
+/* === Filters === */
+.filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.filters select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--tg-theme-secondary-bg-color);
+    border-radius: 8px;
+    background: var(--tg-theme-bg-color);
+    color: var(--tg-theme-text-color);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+}
+
+.filters select:focus {
+    border-color: var(--tg-theme-link-color);
+}
+
 .grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -558,5 +582,42 @@ body {
 
     .scenario-preview {
         font-size: 13px;
+    }
+}
+
+/* === Toast Notifications === */
+.toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    z-index: 1000;
+    animation: fadeIn 0.3s;
+}
+
+.toast--error {
+    background: #e74c3c;
+}
+
+.toast--success {
+    background: #27ae60;
+}
+
+.toast--info {
+    background: #3498db;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
     }
 }
