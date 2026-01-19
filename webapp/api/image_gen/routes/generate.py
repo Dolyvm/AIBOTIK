@@ -114,6 +114,7 @@ async def gen(
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     logging.info(f"{nsfw_level=}")
+    environment = state.get(environment) or environment
     prompt = Prompt.from_character(
         character=content,
         outfit_key=outfit_key,
@@ -121,7 +122,7 @@ async def gen(
         environment=environment,
     )
     logging.info(f"{state=}")
-    prompt.action = pose
+    prompt.action = state.get("action") or pose
     pos, neg = prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")

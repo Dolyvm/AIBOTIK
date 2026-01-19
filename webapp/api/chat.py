@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 import sys
@@ -96,7 +98,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
                 msgs_since_summary=msgs_since,
                 msg_count=chat.msg_count + 1,
             )
-
+            logging.info(new_state)
             return {"response": clean_text}
 
         except Exception as e:
