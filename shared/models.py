@@ -28,7 +28,7 @@ class Chat(Base):
     scenario_index = Column(Integer, default=0)
     msg_count = Column(Integer, default=0)
     history = Column(Text, default="[]")
-    state = Column(Text, default='{"affinity": 0, "arousal": 0, "mood": "neutral"}')
+    state = Column(Text, default='{"affinity": 0, "arousal": 0, "mood": "neutral"}')  # + поля окружение, действие
     summary = Column(Text, default="")
     msgs_since_summary = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)

@@ -80,7 +80,7 @@ async def gen(
     outfit_key = outfit
     environment = ""
     scene_reasoning = ""
-
+    pose = ""
     if use_smart_analysis and SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
@@ -98,7 +98,8 @@ async def gen(
 
             nsfw_level = scene.nsfw_level
             outfit_key = scene.outfit_key
-            environment = scene.location
+            pose = scene.pose
+            environment = state.get("location") or scene.location
             scene_reasoning = scene.reasoning
 
             logging.info(f"Scene analysis: {scene_reasoning}")
@@ -112,15 +113,21 @@ async def gen(
         nsfw_level = calculate_nsfw_fallback(state["arousal"], state["affinity"])
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
+    logging.info(f"{nsfw_level=}")
     prompt = Prompt.from_character(
         character=content,
         outfit_key=outfit_key,
         nsfw_level=nsfw_level,
-        environment=environment
+        environment=environment,
     )
+    logging.info(f"{state=}")
+    prompt.action = pose
     pos, neg = prompt.build_prompt(content.get("model_type"))
+    logging.info(f"{pos=}")
+    logging.info(f"{neg=}")
     result = None
     logging.info(f"{content=}")
+
     if content.get("model_type") == "anime":
         result = await submit_anime(pos, neg)
 

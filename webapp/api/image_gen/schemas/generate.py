@@ -63,34 +63,34 @@ class NSFWLevel:
 
 NSFW_LEVELS_LIST = [
     PromptLayer(
-        prompt="fully clothed",
-        negative_prompt="nudity, sexual act, lingerie, NSFW, nsfw"
+        prompt="general",
+        negative_prompt="sensual, explicit, nudity, sexual act, lingerie, nsfw"
     ),
     PromptLayer(
-        prompt="sensual mood, teasing expression, fully clothed",
+        prompt="sensual, teasing expression, fully clothed",
         negative_prompt="nudity, sexual act"
     ),
     PromptLayer(
-        prompt="aroused, showing her bra, touching her ass",
+        prompt="aroused, nsfw, sensual, teasing, showing herself, tits peeking",
         negative_prompt="nsfw"
     ),
     PromptLayer(
-        prompt="showing her naked body",
+        prompt="nsfw, taking off her clothes, showing her nude tits, aroused, bottomless",
         negative_prompt="penetration, explicit sex"
     ),
     PromptLayer(
-        prompt="showing her naked body and shaved pussy, no clothes",
-        negative_prompt=""
+        prompt="nsfw, naked body, nude pussy, aroused",
+        negative_prompt="general, clothes"
     ),
     PromptLayer(
         prompt="extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
-        negative_prompt=""
+        negative_prompt="general"
     )
 ]
 
 
-ANIME_BASE_POS = "(anime style:1.2), solo, 1girl, masterpiece, absurdres, best quality, amazing quality"
-ANIME_BASE_NEG = "2girls, multiple girls, multiple people, group, crowd, duo, pair, blurry face, blurry eyes, lowres, worst quality, low quality, bad anatomy, bad hands"
+ANIME_BASE_POS = "masterpiece,best quality,amazing quality"
+ANIME_BASE_NEG = "badquality,lowres,low quality,worst detail"
 REAL_BASE_POS = ""
 REAL_BASE_NEG = ""
 
@@ -154,7 +154,7 @@ class Prompt(BaseModel):
 
         for field_name, _ in self.__class__.model_fields.items():
             value = getattr(self, field_name)
-            if not value:
+            if value == "":
                 continue
 
             if field_name == "nsfw_level":

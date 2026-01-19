@@ -42,16 +42,22 @@ async def submit_real(
 async def submit_anime(
     positive_prompt: str,
     negative_prompt: str,
-    model_version: str = "aisha-ai-official/wai-nsfw-illustrious-v11:c1d5b02687df6081c7953c74bcc527858702e8c153c9382012ccc3906752d3ec"
+    model_version: str = "aisha-ai-official/wai-nsfw-illustrious-v12:0fc0fa9885b284901a6f9c0b4d67701fd7647d157b88371427d63f8089ce140e"
 ):
-    positive_prompt = truncate_prompt(positive_prompt, max_tokens=75)
-    negative_prompt = truncate_prompt(negative_prompt, max_tokens=75)
+    # positive_prompt = truncate_prompt(positive_prompt, max_tokens=75)
+    # negative_prompt = truncate_prompt(negative_prompt, max_tokens=75)
 
     result = await replicate.async_run(
         model_version,
         input={
             "prompt": positive_prompt,
             "negative_prompt": negative_prompt,
+            "vae": "default",
+            "seed": -1,
+            "cfg_scale": 5,
+            "pag_scale": 5,
+            "scheduler": "Euler a",
+            "prepend_preprompt": False
         }
     )
 

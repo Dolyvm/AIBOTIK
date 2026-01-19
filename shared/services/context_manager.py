@@ -70,6 +70,10 @@ class ContextManager:
                 state["arousal"] = max(0, min(100, state.get("arousal", 0) + state_updates["arousal_change"]))
             if "mood" in state_updates:
                 state["mood"] = state_updates["mood"]
+            if "new_location" in state_updates:
+                state["location"] = state_updates["new_location"]
+            if "new_action" in state_updates:
+                state["action"] = state_updates["action"]
 
         history.append({"role": "assistant", "content": clean_text})
 
