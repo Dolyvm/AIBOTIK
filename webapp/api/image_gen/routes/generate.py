@@ -49,8 +49,7 @@ async def generate_image(data: GenerateRequest):
 @router.post("/{chat_id}/generate")
 async def gen(
     chat_id: int,
-    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)"),
-    use_smart_analysis: bool = Query(default=True, description="Использовать LLM анализ сцены")
+    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)")
 ):
     async with await get_session() as session:
         try:
@@ -80,8 +79,8 @@ async def gen(
     outfit_key = outfit
     environment = ""
     scene_reasoning = ""
-
-    if use_smart_analysis and SCENE_ANALYZER_ENABLED and history:
+    pose = ""
+    if SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
             analyzer = SceneAnalyzer(llm_client)
@@ -98,7 +97,8 @@ async def gen(
 
             nsfw_level = scene.nsfw_level
             outfit_key = scene.outfit_key
-            environment = scene.location
+            pose = scene.pose
+            environment = state.get("location") or scene.location
             scene_reasoning = scene.reasoning
 
             logging.info(f"Scene analysis: {scene_reasoning}")
@@ -112,15 +112,22 @@ async def gen(
         nsfw_level = calculate_nsfw_fallback(state["arousal"], state["affinity"])
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
+    logging.info(f"{nsfw_level=}")
+    environment = state.get(environment) or environment
     prompt = Prompt.from_character(
         character=content,
         outfit_key=outfit_key,
         nsfw_level=nsfw_level,
-        environment=environment
+        environment=environment,
     )
+    logging.info(f"{state=}")
+    prompt.action = state.get("action") or pose
     pos, neg = prompt.build_prompt(content.get("model_type"))
+    logging.info(f"{pos=}")
+    logging.info(f"{neg=}")
     result = None
     logging.info(f"{content=}")
+
     if content.get("model_type") == "anime":
         result = await submit_anime(pos, neg)
 

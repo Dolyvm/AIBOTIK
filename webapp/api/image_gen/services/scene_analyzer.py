@@ -115,14 +115,18 @@ class SceneAnalyzer:
             for m in recent_messages
         ])
 
-        prompt = f"""Scene: {character_name}
+        prompt = f"""WRITE ONLY IN ENGLISH
+Scene: {character_name}
 Chat:
 {formatted}
 
 Outfits: {', '.join(available_outfits)}
-
+You should make JSON values suitable for use in text to image models. 
+You "location" value should consist of real understandable words and be SHORT. 10 words maximum. 
+You "pose" value should consist of real understandable words and be SHORT. 6 words maximum. 
+Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context. 
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list that suits situation the most","emotion":"string","nsfw_level":0-5,"reasoning":"string"}}
 
 nsfw: 0=public/clothed, 2=suggestive, 4=explicit"""
 

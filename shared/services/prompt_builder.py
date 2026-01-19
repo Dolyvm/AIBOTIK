@@ -39,14 +39,21 @@ META_INSTRUCTION = """
 - Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +1 до +3
 - Если ситуация неловкая или отталкивающая — arousal_change может быть -1 до -2
 - **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +1 к affinity.
+- Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null. 
+- Меняй `new_location` СТРОГО ТОЛЬКО в том случае, если местоположений персонажей 100% поменялось. Если произошло действие, но оно произошло в той локации, поле new_location оставляй null.
+- Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`. 
+- Если персонаж продолжает делать то же самое, либо нужно нейтральное состояние персонажа, `new_location` должен быть null. 
+- `new_location` и `new_action` могут быть ТОЛЬКО на английском языке. 
 
-Формат (СТРОГИЙ JSON, без звёздочек и других форматирований):
+Формат (СТРОГИЙ ВАЛИДНЫЙ JSON, без звёздочек и других форматирований):
 <meta>
 {
   "affinity_change": int,   // -5 до +5. ОБЯЗАТЕЛЬНО меняется при любом взаимодействии
   "arousal_change": int,    // -5 до +5. Меняется при флирте, физическом контакте, романтике
   "mood": "string",         // neutral, playful, curious, happy, sad, angry, horny, shy, etc
-  "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). БЕЗ ЗВЁЗДОЧЕК!
+  "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). ВАЛИДНАЯ СТРОКА!
+  "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.  
+  "new_action": "string"    // null либо новое действие твоего персонажа, в пару слов.   
 }
 </meta>
 
@@ -58,7 +65,8 @@ META_INSTRUCTION = """
   "affinity_change": 1,
   "arousal_change": 0,
   "mood": "neutral",
-  "thought": "Обычное приветствие. Нейтрально."
+  "thought": "Обычное приветствие. Нейтрально.",
+  "new_location": null
 }
 </meta>
 
@@ -68,7 +76,9 @@ META_INSTRUCTION = """
   "affinity_change": 2,
   "arousal_change": 1,
   "mood": "playful",
-  "thought": "Комплимент? Интересно... Немного смутило, но приятно."
+  "thought": "Комплимент? Интересно... Немного смутило, но приятно.",
+  "new_location": null,
+  "new_action": "smiling"
 }
 </meta>
 
@@ -78,14 +88,40 @@ META_INSTRUCTION = """
   "affinity_change": -3,
   "arousal_change": -1,
   "mood": "angry",
-  "thought": "Грубость. Неприятно. Почему так резко?"
+  "thought": "Грубость. Неприятно. Почему так резко?",
+  "new_location": null,
+  "new_action": "frowns"
 }
 </meta>
 
+
+Игрок: "Давай сядем на скамейку?"
+<meta>
+{
+  "affinity_change": 2,
+  "arousal_change": 0,
+  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста. 
+  "thought": ...,  // зависит от контекста
+  "new_location": "sitting on bench",
+  "new_action": "sitting on bench"
+}
+</meta>
+
+
+
+Игрок: "Вот, держи книгу"
+<meta>
+{
+  "affinity_change": 2,
+  "arousal_change": 0,
+  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста. 
+  "thought": ...,  // зависит от контекста
+  "new_location": null,
+  "new_action": "holding book in hands"
+}
+</meta>
 Твой литературный ответ пиши СТРОГО ПОСЛЕ закрывающего тега </meta>.
 """
-
-
 
 def _get_character_behavior(affinity: int, arousal: int) -> str:
     instruction = ""
@@ -105,15 +141,12 @@ def _get_character_behavior(affinity: int, arousal: int) -> str:
     return instruction
 
 
-
 def build_character_prompt(
-    character: dict,
-    state: dict,
-    summary: str = "",
-    user_name: str = "User"
+        character: dict,
+        state: dict,
+        summary: str = "",
+        user_name: str = "User"
 ) -> str:
-    
-
     affinity = state.get("affinity", 0)
     arousal = state.get("arousal", 0)
     mood = state.get("mood", "neutral")

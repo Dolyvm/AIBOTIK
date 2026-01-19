@@ -9,12 +9,12 @@
     "face": "bright green eyes, smooth skin, cute innocent expression, light blush",
     "default_outfit": "japanese school uniform, serafuku, pleated skirt, knee-high socks",
     "wardrobe": {
-      "casual": "oversized sweater, short skirt, thigh-high socks",
+      "casual": "simple oversized grey sweater with white shirt, no marks, short black skirt, thigh-high white socks",
       "formal": "elegant kimono, traditional japanese dress",
       "cosplay": "magical girl costume, frilly dress, ribbons",
       "swimwear": "white school swimsuit, sukumizu",
       "sleepwear": "cute pajamas with anime print",
-      "underwear": "white cotton panties, simple bra",
+      "underwear": "white cotton panties, simple white bra",
       "nude": "naked, nude"
     },
     "style_tags": "detailed, cel shading, soft lighting"

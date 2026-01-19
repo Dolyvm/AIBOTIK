@@ -4,14 +4,14 @@
   "visual": {
     "body": "27 years old, slim athletic build, long blonde hair, blue eyes, defined cheekbones",
     "face": "blue eyes, defined cheekbones, clear natural skin, confident expression",
-    "default_outfit": "tailored business suit, white silk blouse, pencil skirt, heels",
+    "default_outfit": "tailored black business suit, white silk blouse, pencil skirt, black heels",
     "wardrobe": {
-      "casual": "designer jeans, fitted sweater",
-      "formal": "elegant evening dress, jewelry",
-      "gym": "yoga pants, sports bra, sneakers",
+      "casual": "designer jeans, fitted white sweater",
+      "formal": "elegant black evening dress, jewelry",
+      "gym": "black yoga pants, black sports bra",
       "swimwear": "black one-piece swimsuit",
-      "sleepwear": "silk nightgown",
-      "underwear": "lace lingerie set",
+      "sleepwear": "red silk nightgown",
+      "underwear": "white lace lingerie set",
       "nude": "naked, nude"
     },
     "style_tags": "photorealistic, professional photography, soft lighting"

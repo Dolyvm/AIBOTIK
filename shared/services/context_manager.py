@@ -2,6 +2,7 @@
 Context Manager - Handles memory management, state parsing, and summarization
 """
 import json
+import logging
 import re
 from typing import Tuple, Optional
 
@@ -60,17 +61,22 @@ class ContextManager:
             messages=history[-MAX_HISTORY_LENGTH:],
             max_tokens=max_tokens,
         )
-
+        logging.info(f"{response=}")
         clean_text, state_updates = self._parse_meta(response)
 
         if state_updates:
+            logging.info(f"{state_updates=}")
             if "affinity_change" in state_updates:
                 state["affinity"] = max(0, min(100, state.get("affinity", 0) + state_updates["affinity_change"]))
             if "arousal_change" in state_updates:
                 state["arousal"] = max(0, min(100, state.get("arousal", 0) + state_updates["arousal_change"]))
             if "mood" in state_updates:
                 state["mood"] = state_updates["mood"]
-
+            if "new_location" in state_updates:
+                state["location"] = state_updates["new_location"]
+            if "new_action" in state_updates:
+                state["action"] = state_updates["new_action"]
+        logging.info(f"{state=}")
         history.append({"role": "assistant", "content": clean_text})
 
         # Increment counters
@@ -149,9 +155,10 @@ Write in Russian. Output ONLY the summary, no meta-commentary."""
         if matches:
             for match in matches:
                 try:
-                    updates = json.loads(match.strip())
+                    updates = json.loads(match.strip().replace("*", ""))
                     state_updates.update(updates)
                 except json.JSONDecodeError:
+                    logging.info("malformed json: ", match.strip().replace("\n", ""))
                     # Ignore malformed JSON
                     pass
 
