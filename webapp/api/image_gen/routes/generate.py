@@ -49,8 +49,7 @@ async def generate_image(data: GenerateRequest):
 @router.post("/{chat_id}/generate")
 async def gen(
     chat_id: int,
-    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)"),
-    use_smart_analysis: bool = Query(default=True, description="Использовать LLM анализ сцены")
+    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)")
 ):
     async with await get_session() as session:
         try:
@@ -81,7 +80,7 @@ async def gen(
     environment = ""
     scene_reasoning = ""
     pose = ""
-    if use_smart_analysis and SCENE_ANALYZER_ENABLED and history:
+    if SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
             analyzer = SceneAnalyzer(llm_client)
