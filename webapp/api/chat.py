@@ -41,7 +41,7 @@ class CreateChatRequest(BaseModel):
 @router.get("/{chat_id}/history")
 async def get_history(chat_id: int):
     """Получить историю чата (merged: сообщения + картинки)"""
-    async with await get_session() as session:
+    async with get_session() as session:
         chat = await session.get(Chat, chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
@@ -76,7 +76,7 @@ async def get_history(chat_id: int):
 @router.post("/{chat_id}/send")
 async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
     """Отправить сообщение и получить ответ"""
-    async with await get_session() as session:
+    async with get_session() as session:
         try:
             chat = await session.get(Chat, chat_id)
 
@@ -116,7 +116,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
 @router.post("/create")
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...)):
     """Создать новый чат с персонажем/миром"""
-    async with await get_session() as session:
+    async with get_session() as session:
         try:
             user = await get_user(payload.user_id)
             user_name = user.username if user and user.username else "Путешественник"
@@ -148,7 +148,7 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...)):
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int):
     """Сбросить историю чата"""
-    async with await get_session() as session:
+    async with get_session() as session:
         try:
             chat = await session.get(Chat, chat_id)
             if not chat:

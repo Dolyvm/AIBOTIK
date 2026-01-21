@@ -51,7 +51,7 @@ async def gen(
     chat_id: int,
     outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)")
 ):
-    async with await get_session() as session:
+    async with get_session() as session:
         try:
             chat = await session.get(Chat, chat_id)
 

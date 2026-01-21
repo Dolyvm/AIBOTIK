@@ -1,26 +1,26 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, selectinload
 from sqlalchemy import select, update, delete
+from contextlib import asynccontextmanager
 from typing import Optional
 import os
 
 from .models import Base, User, UserSettings, Chat, Message, Transaction, MessageRole, TransactionSource, GeneratedImage
 
-
-# Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://rpbot:password@localhost:5432/rpbot")
-# Convert to async URL
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+from config import DATABASE_URL 
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
-async def get_session() -> AsyncSession:
-    """Get database session"""
+@asynccontextmanager
+async def get_session():
     async with async_session() as session:
-        return session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 # User operations

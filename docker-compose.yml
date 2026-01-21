@@ -52,6 +52,7 @@ services:
       - ./bot/config.py:/app/config.py
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
+      - ./scripts:/app/scripts:ro
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
     depends_on:
@@ -59,6 +60,27 @@ services:
         condition: service_healthy
       webapp:
         condition: service_started
+
+  seed:
+    build: ./bot
+    command: >
+      sh -c "
+        echo 'Waiting for migrations to complete...' &&
+        sleep 10 &&
+        python /app/scripts/seed_content.py
+      "
+    environment:
+      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./content:/app/content:ro
+      - ./shared:/app/shared:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bot:
+        condition: service_started
+    restart: "no"
 
 volumes:
   postgres_data:
