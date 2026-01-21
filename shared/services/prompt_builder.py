@@ -143,18 +143,24 @@ def _get_character_behavior(affinity: int, arousal: int) -> str:
 
 def build_character_prompt(
         character: dict,
-        state: dict,
+        chat,
         summary: str = "",
         user_name: str = "User"
 ) -> str:
-    affinity = state.get("affinity", 0)
-    arousal = state.get("arousal", 0)
-    mood = state.get("mood", "neutral")
+    affinity = chat.affinity
+    arousal = chat.arousal
+    mood = chat.current_mood
 
     behavior_instruction = _get_character_behavior(affinity, arousal)
 
     char_id = character.get("id", "")
-    modifier = get_modifier_for_stage(char_id, state)
+    state_dict = {
+        "affinity": chat.affinity,
+        "arousal": chat.arousal,
+        "mood": chat.current_mood,
+        "location": chat.current_location
+    }
+    modifier = get_modifier_for_stage(char_id, state_dict)
 
     modifier_text = ""
     if modifier:

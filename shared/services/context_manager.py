@@ -4,7 +4,7 @@ Context Manager - Handles memory management, state parsing, and summarization
 import json
 import logging
 import re
-from typing import Tuple, Optional
+from typing import Optional
 
 from shared.services.llm import LLMClient
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt
@@ -14,6 +14,8 @@ from shared.config import (
     LLM_MAX_TOKENS_CHARACTER,
     LLM_MAX_TOKENS_WORLD,
 )
+from shared import repository
+from shared.models import Chat
 
 
 class ContextManager:
@@ -24,74 +26,90 @@ class ContextManager:
 
     async def process_turn(
         self,
-        chat,
+        chat: Chat,
         user_input: str,
         character: Optional[dict] = None,
         world: Optional[dict] = None,
         user_name: str = "User"
-    ) -> Tuple[str, dict, list, str, int]:
+    ) -> str:
+        await repository.add_message(chat.id, "user", user_input)
 
-        state = json.loads(chat.state) if isinstance(chat.state, str) else chat.state
-        history = json.loads(chat.history) if isinstance(chat.history, str) else chat.history
-        summary = chat.summary or ""
-        msgs_since_summary = chat.msgs_since_summary
+        messages = await repository.get_chat_history(chat.id, limit=MAX_HISTORY_LENGTH)
+        history = [
+            {"role": msg.role.value, "content": msg.content}
+            for msg in messages
+        ]
 
-        if msgs_since_summary >= self.summary_threshold and len(history) > MAX_HISTORY_LENGTH:
-            summary = await self._summarize_history(history, summary, state, character, world)
-            msgs_since_summary = 0
-
-        history.append({"role": "user", "content": user_input})
+        if chat.msgs_since_summary >= self.summary_threshold and len(history) > MAX_HISTORY_LENGTH:
+            await self._summarize_history(chat, history, character, world)
 
         if character:
             max_tokens = LLM_MAX_TOKENS_CHARACTER
             system_prompt = build_character_prompt(
                 character=character,
-                state=state,
-                summary=summary,
+                chat=chat,
+                summary=chat.summary,
                 user_name=user_name
             )
         elif world:
             max_tokens = LLM_MAX_TOKENS_WORLD
-            system_prompt = build_world_prompt(world, summary, user_name)
+            system_prompt = build_world_prompt(world, chat.summary, user_name)
         else:
             raise ValueError("Either character or world must be provided")
 
         response = await self.llm.generate(
             system_prompt=system_prompt,
-            messages=history[-MAX_HISTORY_LENGTH:],
+            messages=history,
             max_tokens=max_tokens,
         )
         logging.info(f"{response=}")
+
         clean_text, state_updates = self._parse_meta(response)
 
         if state_updates:
             logging.info(f"{state_updates=}")
+            updates = {}
+
             if "affinity_change" in state_updates:
-                state["affinity"] = max(0, min(100, state.get("affinity", 0) + state_updates["affinity_change"]))
+                new_affinity = max(0, min(100, chat.affinity + state_updates["affinity_change"]))
+                updates["affinity"] = new_affinity
+
             if "arousal_change" in state_updates:
-                state["arousal"] = max(0, min(100, state.get("arousal", 0) + state_updates["arousal_change"]))
+                new_arousal = max(0, min(100, chat.arousal + state_updates["arousal_change"]))
+                updates["arousal"] = new_arousal
+
             if "mood" in state_updates:
-                state["mood"] = state_updates["mood"]
-            if "new_location" in state_updates:
-                state["location"] = state_updates["new_location"]
-            if "new_action" in state_updates:
-                state["action"] = state_updates["new_action"]
-        logging.info(f"{state=}")
-        history.append({"role": "assistant", "content": clean_text})
+                updates["current_mood"] = state_updates["mood"]
 
-        # Increment counters
-        msgs_since_summary += 1
+            if "new_location" in state_updates and state_updates["new_location"] is not None:
+                updates["current_location"] = state_updates["new_location"]
+            meta_fields = {}
+            if "thought" in state_updates:
+                meta_fields["thought"] = state_updates["thought"]
+            if "new_action" in state_updates and state_updates["new_action"] is not None:
+                meta_fields["action"] = state_updates["new_action"]
 
-        return clean_text, state, history, summary, msgs_since_summary
+            if meta_fields:
+                current_meta = chat.state_meta or {}
+                current_meta.update(meta_fields)
+                updates["state_meta"] = current_meta
+
+            if updates:
+                logging.info(f"Updating chat metrics: {updates}")
+                await repository.update_chat_metrics(chat.id, updates)
+                for key, value in updates.items():
+                    setattr(chat, key, value)
+        await repository.add_message(chat.id, "assistant", clean_text)
+
+        return clean_text
 
     async def _summarize_history(
         self,
+        chat: Chat,
         history: list,
-        existing_summary: str,
-        state: dict,
         character: Optional[dict] = None,
         world: Optional[dict] = None
-    ) -> str:
+    ):
         messages_to_summarize = history[:len(history) // 2]
 
         context_name = character["name"] if character else world["name"]
@@ -99,12 +117,12 @@ class ContextManager:
         summary_prompt = f"""You are summarizing a conversation between a user and {context_name}.
 
 ### EXISTING SUMMARY ###
-{existing_summary if existing_summary else "This is the start of the conversation."}
+{chat.summary if chat.summary else "This is the start of the conversation."}
 
 ### CURRENT EMOTIONAL STATE ###
-Affinity: {state.get('affinity', 0)}/100
-Arousal: {state.get('arousal', 0)}/100
-Mood: {state.get('mood', 'neutral')}
+Affinity: {chat.affinity}/100
+Arousal: {chat.arousal}/100
+Mood: {chat.current_mood}
 
 ### MESSAGES TO COMPRESS ###
 {self._format_messages_for_summary(messages_to_summarize)}
@@ -126,7 +144,15 @@ Write in Russian. Output ONLY the summary, no meta-commentary."""
             temperature=0.3
         )
 
-        return summary.strip()
+        await repository.update_chat_metrics(
+            chat.id,
+            {
+                "summary": summary.strip(),
+                "msgs_since_summary": 0
+            }
+        )
+        chat.summary = summary.strip()
+        chat.msgs_since_summary = 0
 
     def _format_messages_for_summary(self, messages: list) -> str:
         """Format messages for summarization prompt."""
@@ -136,7 +162,7 @@ Write in Russian. Output ONLY the summary, no meta-commentary."""
             formatted.append(f"{role}: {msg['content']}")
         return "\n".join(formatted)
 
-    def _parse_meta(self, response_text: str) -> Tuple[str, dict]:
+    def _parse_meta(self, response_text: str) -> tuple[str, dict]:
         """
         Parse metadata tags from LLM response.
 

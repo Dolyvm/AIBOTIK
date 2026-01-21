@@ -3,6 +3,13 @@ from pathlib import Path
 
 CONTENT_BASE_PATH = Path(os.getenv("CONTENT_PATH", "/app/content"))
 
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://rpbot:popa@localhost:5432/rpbot"
+)
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 LLM_MODEL = "mistralai/mistral-small-creative"

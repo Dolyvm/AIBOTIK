@@ -1,88 +1,175 @@
-import json
 import logging
-from functools import lru_cache
 from typing import Optional
 
-from shared.config import CONTENT_BASE_PATH
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import String
+
+from shared.models import Character, World
+from shared.config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 
-@lru_cache(maxsize=32)
-def get_character(character_id: str) -> Optional[dict]:
-    char_path = CONTENT_BASE_PATH / "characters" / f"{character_id}.json"
-    if not char_path.exists():
-        return None
-    try:
-        with open(char_path, encoding='utf-8') as file:
-            char = json.load(file)
-    except Exception as e:
-        print(f"Failed to parse {char_path}: {e}")
-        return None
-
-    char["id"] = character_id  
-    return char
+engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+async_session_factory = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
 
-@lru_cache(maxsize=32)
-def get_world(world_id: str) -> Optional[dict]:
-    world_path = CONTENT_BASE_PATH / "worlds" / f"{world_id}.json"
-    if not world_path.exists():
-        return None
+def character_to_dict(char: Character) -> dict:
+    visual_data = char.visual_data or {}
+    scenarios = char.scenarios or []
+    first_mes = ""
+    alternate_greetings = []
 
-    try:
-        with open(world_path, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Failed to load {world_path}: {e}")
-        return None
+    for scenario in scenarios:
+        if scenario.get("index") == 0:
+            first_mes = scenario.get("intro", "")
+        elif scenario.get("index", -1) > 0:
+            alternate_greetings.append(scenario.get("intro", ""))
+
+    return {
+        "id": char.id,
+        "name": char.name,
+        "description": char.description,
+        "personality": char.personality,
+        "model_type": visual_data.get("model_type", "anime"),
+        "appearance": visual_data.get("appearance", ""),
+        "visual": {
+            k: v for k, v in visual_data.items()
+            if k not in ["model_type", "appearance", "avatar", "example_dialogue"]
+        },
+        "avatar": visual_data.get("avatar", ""),
+        "example_dialogue": visual_data.get("example_dialogue", ""),
+        "scenario": scenarios[0].get("scenario", "") if scenarios else "",
+        "first_mes": first_mes,
+        "alternate_greetings": alternate_greetings,
+        "tags": char.tags or [],
+        "is_nsfw": char.is_nsfw
+    }
 
 
-def get_all_characters() -> dict[str, dict]:
-    characters = {}
-    chars_dir = CONTENT_BASE_PATH / "characters"
+def world_to_dict(world: World) -> dict:
+    scenarios = world.scenarios or []
+    locations = world.locations or []
 
-    for json_file in chars_dir.glob("*.json"):
-        char_id = json_file.stem
+    intro_message = ""
+    gm_instructions = ""
+    alternate_scenarios = []
+
+    for scenario in scenarios:
+        if scenario.get("index") == 0:
+            intro_message = scenario.get("intro", "")
+            gm_instructions = scenario.get("gm_instructions", "")
+        elif scenario.get("index", -1) > 0:
+            alternate_scenarios.append({
+                "title": scenario.get("title", ""),
+                "intro": scenario.get("intro", ""),
+                "gm_instructions": scenario.get("gm_instructions", "")
+            })
+
+    setting = locations[0].get("setting", {}) if locations else {}
+
+    return {
+        "id": world.id,
+        "name": world.name,
+        "description": world.description,
+        "setting": setting,
+        "intro_message": intro_message,
+        "gm_instructions": gm_instructions,
+        "alternate_scenarios": alternate_scenarios,
+        "tags": world.tags or [],
+        "is_nsfw": world.is_nsfw
+    }
+
+
+async def get_character(character_id: str) -> Optional[dict]:
+    async with async_session_factory() as session:
         try:
-            char_data = get_character(char_id)
-            if char_data:
-                characters[char_id] = char_data
-                logger.info(f"Loaded character: {char_id}")
+            result = await session.execute(
+                select(Character).where(Character.id == character_id)
+            )
+            char = result.scalar_one_or_none()
+
+            if not char:
+                logger.warning(f"Character not found: {character_id}")
+                return None
+            return character_to_dict(char)
+
         except Exception as e:
-            logger.error(f"Failed to load character {char_id}: {e}")
+            logger.error(f"Failed to load character {character_id}: {e}")
+            return None
 
-    logger.info(f"Total characters loaded: {len(characters)}")
-    return characters
-
-
-def get_all_worlds() -> dict[str, dict]:
-    """Загружает все миры"""
-    worlds = {}
-    worlds_dir = CONTENT_BASE_PATH / "worlds"
-
-    if not worlds_dir.exists():
-        return worlds
-
-    for json_file in worlds_dir.glob("*.json"):
+async def get_world(world_id: str) -> Optional[dict]:
+    async with async_session_factory() as session:
         try:
-            with open(json_file, encoding="utf-8") as f:
-                world = json.load(f)
-                worlds[world["id"]] = world
+            result = await session.execute(
+                select(World).where(World.id == world_id)
+            )
+            world = result.scalar_one_or_none()
+
+            if not world:
+                logger.warning(f"World not found: {world_id}")
+                return None
+
+            return world_to_dict(world)
         except Exception as e:
-            print(f"Failed to load {json_file}: {e}")
+            logger.error(f"Failed to load world {world_id}: {e}")
+            return None
 
-    return worlds
+
+async def get_all_characters(tag: Optional[str] = None) -> dict[str, dict]:
+    async with async_session_factory() as session:
+        try:
+            query = select(Character)
+
+            if tag:
+                query = query.where(Character.tags.any(tag))
+
+            result = await session.execute(query)
+            characters = result.scalars().all()
+
+            characters_dict = {}
+            for char in characters:
+                characters_dict[char.id] = character_to_dict(char)
+            return characters_dict
+
+        except Exception as e:
+            logger.error(f"Failed to load characters: {e}")
+            return {}
 
 
-def get_first_message(
+async def get_all_worlds(tag: Optional[str] = None) -> dict[str, dict]:
+    async with async_session_factory() as session:
+        try:
+            query = select(World)
+            if tag:
+                query = query.where(World.tags.any(tag))
+
+            result = await session.execute(query)
+            worlds = result.scalars().all()
+
+            worlds_dict = {}
+            for world in worlds:
+                worlds_dict[world.id] = world_to_dict(world)
+            return worlds_dict
+        except Exception as e:
+            logger.error(f"Failed to load worlds: {e}")
+            return {}
+
+
+async def get_first_message(
     chat_type: str,
     target_id: str,
     scenario_index: int,
     user_name: str,
 ) -> str:
-    """Получает первое сообщение для чата с заменой плейсхолдеров"""
     if chat_type == "character":
-        content = get_character(target_id)
+        content = await get_character(target_id)
         if not content:
             return ""
 
@@ -96,8 +183,8 @@ def get_first_message(
                 greeting = content.get("first_mes", "")
         else:
             greeting = content.get("first_mes", "")
-    else:  
-        content = get_world(target_id)
+    else:
+        content = await get_world(target_id)
         if not content:
             return ""
 

@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Body, Query
 
 from shared.models import Chat
-from shared.repository import get_session, get_user
+from shared.repository import get_session, get_user, save_generated_image, get_chat_history, update_chat_metrics
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
@@ -33,17 +33,17 @@ async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = 
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
-    result = None
+    image_url = None
     if data.model_type == ModelType.anime:
-        result = await submit_anime(
+        image_url = await submit_anime(
             data.prompt, data.negative_prompt
         )
     elif data.model_type == ModelType.real:
-        result = await submit_real(
+        image_url = await submit_real(
             prompt=data.prompt,
             allow_nsfw=data.allow_nsfw
         )
-    return result
+    return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
 
 @router.post("/{chat_id}/generate")
@@ -59,10 +59,10 @@ async def gen(
                 raise HTTPException(status_code=404, detail="Chat not found")
 
             if chat.chat_type == "character":
-                content = get_character(chat.target_id)
+                content = await get_character(chat.target_id)
                 character, world = content, None
             else:
-                content = get_world(chat.target_id)
+                content = await get_world(chat.target_id)
                 character, world = None, content
 
             if not content:
@@ -72,8 +72,12 @@ async def gen(
             print(f"Error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    state = json.loads(chat.state)
-    history = json.loads(chat.history)
+    messages = await get_chat_history(chat_id)
+    history = [
+        {"role": msg.role.value, "content": msg.content}
+        for msg in messages
+    ]
+    state_meta = chat.state_meta or {}
 
     nsfw_level = 0
     outfit_key = outfit
@@ -87,6 +91,8 @@ async def gen(
 
             visual = content.get("visual", {})
             wardrobe = visual.get("wardrobe", {})
+            if not isinstance(wardrobe, dict):
+                wardrobe = {}
             available_outfits = ["default_outfit"] + list(wardrobe.keys())
 
             scene = await analyzer.analyze(
@@ -98,30 +104,30 @@ async def gen(
             nsfw_level = scene.nsfw_level
             outfit_key = scene.outfit_key
             pose = scene.pose
-            environment = state.get("location") or scene.location
+            environment = scene.location
             scene_reasoning = scene.reasoning
 
             logging.info(f"Scene analysis: {scene_reasoning}")
 
         except Exception as e:
             logging.warning(f"Scene analysis failed, using fallback: {e}")
-            nsfw_level = calculate_nsfw_fallback(state["arousal"], state["affinity"])
+            nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
             outfit_key = outfit
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
-        nsfw_level = calculate_nsfw_fallback(state["arousal"], state["affinity"])
+        nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     logging.info(f"{nsfw_level=}")
-    environment = state.get(environment) or environment
+    environment = chat.current_location or environment
     prompt = Prompt.from_character(
         character=content,
         outfit_key=outfit_key,
         nsfw_level=nsfw_level,
         environment=environment,
     )
-    logging.info(f"{state=}")
-    prompt.action = state.get("action") or pose
+    logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
+    prompt.action = state_meta.get("action") or pose
     pos, neg = prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
@@ -129,11 +135,32 @@ async def gen(
     logging.info(f"{content=}")
 
     if content.get("model_type") == "anime":
-        result = await submit_anime(pos, neg)
+        image_url = await submit_anime(pos, neg)
 
     elif content.get("model_type") == "real":
-        result = await submit_real(
+        image_url = await submit_real(
             prompt=pos,
             allow_nsfw=True
         )
-    return result
+    else:
+        image_url = None
+    if image_url:
+        try:
+            await save_generated_image(
+                user_id=chat.user_id,
+                chat_id=chat.id,
+                prompt=pos,
+                provider_url=image_url
+            )
+            if pose:
+                current_meta = chat.state_meta or {}
+                await update_chat_metrics(
+                    chat.id,
+                    {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
+                )
+        except Exception as e:
+            logging.error(f"Failed to save image or update state: {e}")
+
+    response = {"url": image_url} if image_url else {"error": "Failed to generate image"}
+    logging.info(f"Returning response: {response}")
+    return response

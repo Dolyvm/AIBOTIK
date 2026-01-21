@@ -460,7 +460,7 @@
                     isWaitingResponse.value = true;
                     try {
                         const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
-                        chatHistory.value.push({ role: 'assistant', avatar: res.data });
+                        chatHistory.value.push({ role: 'assistant', avatar: res.data.url });
                         scrollToBottom();
                     } catch (e) {
                         showToast('Не удалось создать фото');

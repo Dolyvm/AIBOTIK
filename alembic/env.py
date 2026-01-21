@@ -13,7 +13,11 @@ from alembic import context
 sys.path.append("/app")
 
 from shared.models import Base
-from shared.models import User, Chat
+from shared.models import (
+    User, UserSettings, Character, World, Chat,
+    Message, GeneratedImage, Transaction,
+    MessageRole, TransactionSource
+)
 
 config = context.config
 

@@ -7,12 +7,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.repository import get_user, get_user_chats
-from shared.services.content_loader import get_character, get_world, get_all_worlds
+from shared.services.content_loader import get_character, get_world
 
 router = APIRouter(prefix="/api/user", tags=["user"])
-
-# Load worlds for name resolution
-WORLDS = get_all_worlds()
 
 
 @router.get("/{user_id}")
@@ -27,7 +24,7 @@ async def get_user_profile(user_id: int):
         "username": user.username,
         "avatar_url": user.avatar_url,
         "balance": user.balance,
-        "nsfw_blur": user.nsfw_blur
+        "nsfw_blur": user.settings.nsfw_blur if user.settings else True
     }
 
 
@@ -48,14 +45,13 @@ async def get_user_active_chats(user_id: int):
             "name": chat.target_id
         }
 
-        # Resolve name
         if chat.chat_type == "character":
-            character = get_character(chat.target_id)
+            character = await get_character(chat.target_id)
             if character:
                 chat_data["name"] = character["name"]
-                chat_data["avatar"] = character["avatar"]
+                chat_data["avatar"] = character.get("avatar", "")
         else:  # world
-            world = WORLDS.get(chat.target_id)
+            world = await get_world(chat.target_id)
             if world:
                 chat_data["name"] = world["name"]
                 chat_data["avatar"] = world.get("cover_image", "")
