@@ -28,6 +28,8 @@ COPY . /app/
 RUN mkdir -p /var/log/supervisor
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+ENV PYTHONPATH=/app
+
 # Railway использует переменную PORT
 ENV PORT=8080
 EXPOSE 8080
