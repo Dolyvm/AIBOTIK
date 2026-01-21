@@ -33,7 +33,7 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:${PORT}/api/health || exit 1
 
 # Запуск через supervisord
