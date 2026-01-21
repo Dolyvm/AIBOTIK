@@ -3,8 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import sys
 from pathlib import Path
-
-# Add parent directory to path for shared package
+from api.health import router as health_router
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api import characters, worlds, user, chat
@@ -18,6 +17,7 @@ app.include_router(worlds.router)
 app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(image_router)
+app.include_router(health_router)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
