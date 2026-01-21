@@ -85,8 +85,9 @@ class World(Base):
     id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
+    cover_image = Column(String(500), nullable=True)
 
-    scenarios = Column(JSONB, default=[])  
+    scenarios = Column(JSONB, default=[])
     locations = Column(JSONB, default=[])  
 
     tags = Column(ARRAY(String), default=[])

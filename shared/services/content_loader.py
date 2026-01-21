@@ -78,6 +78,7 @@ def world_to_dict(world: World) -> dict:
         "id": world.id,
         "name": world.name,
         "description": world.description,
+        "cover_image": world.cover_image,
         "setting": setting,
         "intro_message": intro_message,
         "gm_instructions": gm_instructions,

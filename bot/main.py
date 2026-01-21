@@ -19,6 +19,26 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
+    logger.info("Running database migrations...")
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd="/app",
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info("Migrations completed successfully")
+        if result.stdout:
+            logger.debug(f"Migration output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Migration failed: {e.stderr}")
+        raise
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        raise
+
     logger.info("Initializing database...")
 
     bot = Bot(token=config.BOT_TOKEN)
