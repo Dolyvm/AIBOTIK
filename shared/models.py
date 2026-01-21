@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Boolean,
-    ForeignKey, Enum as SQLEnum, ARRAY
+    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
@@ -30,7 +30,7 @@ class User(Base):
     """User table for tracking Telegram users"""
     __tablename__ = "users"
 
-    telegram_id = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, primary_key=True)
     username = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     balance = Column(Integer, default=1000)
@@ -51,7 +51,7 @@ class UserSettings(Base):
     """User settings (one-to-one with User)"""
     __tablename__ = "user_settings"
 
-    user_id = Column(Integer, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
     nsfw_blur = Column(Boolean, default=True)
     language = Column(String(10), default="ru")
 
@@ -101,7 +101,7 @@ class Chat(Base):
     __tablename__ = "chats"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
 
     chat_type = Column(String(20), nullable=False)  
     target_id = Column(String(100), nullable=False) 
@@ -148,7 +148,7 @@ class GeneratedImage(Base):
     __tablename__ = "generated_images"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
     chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"), nullable=True)
 
     provider_url = Column(String(1000), nullable=False)
@@ -165,7 +165,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
     chat_id = Column(Integer, ForeignKey("chats.id", ondelete="SET NULL"), nullable=True)
 
     amount = Column(Integer, nullable=False) 

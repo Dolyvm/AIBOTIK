@@ -34,7 +34,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('users',
-    sa.Column('telegram_id', sa.Integer(), nullable=False),
+    sa.Column('telegram_id', sa.BigInteger(), nullable=False),
     sa.Column('username', sa.String(length=255), nullable=True),
     sa.Column('avatar_url', sa.String(length=500), nullable=True),
     sa.Column('balance', sa.Integer(), nullable=True),
@@ -58,7 +58,7 @@ def upgrade() -> None:
     )
     op.create_table('chats',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('chat_type', sa.String(length=20), nullable=False),
     sa.Column('target_id', sa.String(length=100), nullable=False),
     sa.Column('scenario_index', sa.Integer(), nullable=True),
@@ -76,7 +76,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('user_settings',
-    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('nsfw_blur', sa.Boolean(), nullable=True),
     sa.Column('language', sa.String(length=10), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.telegram_id'], ondelete='CASCADE'),
@@ -84,7 +84,7 @@ def upgrade() -> None:
     )
     op.create_table('generated_images',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('chat_id', sa.Integer(), nullable=True),
     sa.Column('provider_url', sa.String(length=1000), nullable=False),
     sa.Column('prompt', sa.Text(), nullable=False),
@@ -107,7 +107,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_messages_created_at'), 'messages', ['created_at'], unique=False)
     op.create_table('transactions',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('chat_id', sa.Integer(), nullable=True),
     sa.Column('amount', sa.Integer(), nullable=False),
     sa.Column('source', sa.Enum('DAILY_BONUS', 'PURCHASE', 'MESSAGE_SENT', 'IMAGE_GENERATED', 'ADMIN_GRANT', name='transactionsource'), nullable=False),
