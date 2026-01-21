@@ -21,6 +21,7 @@ COPY webapp/requirements.txt /app/webapp/requirements.txt
 RUN pip install --no-cache-dir -r /app/bot/requirements.txt \
     && pip install --no-cache-dir -r /app/webapp/requirements.txt
 
+ENV FORCE_REBUILD=v1 
 # Копируем код
 COPY . /app/
 
