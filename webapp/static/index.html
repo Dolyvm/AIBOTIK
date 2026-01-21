@@ -92,7 +92,6 @@
                         <img :src="char.avatar" loading="lazy">
                         <div class="card-title">
                             {{ char.name }}
-                            <span v-if="isNsfw(char.tags)">🔥</span>
                         </div>
                     </div>
                     <div v-if="characters.length === 0" class="empty-state">Нет персонажей</div>
@@ -461,7 +460,7 @@
                     isWaitingResponse.value = true;
                     try {
                         const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
-                        chatHistory.value.push({ role: 'assistant', avatar: res.data });
+                        chatHistory.value.push({ role: 'assistant', avatar: res.data.url });
                         scrollToBottom();
                     } catch (e) {
                         showToast('Не удалось создать фото');

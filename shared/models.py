@@ -1,36 +1,178 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import (
+    Column, Integer, String, Text, DateTime, Boolean,
+    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from datetime import datetime
+import enum
 
 Base = declarative_base()
+
+
+class MessageRole(enum.Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
+class TransactionSource(enum.Enum):
+    DAILY_BONUS = "daily_bonus"
+    PURCHASE = "purchase"
+    MESSAGE_SENT = "message_sent"
+    IMAGE_GENERATED = "image_generated"
+    ADMIN_GRANT = "admin_grant"
 
 
 class User(Base):
     """User table for tracking Telegram users"""
     __tablename__ = "users"
 
-    telegram_id = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, primary_key=True)
     username = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     balance = Column(Integer, default=1000)
-    nsfw_blur = Column(Boolean, default=True)
+
+    is_subscribed = Column(Boolean, default=False)
+    subscription_end_date = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, server_default=func.now())
+    last_active_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
+    images = relationship("GeneratedImage", back_populates="user", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSettings(Base):
+    """User settings (one-to-one with User)"""
+    __tablename__ = "user_settings"
+
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
+    nsfw_blur = Column(Boolean, default=True)
+    language = Column(String(10), default="ru")
+
+    user = relationship("User", back_populates="settings")
+
+
+class Character(Base):
+    """Character content table (replaces JSON files)"""
+    __tablename__ = "characters"
+
+    id = Column(String(100), primary_key=True) 
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    personality = Column(Text, nullable=False)
+
+    
+    visual_data = Column(JSONB, nullable=False) 
+    scenarios = Column(JSONB, default=[]) 
+
+    
+    tags = Column(ARRAY(String), default=[]) 
+    is_nsfw = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class World(Base):
+    """World content table (replaces JSON files)"""
+    __tablename__ = "worlds"
+
+    id = Column(String(100), primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    cover_image = Column(String(500), nullable=True)
+
+    scenarios = Column(JSONB, default=[])
+    locations = Column(JSONB, default=[])  
+
+    tags = Column(ARRAY(String), default=[])
+    is_nsfw = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class Chat(Base):
-    """Active chat with a character or world"""
+    """Active chat session with a character or world"""
     __tablename__ = "chats"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.telegram_id"), nullable=False)
-    chat_type = Column(String(20), nullable=False)
-    target_id = Column(String(100), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+
+    chat_type = Column(String(20), nullable=False)  
+    target_id = Column(String(100), nullable=False) 
     scenario_index = Column(Integer, default=0)
-    msg_count = Column(Integer, default=0)
-    history = Column(Text, default="[]")
-    state = Column(Text, default='{"affinity": 0, "arousal": 0, "mood": "neutral"}')  # + поля окружение, действие
+
+    affinity = Column(Integer, default=0)
+    arousal = Column(Integer, default=0)
+    current_location = Column(String(255), nullable=True)
+    current_mood = Column(String(100), default="neutral")
+
+    state_meta = Column(JSONB, default={}) 
+
     summary = Column(Text, default="")
     msgs_since_summary = Column(Integer, default=0)
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="chats")
+    messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
+    images = relationship("GeneratedImage", back_populates="chat", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="chat")
+
+
+class Message(Base):
+    """Individual message in a chat"""
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    role = Column(SQLEnum(MessageRole), nullable=False)
+    content = Column(Text, nullable=False)
+    tokens_used = Column(Integer, default=0)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    chat = relationship("Chat", back_populates="messages")
+
+
+class GeneratedImage(Base):
+    """Generated images gallery"""
+    __tablename__ = "generated_images"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"), nullable=True)
+
+    provider_url = Column(String(1000), nullable=False)
+    prompt = Column(Text, nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", back_populates="images")
+    chat = relationship("Chat", back_populates="images")
+
+
+class Transaction(Base):
+    """Balance transaction log"""
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    chat_id = Column(Integer, ForeignKey("chats.id", ondelete="SET NULL"), nullable=True)
+
+    amount = Column(Integer, nullable=False) 
+    source = Column(SQLEnum(TransactionSource), nullable=False)
+    description = Column(String(500), nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", back_populates="transactions")
+    chat = relationship("Chat", back_populates="transactions")

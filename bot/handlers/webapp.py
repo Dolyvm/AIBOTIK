@@ -7,7 +7,7 @@ from pathlib import Path
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.repository import create_or_reset_chat, update_chat_history
+from shared.repository import create_chat, add_message
 from shared.services.content_loader import get_first_message
 
 router = Router()
@@ -19,14 +19,14 @@ async def handle_webapp_data(message: Message):
     user_id = message.from_user.id
 
     if data.get("action") == "start_chat":
-        chat = await create_or_reset_chat(
+        chat = await create_chat(
             user_id=user_id,
             chat_type=data["type"],
             target_id=data["id"],
             scenario_index=data.get("scenario", 0)
         )
 
-        greeting = get_first_message(
+        greeting = await get_first_message(
             chat_type=data["type"],
             target_id=data["id"],
             scenario_index=data.get("scenario", 0),
@@ -37,7 +37,11 @@ async def handle_webapp_data(message: Message):
             await message.answer("❌ Контент не найден")
             return
 
-        history = [{"role": "assistant", "content": greeting}]
-        await update_chat_history(chat.id, history, 0)
+        await add_message(
+            chat_id=chat.id,
+            role="assistant",
+            content=greeting,
+            tokens_used=0
+        )
 
         await message.answer(greeting)
