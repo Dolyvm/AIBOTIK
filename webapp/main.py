@@ -3,11 +3,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import sys
 from pathlib import Path
-from api.health import router as health_router
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api import characters, worlds, user, chat
-from api.image_gen.routes.generate import router as image_router
+from webapp.api.health import router as health_router
+from webapp.api import characters, worlds, user, chat
+from webapp.api.image_gen.routes.generate import router as image_router
 
 app = FastAPI(title="AI RP Bot WebApp")
 

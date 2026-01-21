@@ -23,9 +23,8 @@ async def health_check():
 @router.get("/api/health/ready")
 async def readiness_check():
     """
-    Readiness check - можно добавить проверку БД.
+    Readiness check
     """
-    # TODO: Добавить проверку подключения к БД
     return {
         "status": "ready",
         "timestamp": datetime.utcnow().isoformat()

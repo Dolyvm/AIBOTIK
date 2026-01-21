@@ -7,7 +7,7 @@ import os
 
 from .models import Base, User, UserSettings, Chat, Message, Transaction, MessageRole, TransactionSource, GeneratedImage
 
-from config import DATABASE_URL 
+from shared.config import DATABASE_URL  
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

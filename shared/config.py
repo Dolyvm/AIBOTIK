@@ -3,11 +3,10 @@ from pathlib import Path
 
 CONTENT_BASE_PATH = Path(os.getenv("CONTENT_PATH", "/app/content"))
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://rpbot:popa@localhost:5432/rpbot"
-)
-if DATABASE_URL.startswith("postgresql://"):
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://")
+elif DATABASE_URL and DATABASE_URL.startswith("postgresql://") and "asyncpg" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
