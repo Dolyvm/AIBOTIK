@@ -1,11 +1,17 @@
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Body, Query
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.models import Chat
+from fastapi import APIRouter, HTTPException, Body, Query, Depends
+
+from shared.models import Chat, User
+from auth.telegram_auth import get_current_user
+from auth.authorization import verify_chat_ownership
 from shared.repository import get_session, get_user, save_generated_image, get_chat_history, update_chat_metrics
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
@@ -49,15 +55,13 @@ async def generate_image(data: GenerateRequest):
 @router.post("/{chat_id}/generate")
 async def gen(
     chat_id: int,
-    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)")
+    outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)"),
+    user: User = Depends(get_current_user)
 ):
+    chat = await verify_chat_ownership(chat_id, user)
+
     async with get_session() as session:
         try:
-            chat = await session.get(Chat, chat_id)
-
-            if not chat:
-                raise HTTPException(status_code=404, detail="Chat not found")
-
             if chat.chat_type == "character":
                 content = await get_character(chat.target_id)
                 character, world = content, None

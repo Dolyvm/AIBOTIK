@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 CONTENT_BASE_PATH = Path(os.getenv("CONTENT_PATH", "/app/content"))
 
 DATABASE_URL = os.getenv(

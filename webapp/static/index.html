@@ -283,6 +283,36 @@
                     toast.value = { show: true, message, type };
                     setTimeout(() => toast.value.show = false, 3000);
                 };
+                axios.interceptors.request.use(
+                    (config) => {
+                        const initData = tg.initData;
+
+                        if (initData) {
+                            config.headers.Authorization = `tma ${initData}`;
+                        } else {
+                            console.warn('Telegram initData not available - API calls may fail');
+                        }
+
+                        return config;
+                    },
+                    (error) => Promise.reject(error)
+                );
+
+                axios.interceptors.response.use(
+                    (response) => response,
+                    (error) => {
+                        if (error.response?.status === 401) {
+                            const errorDetail = error.response?.data?.detail;
+                            const errorMsg = errorDetail?.message || 'Ошибка аутентификации';
+                            const errorCode = errorDetail?.code || 'UNKNOWN';
+                            showToast(`Auth Error [${errorCode}]: ${errorMsg}`, 'error');
+                            console.error('[AUTH ERROR]', errorDetail);
+                        } else if (error.response?.status === 403) {
+                            showToast('Доступ запрещен', 'error');
+                        }
+                        return Promise.reject(error);
+                    }
+                );
 
                 onMounted(async () => {
                     tg.ready();
@@ -404,7 +434,6 @@
                     try {
                         const chatType = selectedCharacter.value.type || 'character';
                         const res = await axios.post('/api/chat/create', {
-                            user_id: userId.value,
                             chat_type: chatType,
                             target_id: selectedCharacter.value.id,
                             scenario_index: scenarioIndex

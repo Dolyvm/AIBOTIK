@@ -1,11 +1,12 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from pydantic import BaseModel
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.repository import (
     get_session,
@@ -16,7 +17,9 @@ from shared.repository import (
     reset_chat_history,
     add_message,
 )
-from shared.models import Chat
+from shared.models import Chat, User
+from auth.telegram_auth import get_current_user
+from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
@@ -32,19 +35,17 @@ class MessageRequest(BaseModel):
 
 
 class CreateChatRequest(BaseModel):
-    user_id: int
     chat_type: str
     target_id: str
     scenario_index: int = 0
 
 
 @router.get("/{chat_id}/history")
-async def get_history(chat_id: int):
+async def get_history(chat_id: int, user: User = Depends(get_current_user)):
     """Получить историю чата (merged: сообщения + картинки)"""
+    chat = await verify_chat_ownership(chat_id, user)
+
     async with get_session() as session:
-        chat = await session.get(Chat, chat_id)
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found")
 
         messages = await get_chat_history(chat_id)
         images = await get_chat_images(chat_id)
@@ -74,15 +75,12 @@ async def get_history(chat_id: int):
 
 
 @router.post("/{chat_id}/send")
-async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
+async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: User = Depends(get_current_user)):
     """Отправить сообщение и получить ответ"""
+    chat = await verify_chat_ownership(chat_id, user)
+
     async with get_session() as session:
         try:
-            chat = await session.get(Chat, chat_id)
-
-            if not chat:
-                raise HTTPException(status_code=404, detail="Chat not found")
-
             if chat.chat_type == "character":
                 content = await get_character(chat.target_id)
                 character, world = content, None
@@ -93,9 +91,6 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
             if not content:
                 raise HTTPException(status_code=404, detail="Content not found")
 
-            user = await get_user(chat.user_id)
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
             user_name = user.username or "User"
 
             clean_text = await context_manager.process_turn(
@@ -114,15 +109,14 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...)):
 
 
 @router.post("/create")
-async def create_chat_endpoint(payload: CreateChatRequest = Body(...)):
+async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
     """Создать новый чат с персонажем/миром"""
     async with get_session() as session:
         try:
-            user = await get_user(payload.user_id)
-            user_name = user.username if user and user.username else "Путешественник"
+            user_name = user.username if user.username else "Путешественник"
 
             chat = await create_chat(
-                user_id=payload.user_id,
+                user_id=user.telegram_id,
                 chat_type=payload.chat_type,
                 target_id=payload.target_id,
                 scenario_index=payload.scenario_index
@@ -146,14 +140,12 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...)):
 
 
 @router.post("/{chat_id}/reset")
-async def reset_chat(chat_id: int):
+async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
     """Сбросить историю чата"""
+    chat = await verify_chat_ownership(chat_id, user)
+
     async with get_session() as session:
         try:
-            chat = await session.get(Chat, chat_id)
-            if not chat:
-                raise HTTPException(status_code=404, detail="Chat not found")
-
             await reset_chat_history(chat_id)
 
             return {"success": True, "message": "Chat history reset"}
