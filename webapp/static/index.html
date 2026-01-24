@@ -9,8 +9,9 @@
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="D:/programming/paid/AIBOTIK/webapp/static/createCharacter.js"></script>
     
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="D:/programming/paid/AIBOTIK/webapp/static/css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
@@ -88,6 +89,12 @@
 
                 <!-- Grid Characters -->
                 <div v-if="tab === 'characters'" class="grid">
+                    <div class="card" @click="createCharacterOnClick()">
+                        <div class="card-title">
+                            Создать персонажа
+                        </div>
+                        <img src="D://programming/paid/AIBOTIK/webapp/static/imgs/new-char.jpg" loading="lazy">
+                    </div>
                     <div v-for="char in characters" :key="char.id" class="card" @click="selectItem('character', char)">
                         <img :src="char.avatar" loading="lazy">
                         <div class="card-title">
@@ -172,6 +179,161 @@
             </div>
         </div>
 
+        <!-- View: Create Character-->
+        <div v-if="currentView === 'create-character'" class="create-character-view" :style="{padding: '1rem'}">
+            <div class="create-character-steps">
+                <div class="cc-step"
+                     v-for="(_, i) in 10"
+                     :class="{active: currentCCStep >= i}"
+                     :key="i"
+                ></div>
+            </div>
+
+            <div class="steps-container"
+                 v-if="stepsList[currentCCStep]"
+            >
+                <div v-for="step in stepsList[currentCCStep]['items']">
+                    <div v-if="step.type === 'imgSelect'">
+
+                    </div>
+
+                    <div v-if="step.type === 'textSelect'">
+
+                    </div>
+
+                    <div v-if="step.type === 'textMultiSelect'">
+
+                    </div>
+                </div>
+            </div>
+
+            <h2>Выбрать стиль</h2>
+            <div class="grid">
+                <div v-for="card in styleCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="styleCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать возраст</h2>
+            <div class="grid">
+                <div v-for="card in ageCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="ageCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать национальность</h2>
+            <div class="grid">
+                <div v-for="nationalityCard in nationalityCards"
+                     :key="nationalityCard.title" class="card"
+                     @click=""
+                >
+                    <img :src="nationalityCard.img" loading="lazy">
+                    <div class="card-title">
+                        {{ nationalityCard.title }}
+                    </div>
+                </div>
+                <div v-if="nationalityCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать цвет глаз</h2>
+            <div class="grid">
+                <div v-for="card in eyeColorCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="eyeColorCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать цвет волос</h2>
+            <div class="grid">
+                <div v-for="card in hairColorCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="hairColorCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать прическу</h2>
+            <div class="grid">
+                <div v-for="card in haircutCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="haircutCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать телосложение</h2>
+            <div class="grid">
+                <div v-for="card in bodyTypeCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="bodyTypeCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать размер груди</h2>
+            <div class="grid">
+                <div v-for="card in boobSizeCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="boobSizeCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+
+            <h2>Выбрать размер жопы</h2>
+            <div class="grid">
+                <div v-for="card in assSizeCards"
+                     :key="card.title" class="card"
+                     @click=""
+                >
+                    <img :src="card.img" loading="lazy">
+                    <div class="card-title">
+                        {{ card.title }}
+                    </div>
+                </div>
+                <div v-if="assSizeCards.length === 0" class="empty-state">Загружается...</div>
+            </div>
+        </div>
+
         <!-- Modal: Scenario Selection -->
         <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
             <div class="modal-content">
@@ -249,7 +411,8 @@
                 const tg = window.Telegram.WebApp;
                 
                 // State
-                const currentView = ref('selection');
+                // const currentView = ref('selection');
+                const currentView = ref('create-character');
                 const tab = ref('characters');
                 const characters = ref([]);
                 const worlds = ref([]);
@@ -265,6 +428,9 @@
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
                 const messagesContainer = ref(null);
+
+                // Create Character
+                const currentCCStep = ref(0);
 
                 // Modal state
                 const showScenarioModal = ref(false);
@@ -283,6 +449,8 @@
                     toast.value = { show: true, message, type };
                     setTimeout(() => toast.value.show = false, 3000);
                 };
+
+
 
                 onMounted(async () => {
                     tg.ready();
@@ -530,6 +698,10 @@
                     selectedCharacter.value = null;
                 };
 
+                const createCharacterOnClick = () => {
+                    currentView.value = "create-character";
+                }
+
                 return {
                     currentView, tab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
@@ -540,7 +712,10 @@
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
-                    toast
+                    toast,
+                    createCharacterOnClick, currentCCStep, stepsList,
+                    styleCards, ageCards, nationalityCards, eyeColorCards, hairColorCards,
+                    haircutCards, bodyTypeCards, boobSizeCards, assSizeCards
                 };
             }
         }).mount('#app');
