@@ -1,23 +1,25 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 import sys
 import json
 from pathlib import Path
 
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from shared.repository import get_user, get_user_chats
 from shared.services.content_loader import get_character, get_world
+from shared.models import User
+from auth.telegram_auth import get_current_user
+from auth.authorization import verify_user_id_match
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
 
 @router.get("/{user_id}")
-async def get_user_profile(user_id: int):
+async def get_user_profile(user_id: int, user: User = Depends(get_current_user)):
     """User profile"""
-    user = await get_user(user_id)
-    if not user:
-        return {"error": "Not found"}, 404
+    await verify_user_id_match(user_id, user)
 
     return {
         "telegram_id": user.telegram_id,
@@ -29,9 +31,11 @@ async def get_user_profile(user_id: int):
 
 
 @router.get("/{user_id}/chats")
-async def get_user_active_chats(user_id: int):
+async def get_user_active_chats(user_id: int, user: User = Depends(get_current_user)):
     """User's active chats with resolved names"""
-    chats = await get_user_chats(user_id)
+    await verify_user_id_match(user_id, user)
+
+    chats = await get_user_chats(user.telegram_id)
 
     result = []
 

@@ -7,3 +7,4 @@ httpx==0.26.0
 fal-client==0.2.1
 tenacity==8.2.3
 replicate~=1.0.7
+telegram-init-data==1.0.2
