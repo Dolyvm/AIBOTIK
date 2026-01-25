@@ -197,7 +197,7 @@
                         <input
                             v-model="createCharacterData.name"
                             type="text"
-                            placeholder="Введите ваше имя"
+                            placeholder="Введите имя персонажа"
                         >
                     </label>
                 </div>
@@ -673,8 +673,9 @@
                 }
 
                 const changeStep = (delta) => {
-                    if (currentCCStep.value === 0) {
+                    if (currentCCStep.value === 0 && delta === -1) {
                         currentView.value = "selection";
+                        return
                     }
                     currentCCStep.value += delta;
                 }
