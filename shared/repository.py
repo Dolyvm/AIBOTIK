@@ -298,14 +298,20 @@ async def save_generated_image(
     user_id: int,
     chat_id: int,
     prompt: str,
-    provider_url: str
+    provider_url: str,
+    local_path: Optional[str] = None,
+    file_size: Optional[int] = None,
+    content_type: Optional[str] = None
 ):
     async with async_session() as session:
         image = GeneratedImage(
             user_id=user_id,
             chat_id=chat_id,
             prompt=prompt,
-            provider_url=provider_url
+            provider_url=provider_url,
+            local_path=local_path,
+            file_size=file_size,
+            content_type=content_type
         )
         session.add(image)
         await session.commit()
@@ -325,7 +331,7 @@ async def get_chat_images(chat_id: int) -> list:
         return [
             {
                 "role": "assistant",
-                "avatar": img.provider_url,
+                "avatar": img.public_url,  
                 "timestamp": img.created_at.isoformat()
             }
             for img in images

@@ -150,21 +150,48 @@ async def gen(
         image_url = None
     if image_url:
         try:
+            from services.image_storage import download_and_save_image, get_public_url, ImageStorageError
+
+            local_path = None
+            file_size = None
+            content_type = None
+            public_url = image_url 
+
+            try:
+                local_path, file_size, content_type = await download_and_save_image(
+                    provider_url=image_url,
+                    user_id=chat.user_id
+                )
+                public_url = get_public_url(local_path)
+                logging.info(f"Image saved locally: {local_path}")
+            except ImageStorageError as e:
+                logging.warning(f"Failed to save image locally, using provider URL: {e}")
+
             await save_generated_image(
                 user_id=chat.user_id,
                 chat_id=chat.id,
                 prompt=pos,
-                provider_url=image_url
+                provider_url=image_url,
+                local_path=local_path,
+                file_size=file_size,
+                content_type=content_type
             )
+
             if pose:
                 current_meta = chat.state_meta or {}
                 await update_chat_metrics(
                     chat.id,
                     {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
                 )
+
+            response = {"url": public_url}
+            logging.info(f"Returning response: {response}")
+            return response
+
         except Exception as e:
             logging.error(f"Failed to save image or update state: {e}")
+            return {"url": image_url}
 
-    response = {"url": image_url} if image_url else {"error": "Failed to generate image"}
+    response = {"error": "Failed to generate image"}
     logging.info(f"Returning response: {response}")
     return response

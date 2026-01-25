@@ -29,3 +29,6 @@ MAX_HISTORY_LENGTH = 10
 SCENE_ANALYZER_ENABLED = os.getenv("SCENE_ANALYZER_ENABLED", "true").lower() == "true"
 SCENE_ANALYZER_MODEL = os.getenv("SCENE_ANALYZER_MODEL", "mistralai/mistral-small-creative") 
 SCENE_ANALYZER_TIMEOUT = int(os.getenv("SCENE_ANALYZER_TIMEOUT", "10"))  
+
+IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
+IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  

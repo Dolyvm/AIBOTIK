@@ -1,6 +1,23 @@
 version: '3.8'
 
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - generated_images:/data/images:ro
+      - ./content:/data/content:ro
+    depends_on:
+      - webapp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   postgres:
     image: postgres:15-alpine
     environment:
@@ -19,14 +36,16 @@ services:
 
   webapp:
     build: ./webapp
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
       - FAL_KEY=${FAL_KEY}
+      - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
+      - IMAGES_STORAGE_PATH=/app/generated_images
     volumes:
       - ./webapp/api:/app/api
       - ./webapp/auth:/app/auth
@@ -37,6 +56,7 @@ services:
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
       - ./bot:/app/bot:ro
+      - generated_images:/app/generated_images
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,3 +106,4 @@ services:
 
 volumes:
   postgres_data:
+  generated_images:

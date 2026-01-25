@@ -151,13 +151,26 @@ class GeneratedImage(Base):
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
     chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"), nullable=True)
 
-    provider_url = Column(String(1000), nullable=False)
+    provider_url = Column(String(1000), nullable=True)
+
+    local_path = Column(String(500), nullable=True)
+
     prompt = Column(Text, nullable=False)
+
+    file_size = Column(Integer, nullable=True)  
+    content_type = Column(String(50), nullable=True)  
 
     created_at = Column(DateTime, server_default=func.now())
 
     user = relationship("User", back_populates="images")
     chat = relationship("Chat", back_populates="images")
+
+    @property
+    def public_url(self) -> str:
+        if self.local_path:
+            from shared.config import IMAGES_BASE_URL
+            return f"{IMAGES_BASE_URL}/{self.local_path}"
+        return self.provider_url  
 
 
 class Transaction(Base):
