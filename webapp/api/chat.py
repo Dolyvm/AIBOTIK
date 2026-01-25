@@ -153,3 +153,40 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
         except Exception as e:
             logging.error(f"Error resetting chat: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{chat_id}/auto-continue")
+async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_user)):
+    chat = await verify_chat_ownership(chat_id, user)
+
+    try:
+        if chat.chat_type == "character":
+            content = await get_character(chat.target_id)
+            character, world = content, None
+        else:
+            content = await get_world(chat.target_id)
+            character, world = None, content
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+        user_name = user.username or "User"
+
+        result = await context_manager.auto_reply_cycle(
+            chat=chat,
+            character=character,
+            world=world,
+            user_name=user_name
+        )
+
+        return {
+            "player_message": result["player_message"],
+            "character_response": result["character_response"],
+            "affinity": result["affinity"],
+            "arousal": result["arousal"],
+            "mood": chat.current_mood,
+            "location": chat.current_location
+        }
+
+    except Exception as e:
+        logging.error(f"Error in auto_continue_dialogue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

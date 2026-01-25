@@ -138,6 +138,8 @@ class Message(Base):
     content = Column(Text, nullable=False)
     tokens_used = Column(Integer, default=0)
 
+    is_auto_generated = Column(Boolean, default=False, nullable=False)
+    
     created_at = Column(DateTime, server_default=func.now(), index=True)
 
     chat = relationship("Chat", back_populates="messages")

@@ -194,14 +194,16 @@ async def add_message(
     chat_id: int,
     role: str,
     content: str,
-    tokens_used: int = 0
+    tokens_used: int = 0,
+    is_auto_generated: bool = False  
 ) -> Message:
-    async with async_session() as session:
+    async with get_session() as session:
         message = Message(
             chat_id=chat_id,
             role=MessageRole[role.upper()],
             content=content,
-            tokens_used=tokens_used
+            tokens_used=tokens_used,
+            is_auto_generated=is_auto_generated  
         )
         session.add(message)
         await session.execute(

@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from shared.services.llm import LLMClient
-from shared.services.prompt_builder import build_character_prompt, build_world_prompt
+from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
 from shared.config import (
     SUMMARY_THRESHOLD,
     MAX_HISTORY_LENGTH,
@@ -192,3 +192,57 @@ Write in Russian. Output ONLY the summary, no meta-commentary."""
         clean_text = re.sub(meta_pattern, '', response_text, flags=re.DOTALL).strip()
 
         return clean_text, state_updates
+    
+    async def auto_reply_cycle(
+        self,
+        chat: Chat,
+        character: Optional[dict] = None,
+        world: Optional[dict] = None,
+        user_name: str = "User"
+    ) -> dict:
+        
+        messages = await repository.get_chat_history(chat.id, limit=MAX_HISTORY_LENGTH)
+        history = [{"role": msg.role.value, "content": msg.content} for msg in messages]
+
+        last_assistant_msg = next(
+            (msg for msg in reversed(messages) if msg.role.value == 'assistant'),
+            None
+        )
+
+        if not last_assistant_msg:
+            if character:
+                last_msg_content = character.get("scenario", "")
+            else:
+                last_msg_content = world.get("description", "")
+        else:
+            last_msg_content = last_assistant_msg.content
+
+        char_name = character["name"] if character else world["name"]
+        player_prompt = build_player_prompt(
+            character_name=char_name,
+            last_character_message=last_msg_content,
+            chat_history=history,
+            user_name=user_name
+        )
+
+        player_action = await self.llm.generate(
+            system_prompt=player_prompt,
+            messages=[],
+            max_tokens=100,
+            temperature=0.9
+        )
+
+        character_response = await self.process_turn(
+            chat=chat,
+            user_input=player_action.strip(),
+            character=character,
+            world=world,
+            user_name=user_name
+        )
+
+        return {
+            "player_message": player_action.strip(),
+            "character_response": character_response,
+            "affinity": chat.affinity,
+            "arousal": chat.arousal
+        }

@@ -52,6 +52,35 @@
             font-size: 12px;
             color: var(--tg-theme-hint-color);
         }
+
+        .auto-continue-bar {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-auto-continue {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-auto-continue:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-auto-continue:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -153,6 +182,15 @@
                         <span>.</span><span>.</span><span>.</span>
                     </div>
                 </div>
+            </div>
+
+            <div v-if="currentChatId" class="auto-continue-bar">
+                <button
+                    class="btn-auto-continue"
+                    @click="autoContinue"
+                    :disabled="isWaitingResponse">
+                    ⏭️ Автопродолжение
+                </button>
             </div>
 
             <div class="input-area">
@@ -559,17 +597,57 @@
                     selectedCharacter.value = null;
                 };
 
+                // --- AUTO CONTINUE ---
+                const autoContinue = async () => {
+                    if (!currentChatId.value || isWaitingResponse.value) return;
+
+                    isWaitingResponse.value = true;
+
+                    try {
+                        const response = await axios.post(`/api/chat/${currentChatId.value}/auto-continue`);
+
+                        const data = response.data;
+
+                        chatHistory.value.push({
+                            role: 'user',
+                            content: data.player_message,
+                            timestamp: new Date().toISOString()
+                        });
+
+
+                        isWaitingResponse.value = false;
+                        isStreaming.value = true;
+                        await typeWriter(data.character_response);
+
+                        if (data.affinity !== undefined) {
+                        }
+                        if (data.arousal !== undefined) {
+                        }
+
+                        await nextTick();
+                        scrollToBottom();
+
+                    } catch (error) {
+                        console.error('Auto-continue failed:', error);
+                        const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
+                        showToast('Ошибка: ' + errorMsg);
+                        isWaitingResponse.value = false;
+                    } finally {
+                        isStreaming.value = false;
+                    }
+                };
+
                 return {
                     currentView, tab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
-                    currentChatName, currentChatAvatar,
-                    isWaitingResponse, isStreaming, messagesContainer, 
+                    currentChatName, currentChatAvatar, currentChatId,
+                    isWaitingResponse, isStreaming, messagesContainer,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
-                    toast
+                    toast, autoContinue
                 };
             }
         }).mount('#app');
