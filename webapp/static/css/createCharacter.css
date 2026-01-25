@@ -8,8 +8,8 @@
 .cc-step {
     height: 0.5rem;
     background-color: grey;
-    min-width: 6vw;
-    max-width: 0.1vw;
+    min-width: 2vw;
+    /*max-width: 0.1vw;*/
     border-radius: 5px;
 }
 

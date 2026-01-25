@@ -360,3 +360,7 @@ async def reset_chat_history(chat_id: int):
             )
         )
         await session.commit()
+
+
+async def add_character():
+    ...

@@ -1,3 +1,5 @@
+import logging
+
 import replicate
 import fal_client
 from ..schemas.generate import ImageSize
@@ -35,7 +37,9 @@ async def submit_real(
     )
 
     result = await handler.get()  # wait for result
-    return result["images"][0]["url"]
+    logging.info(result)
+    # return result["images"][0]["url"]
+    return result
     # result : {"images": list[{"url": str, ...}], ...}  ||  result["images"][0]["url"] to get url
 
 

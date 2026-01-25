@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from ...create_character.cc_schemas import CreateCharacterRequest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -168,3 +170,25 @@ async def gen(
     response = {"url": image_url} if image_url else {"error": "Failed to generate image"}
     logging.info(f"Returning response: {response}")
     return response
+
+
+@router.post("/generate_preview")
+async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
+    image_url = None
+    visual = data.build_visual()
+    prompt = Prompt(
+        character_base=visual["body"],
+        facial_expression=visual["face"],
+        clothing=visual["default_outfit"]
+    )
+    pos, neg = prompt.build_prompt()
+    if data.style == ModelType.anime:
+        image_url = await submit_anime(
+            pos, neg
+        )
+    elif data.style == ModelType.real:
+        image_url = await submit_real(
+            prompt=pos,
+            allow_nsfw=True
+        )
+    return {"url": image_url} if image_url else {"error": "Failed to generate image"}

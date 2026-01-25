@@ -6,6 +6,7 @@ from pathlib import Path
 
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from api import characters, worlds, user, chat
 from api.image_gen.routes.generate import router as image_router
@@ -24,8 +25,6 @@ app.include_router(create_character_router)
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/content", StaticFiles(directory="/app/content"), name="content")
-
-
 
 
 @app.get("/")

@@ -169,4 +169,3 @@ class Prompt(BaseModel):
         negative_prompt = ", ".join(negative_parts)
 
         return prompt, negative_prompt
-
