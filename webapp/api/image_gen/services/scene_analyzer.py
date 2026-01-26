@@ -80,6 +80,7 @@ def normalize_scene_data(data: dict) -> dict:
         result['nsfw_level'] = 0
 
     result['reasoning'] = str(data.get('reasoning', '')) if data.get('reasoning') else ''
+    result['scene_description'] = str(data.get('scene_description', '')) if data.get('scene_description') else ''
 
     return result
 
@@ -91,6 +92,7 @@ class SceneAnalysis(BaseModel):
     emotion: str = "neutral"
     nsfw_level: int = 0
     reasoning: str = ""
+    scene_description: str = ""  
 
 
 def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
@@ -121,20 +123,41 @@ Chat:
 {formatted}
 
 Outfits: {', '.join(available_outfits)}
-You should make JSON values suitable for use in text to image models. 
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum. 
-You "pose" value should consist of real understandable words and be SHORT. 6 words maximum. 
-Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context. 
-Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list that suits situation the most","emotion":"string","nsfw_level":0-5,"reasoning":"string"}}
+You should make JSON values suitable for use in text to image models.
+You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
+You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
 
-nsfw: 0=public/clothed, 2=suggestive, 4=explicit"""
+IMPORTANT for "pose":
+- Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
+- NEVER include actions involving another person (e.g., NO "kissing", NO "hugging", NO "pulling someone")
+- NEVER use plural forms or words implying multiple people
+- Focus on the character's solo pose and body language
+
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+- Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
+- Extract specific visual details from the dialogue (e.g., "lips parted", "flushed cheeks", "arched back", "kneeling on floor")
+- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
+- Be explicit and detailed if nsfw_level is high (3-5)
+- Maximum 50 words
+- This will be used directly in the image generation prompt
+
+Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
+Return ONLY this JSON (no markdown, no nesting):
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+
+NSFW Level Guide (choose carefully based on conversation):
+0 = fully clothed, public setting, modest
+1 = sensual/teasing but clothed, flirtatious
+2 = revealing clothing, suggestive, aroused
+3 = topless, partial nudity, exposed breasts
+4 = fully naked, exposed genitals, nude body
+5 = explicit sexual activity, intercourse, sexual contact"""
 
         try:
             response = await self.llm.generate(
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
+                max_tokens=300,
                 temperature=0.1
             )
 

@@ -41,9 +41,10 @@ META_INSTRUCTION = """
 - **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +1 к affinity.
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null. 
 - Меняй `new_location` СТРОГО ТОЛЬКО в том случае, если местоположений персонажей 100% поменялось. Если произошло действие, но оно произошло в той локации, поле new_location оставляй null.
-- Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`. 
-- Если персонаж продолжает делать то же самое, либо нужно нейтральное состояние персонажа, `new_location` должен быть null. 
-- `new_location` и `new_action` могут быть ТОЛЬКО на английском языке. 
+- Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`.
+- Если персонаж продолжает делать то же самое, либо нужно нейтральное состояние персонажа, `new_location` должен быть null.
+- `new_location` и `new_action` могут быть ТОЛЬКО на английском языке.
+- `send_photo`: установи в true только если персонаж совершает визуально значимое действие (меняет позу, одежду, выражает яркую эмоцию). При обычном разговоре без визуальных изменений используй false. МАКСИМУМ 1 раз на 4-5 сообщений — не спами фото.
 
 Формат (СТРОГИЙ ВАЛИДНЫЙ JSON, без звёздочек и других форматирований):
 <meta>
@@ -52,8 +53,9 @@ META_INSTRUCTION = """
   "arousal_change": int,    // -5 до +5. Меняется при флирте, физическом контакте, романтике
   "mood": "string",         // neutral, playful, curious, happy, sad, angry, horny, shy, etc
   "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). ВАЛИДНАЯ СТРОКА!
-  "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.  
-  "new_action": "string"    // null либо новое действие твоего персонажа, в пару слов.   
+  "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.
+  "new_action": "string"    // null либо новое действие твоего персонажа, в пару слов.
+  "send_photo": boolean     // true если нужно сгенерировать фото (визуально значимое действие)
 }
 </meta>
 
@@ -66,7 +68,8 @@ META_INSTRUCTION = """
   "arousal_change": 0,
   "mood": "neutral",
   "thought": "Обычное приветствие. Нейтрально.",
-  "new_location": null
+  "new_location": null,
+  "send_photo": false
 }
 </meta>
 
@@ -78,7 +81,8 @@ META_INSTRUCTION = """
   "mood": "playful",
   "thought": "Комплимент? Интересно... Немного смутило, но приятно.",
   "new_location": null,
-  "new_action": "smiling"
+  "new_action": "smiling",
+  "send_photo": true
 }
 </meta>
 
@@ -90,7 +94,8 @@ META_INSTRUCTION = """
   "mood": "angry",
   "thought": "Грубость. Неприятно. Почему так резко?",
   "new_location": null,
-  "new_action": "frowns"
+  "new_action": "frowns",
+  "send_photo": true
 }
 </meta>
 
@@ -100,10 +105,11 @@ META_INSTRUCTION = """
 {
   "affinity_change": 2,
   "arousal_change": 0,
-  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста. 
+  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
   "new_location": "sitting on bench",
-  "new_action": "sitting on bench"
+  "new_action": "sitting on bench",
+  "send_photo": true
 }
 </meta>
 
@@ -114,10 +120,11 @@ META_INSTRUCTION = """
 {
   "affinity_change": 2,
   "arousal_change": 0,
-  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста. 
+  "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
   "new_location": null,
-  "new_action": "holding book in hands"
+  "new_action": "holding book in hands",
+  "send_photo": true
 }
 </meta>
 Твой литературный ответ пиши СТРОГО ПОСЛЕ закрывающего тега </meta>.

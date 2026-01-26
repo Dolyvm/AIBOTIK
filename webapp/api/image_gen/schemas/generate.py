@@ -100,6 +100,7 @@ class Prompt(BaseModel):
     signature: Optional[str] = ""
     body_state: Optional[str] = ""
     facial_expression: Optional[str] = ""
+    scene_details: Optional[str] = ""  
     clothing: Optional[str] = ""
     environment: Optional[str] = ""
     action: Optional[str] = ""
