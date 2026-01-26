@@ -118,13 +118,3 @@ async def get_current_user(
     return user
 
 
-async def get_current_user(
-        authorization: Optional[str] = Header(None)
-) -> User:
-    async with get_session() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == 714799964)
-        )
-        user = result.scalar_one_or_none()
-    return user
-

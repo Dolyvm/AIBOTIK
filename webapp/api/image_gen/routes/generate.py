@@ -174,21 +174,35 @@ async def gen(
 
 @router.post("/generate_preview")
 async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-    image_url = None
     visual = data.build_visual()
+    appearance = visual.get("appearance", "")
+    body = visual.get("body", "")
+    character_base = f"{appearance}, {body}" if appearance else body
+
     prompt = Prompt(
-        character_base=visual["body"],
+        character_base=character_base,
         facial_expression=visual["face"],
-        clothing=visual["default_outfit"]
+        clothing=visual["default_outfit"],
+        style=visual.get("style_tags", "")
     )
-    pos, neg = prompt.build_prompt()
-    if data.style == ModelType.anime:
-        image_url = await submit_anime(
-            pos, neg
-        )
-    elif data.style == ModelType.real:
-        image_url = await submit_real(
-            prompt=pos,
-            allow_nsfw=True
-        )
-    return {"url": image_url} if image_url else {"error": "Failed to generate image"}
+
+    pos, neg = prompt.build_prompt(data.style)
+    logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
+
+    image_url = None
+    if data.style == "anime":
+        image_url = await submit_anime(pos, neg)
+    elif data.style == "real":
+        image_url = await submit_real(prompt=pos, allow_nsfw=True)
+
+    if image_url:
+        return {"url": image_url}
+
+    raise HTTPException(
+        status_code=500,
+        detail={
+            "error": "generation_failed",
+            "message": "Failed to generate image",
+            "code": "IMAGE_GEN_FAILED"
+        }
+    )

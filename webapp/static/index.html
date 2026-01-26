@@ -256,10 +256,19 @@
                 <button @click="generateNewCharacterPreview">Сгенерировать изображение</button>
                 <div>
                     <p>Сценарий:</p>
-                    <p>{{newCharacterScenario}}</p>
-                    <button @click="generateNewCharacterScenario">Сгенерировать новый сценарий</button>
-
+                    <p v-if="isGeneratingScenario">Генерация сценария...</p>
+                    <p v-else>{{newCharacterScenario}}</p>
+                    <button @click="generateNewCharacterScenario" :disabled="isGeneratingScenario">
+                        {{ isGeneratingScenario ? 'Генерация...' : 'Сгенерировать новый сценарий' }}
+                    </button>
                 </div>
+                <button
+                    class="create-character-final-btn"
+                    @click="createCharacterFinal"
+                    :disabled="!createCharacterData.name || isCreatingCharacter || isGeneratingScenario || !newCharacterScenario"
+                >
+                    {{ isCreatingCharacter ? 'Создание...' : 'Создать персонажа' }}
+                </button>
             </div>
         </div>
 
@@ -364,6 +373,9 @@
                 const createCharacterData = ref({name: ""})
                 const newCharacterPreview = ref(null);
                 const newCharacterScenario = ref(null);
+                const newCharacterFirstMes = ref(null);
+                const newCharacterDescription = ref(null);
+                const isGeneratingScenario = ref(false);
 
                 // Modal state
                 const showScenarioModal = ref(false);
@@ -672,12 +684,17 @@
                     currentView.value = "create-character";
                 }
 
-                const changeStep = (delta) => {
+                const changeStep = async (delta) => {
                     if (currentCCStep.value === 0 && delta === -1) {
                         currentView.value = "selection";
                         return
                     }
-                    currentCCStep.value += delta;
+                    const newStep = currentCCStep.value + delta;
+                    currentCCStep.value = newStep;
+
+                    if (newStep === stepsList.value.length  && !newCharacterScenario.value) {
+                        await generateNewCharacterScenario();
+                    }
                 }
 
                 function selectCCItem(stepIndex, itemIndex) {
@@ -712,17 +729,61 @@
 
                 const generateNewCharacterPreview = async () => {
                     try {
-                        const res = await axios.post(`/api/image-gen/generate_preview`, {...createCharacterData.value, name: 'alina'});
+                        const res = await axios.post('/api/image-gen/generate_preview', createCharacterData.value);
                         newCharacterPreview.value = res.data.url;
                     } catch (e) { showToast('Ошибка генерации фото'); return }
                 }
 
                 const generateNewCharacterScenario = async () => {
+                    if (isGeneratingScenario.value) return;
+                    isGeneratingScenario.value = true;
                     try {
-                        const res = await axios.post(`/api/image-gen/generate_preview`, {...createCharacterData.value, name: 'alina'});
-                        newCharacterPreview.value = res.data.url;
-                    } catch (e) { showToast('Ошибка генерации фото'); return }
+                        const res = await axios.post('/api/create_character/scenario', createCharacterData.value);
+                        newCharacterScenario.value = res.data.scenario;
+                        newCharacterFirstMes.value = res.data.first_mes;
+                        newCharacterDescription.value = res.data.description;
+                    } catch (e) {
+                        showToast('Ошибка генерации сценария');
+                    } finally {
+                        isGeneratingScenario.value = false;
+                    }
+                }
 
+                const isCreatingCharacter = ref(false);
+
+                const createCharacterFinal = async () => {
+                    if (!createCharacterData.value.name) {
+                        showToast('Введите имя персонажа');
+                        return;
+                    }
+
+                    isCreatingCharacter.value = true;
+                    try {
+                        const payload = {
+                            ...createCharacterData.value,
+                            scenario: newCharacterScenario.value,
+                            first_mes: newCharacterFirstMes.value,
+                            description: newCharacterDescription.value
+                        };
+                        const res = await axios.post('/api/create_character', payload);
+                        showToast('Персонаж создан!');
+
+                        currentCCStep.value = 0;
+                        createCharacterData.value = {name: ""};
+                        newCharacterPreview.value = null;
+                        newCharacterScenario.value = null;
+                        newCharacterFirstMes.value = null;
+                        newCharacterDescription.value = null;
+                        currentView.value = 'selection';
+
+                        // Перезагрузить список персонажей
+                        await loadCharacters();
+                    } catch (e) {
+                        console.error(e);
+                        showToast('Ошибка создания персонажа');
+                    } finally {
+                        isCreatingCharacter.value = false;
+                    }
                 }
 
                 return {
@@ -735,9 +796,10 @@
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
-                    toast, newCharacterScenario, generateNewCharacterScenario,
+                    toast, newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
                     createCharacterOnClick, selectCCItem, currentCCStep, newCharacterPreview,
                     stepsList, createCharacterData, changeStep, generateNewCharacterPreview,
+                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario,
                     // styleCards, ageCards, nationalityCards, eyeColorCards, hairColorCards,
                     // haircutCards, bodyTypeCards, boobSizeCards, assSizeCards
                 };
