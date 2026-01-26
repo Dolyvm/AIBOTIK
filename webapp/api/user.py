@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 import sys
-import json
 from pathlib import Path
 
 # Add parent directory to path for shared package

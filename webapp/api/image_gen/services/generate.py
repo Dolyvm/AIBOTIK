@@ -1,3 +1,5 @@
+import logging
+
 import replicate
 import fal_client
 from ..schemas.generate import ImageSize
@@ -23,9 +25,8 @@ async def submit_real(
         prompt: str,
         allow_nsfw: bool,
         image_size: ImageSize = ImageSize(width=1024, height=1024)
-):
+) -> str | None:
     handler = await fal_client.submit_async(
-        # model_name,
         "fal-ai/z-image/turbo",
         arguments={
             "prompt": prompt,
@@ -34,9 +35,12 @@ async def submit_real(
         }
     )
 
-    result = await handler.get()  # wait for result
-    return result["images"][0]["url"]
-    # result : {"images": list[{"url": str, ...}], ...}  ||  result["images"][0]["url"] to get url
+    result = await handler.get()
+    logging.info(f"FAL result: {result}")
+
+    if result and "images" in result and result["images"]:
+        return result["images"][0]["url"]
+    return None
 
 
 async def submit_anime(

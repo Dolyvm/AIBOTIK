@@ -124,14 +124,16 @@ class Prompt(BaseModel):
             wardrobe = visual.get("wardrobe", {})
             clothing = wardrobe.get(outfit_key, visual.get("default_outfit", ""))
 
+        appearance = visual.get("appearance", character.get("appearance", ""))
+
         if model_type == "anime":
-            character_base = character.get("appearance", "")
-            style = ""  
+            character_base = appearance
+            style = ""
         else:
-            body = visual.get("body", character.get("appearance", ""))
+            body = visual.get("body", "")
             face = visual.get("face", "")
             style = visual.get("style_tags", "")
-            character_base = ", ".join(filter(None, [body, face]))
+            character_base = ", ".join(filter(None, [appearance, body, face]))
 
         return cls(
             character_base=character_base,
@@ -169,4 +171,3 @@ class Prompt(BaseModel):
         negative_prompt = ", ".join(negative_parts)
 
         return prompt, negative_prompt
-

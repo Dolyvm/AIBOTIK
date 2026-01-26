@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from ...create_character.cc_schemas import CreateCharacterRequest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -195,3 +197,39 @@ async def gen(
     response = {"error": "Failed to generate image"}
     logging.info(f"Returning response: {response}")
     return response
+
+
+@router.post("/generate_preview")
+async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
+    visual = data.build_visual()
+    appearance = visual.get("appearance", "")
+    body = visual.get("body", "")
+    character_base = f"{appearance}, {body}" if appearance else body
+
+    prompt = Prompt(
+        character_base=character_base,
+        facial_expression=visual["face"],
+        clothing=visual["default_outfit"],
+        style=visual.get("style_tags", "")
+    )
+
+    pos, neg = prompt.build_prompt(data.style)
+    logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
+
+    image_url = None
+    if data.style == "anime":
+        image_url = await submit_anime(pos, neg)
+    elif data.style == "real":
+        image_url = await submit_real(prompt=pos, allow_nsfw=True)
+
+    if image_url:
+        return {"url": image_url}
+
+    raise HTTPException(
+        status_code=500,
+        detail={
+            "error": "generation_failed",
+            "message": "Failed to generate image",
+            "code": "IMAGE_GEN_FAILED"
+        }
+    )

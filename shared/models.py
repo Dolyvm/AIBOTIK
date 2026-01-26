@@ -67,10 +67,8 @@ class Character(Base):
     description = Column(Text, nullable=False)
     personality = Column(Text, nullable=False)
 
-    
     visual_data = Column(JSONB, nullable=False) 
-    scenarios = Column(JSONB, default=[]) 
-
+    scenarios = Column(JSONB, default=[])
     
     tags = Column(ARRAY(String), default=[]) 
     is_nsfw = Column(Boolean, default=False)

@@ -84,9 +84,12 @@ async def get_filter_options():
         if "tags" in char:
             all_tags.update(char["tags"])
         # Собираем стили
-        styles.add(char.get("model_type", "real"))
+        styles.add(char.get("model_type", "real"))  # fixme точно ли надо для model_type ставить дефолтное значение?
 
     return {
         "tags": sorted(list(all_tags)),
         "styles": sorted(list(styles))
     }
+
+
+
