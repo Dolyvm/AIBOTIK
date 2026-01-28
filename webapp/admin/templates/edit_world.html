@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Edit World: {{ world.name }} - Admin Panel{% endblock %}
+
+{% block content %}
+<a href="/admin/worlds" class="back-link">← Back to Worlds</a>
+
+<div class="card">
+    <h2>Edit World</h2>
+
+    <div style="margin-bottom: 20px;">
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+            {% if world.is_nsfw %}
+            <span class="category-badge" style="background: #e74c3c; color: white;">NSFW</span>
+            {% endif %}
+            <strong style="font-size: 18px;">{{ world.name }}</strong>
+        </div>
+        <div style="font-size: 13px; color: #7f8c8d;">
+            <strong>ID:</strong>
+            <code style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">
+                {{ world.id }}
+            </code>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/worlds/{{ world.id }}" id="worldForm">
+        <div class="form-group">
+            <label for="name">World Name:</label>
+            <input
+                type="text"
+                id="name"
+                name="name"
+                value="{{ world.name }}"
+                required
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description (used in AI prompt):</label>
+            <textarea
+                id="description"
+                name="description"
+                rows="10"
+                required
+                class="auto-resize"
+            >{{ world.description }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="gm_instructions">GM Instructions (Game Master instructions, used in AI prompt):</label>
+            <textarea
+                id="gm_instructions"
+                name="gm_instructions"
+                rows="8"
+                class="auto-resize"
+            >{{ gm_instructions }}</textarea>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
+                Note: GM instructions for future use. Currently not active in AI prompts.
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="intro_message">Intro Message (main scenario introduction):</label>
+            <textarea
+                id="intro_message"
+                name="intro_message"
+                rows="4"
+                required
+                class="auto-resize"
+            >{{ intro_message }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Alternate Scenarios:</label>
+            <div id="alternateScenariosContainer">
+                {% for scenario in alternate_scenarios %}
+                <div class="alternate-scenario-item" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 13px; color: #7f8c8d;">Scenario {{ loop.index }}</strong>
+                        <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateScenario(this)">Remove</button>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Title:</label>
+                        <input
+                            type="text"
+                            name="alt_scenario_title"
+                            value="{{ scenario.title }}"
+                            placeholder="Scenario title"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+                        />
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Intro:</label>
+                        <textarea
+                            name="alt_scenario_intro"
+                            rows="3"
+                            class="auto-resize"
+                            placeholder="Scenario intro message"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                        >{{ scenario.intro }}</textarea>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">GM Instructions:</label>
+                        <textarea
+                            name="alt_scenario_gm_instructions"
+                            rows="3"
+                            class="auto-resize"
+                            placeholder="Optional: GM instructions for this scenario"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                        >{{ scenario.gm_instructions }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateScenario()">+ Add Alternate Scenario</button>
+        </div>
+
+        <div class="form-group">
+            <label for="tags">Tags (comma-separated):</label>
+            <input
+                type="text"
+                id="tags"
+                name="tags"
+                value="{{ world.tags|join(', ') }}"
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    id="is_nsfw"
+                    name="is_nsfw"
+                    {% if world.is_nsfw %}checked{% endif %}
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <span>NSFW Content</span>
+            </label>
+        </div>
+
+        <div class="meta-info">
+            Last updated: {{ world.updated_at.strftime('%Y-%m-%d %H:%M:%S') if world.updated_at else 'Never' }}
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn">Save Changes</button>
+            <a href="/admin/worlds" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Auto-resize all textareas
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight) + 'px';
+    }
+
+    document.querySelectorAll('.auto-resize').forEach(textarea => {
+        autoResize(textarea);
+        textarea.addEventListener('input', function() {
+            autoResize(this);
+        });
+    });
+
+    // Add alternate scenario
+    function addAlternateScenario() {
+        const container = document.getElementById('alternateScenariosContainer');
+        const count = container.querySelectorAll('.alternate-scenario-item').length;
+
+        const div = document.createElement('div');
+        div.className = 'alternate-scenario-item';
+        div.style.marginBottom = '20px';
+        div.style.padding = '15px';
+        div.style.background = '#f8f9fa';
+        div.style.borderRadius = '4px';
+
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <strong style="font-size: 13px; color: #7f8c8d;">Scenario ${count + 1}</strong>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateScenario(this)">Remove</button>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Title:</label>
+                <input
+                    type="text"
+                    name="alt_scenario_title"
+                    placeholder="Scenario title"
+                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+                />
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Intro:</label>
+                <textarea
+                    name="alt_scenario_intro"
+                    rows="3"
+                    class="auto-resize"
+                    placeholder="Scenario intro message"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                ></textarea>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">GM Instructions:</label>
+                <textarea
+                    name="alt_scenario_gm_instructions"
+                    rows="3"
+                    class="auto-resize"
+                    placeholder="Optional: GM instructions for this scenario"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                ></textarea>
+            </div>
+        `;
+
+        container.appendChild(div);
+
+        // Attach auto-resize to new textareas
+        div.querySelectorAll('textarea').forEach(textarea => {
+            autoResize(textarea);
+            textarea.addEventListener('input', function() {
+                autoResize(this);
+            });
+        });
+    }
+
+    // Remove alternate scenario
+    function removeAlternateScenario(button) {
+        button.closest('.alternate-scenario-item').remove();
+        updateScenarioNumbers();
+    }
+
+    // Update scenario numbers after removal
+    function updateScenarioNumbers() {
+        const items = document.querySelectorAll('.alternate-scenario-item');
+        items.forEach((item, index) => {
+            item.querySelector('strong').textContent = `Scenario ${index + 1}`;
+        });
+    }
+</script>
+{% endblock %}

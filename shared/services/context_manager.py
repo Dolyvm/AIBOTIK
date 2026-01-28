@@ -112,30 +112,19 @@ class ContextManager:
     ):
         messages_to_summarize = history[:len(history) // 2]
 
+        from shared.services.prompt_service import get_prompt
+
         context_name = character["name"] if character else world["name"]
 
-        summary_prompt = f"""You are summarizing a conversation between a user and {context_name}.
-
-### EXISTING SUMMARY ###
-{chat.summary if chat.summary else "This is the start of the conversation."}
-
-### CURRENT EMOTIONAL STATE ###
-Affinity: {chat.affinity}/100
-Arousal: {chat.arousal}/100
-Mood: {chat.current_mood}
-
-### MESSAGES TO COMPRESS ###
-{self._format_messages_for_summary(messages_to_summarize)}
-
-### INSTRUCTIONS ###
-Create a concise narrative summary that:
-1. Preserves key facts, events, and revelations
-2. Tracks the progression of the relationship
-3. Notes important emotional moments
-4. Integrates with the existing summary
-5. Keeps it under 200 words
-
-Write in Russian. Output ONLY the summary, no meta-commentary."""
+        summary_prompt_template = get_prompt("summary_prompt")
+        summary_prompt = summary_prompt_template.format(
+            context_name=context_name,
+            existing_summary=chat.summary if chat.summary else "This is the start of the conversation.",
+            affinity=chat.affinity,
+            arousal=chat.arousal,
+            mood=chat.current_mood,
+            messages=self._format_messages_for_summary(messages_to_summarize)
+        )
 
         summary = await self.llm.generate(
             system_prompt=summary_prompt,
