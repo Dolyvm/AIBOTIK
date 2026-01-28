@@ -1,55 +1,52 @@
-"""
-Character modifiers based on relationship progression.
+from shared.services.prompt_service import get_prompt
 
-Stages are now determined by affinity level (0-100):
-- Stage 1: Affinity 0-30 (Strangers/Acquaintances)
-- Stage 2: Affinity 31-70 (Friends/Close)
-- Stage 3: Affinity 71+ (Lovers/Intimate)
-"""
-
-CHARACTER_MODIFIERS = {
-    "emily": {
-        "stage_1": {  # affinity 0-20
-            "instruction": "Эмили ведёт себя сдержанно, с осторожностью. Она любопытна, но не доверяет полностью.",
-            "allowed_actions": ["разговор", "лёгкий флирт"]
-        },
-        "stage_2": {  # affinity 20-50
-            "instruction": "Эмили более открыта, проявляет интерес. Она становится дружелюбнее и игривее.",
-            "allowed_actions": ["разговор", "флирт", "прикосновения"]
-        },
-        "stage_3": {  # affinity 50-80
-            "instruction": "Эмили доверяет, показывает привязанность. Она раскрывается эмоционально.",
-            "allowed_actions": ["всё из stage_2", "объятия", "поцелуи"]
-        },
-        "stage_4": {  # affinity 80+
-            "instruction": "Эмили полностью открыта и влюблена. Она не скрывает своих чувств.",
-            "allowed_actions": ["без ограничений"]
+def _parse_modifier(prompt_value: str) -> dict:
+    parts = prompt_value.split("|")
+    if len(parts) == 2:
+        instruction = parts[0].strip()
+        actions_str = parts[1].strip()
+        allowed_actions = [a.strip() for a in actions_str.split(",")]
+        return {
+            "instruction": instruction,
+            "allowed_actions": allowed_actions
         }
-    },
+    return {"instruction": prompt_value, "allowed_actions": []}
 
-    "aiko": {
-        "stage_1": {  # affinity 0-20
-            "instruction": "Айко сдержанна и формальна. Культурные барьеры создают дистанцию.",
-            "allowed_actions": ["вежливый разговор", "формальное общение"]
+
+def _load_character_modifiers() -> dict:
+    return {
+        "emily": {
+            "stage_1": _parse_modifier(get_prompt("character_modifiers_emily_stage_1")),
+            "stage_2": _parse_modifier(get_prompt("character_modifiers_emily_stage_2")),
+            "stage_3": _parse_modifier(get_prompt("character_modifiers_emily_stage_3")),
+            "stage_4": _parse_modifier(get_prompt("character_modifiers_emily_stage_4")),
         },
-        "stage_2": {  # affinity 20-50
-            "instruction": "Айко начинает проявлять теплоту. Культурные различия уходят на задний план.",
-            "allowed_actions": ["дружеский разговор", "улыбки", "лёгкие прикосновения"]
-        },
-        "stage_3": {  # affinity 50-80
-            "instruction": "Айко открывается эмоционально. Она доверяет и проявляет нежность.",
-            "allowed_actions": ["всё из stage_2", "объятия", "романтические жесты"]
-        },
-        "stage_4": {  # affinity 80+
-            "instruction": "Айко влюблена без остатка. Традиции отступают перед чувствами.",
-            "allowed_actions": ["без ограничений"]
+        "aiko": {
+            "stage_1": _parse_modifier(get_prompt("character_modifiers_aiko_stage_1")),
+            "stage_2": _parse_modifier(get_prompt("character_modifiers_aiko_stage_2")),
+            "stage_3": _parse_modifier(get_prompt("character_modifiers_aiko_stage_3")),
+            "stage_4": _parse_modifier(get_prompt("character_modifiers_aiko_stage_4")),
         }
     }
-}
+
+
+_CHARACTER_MODIFIERS = None
+
+
+def _get_character_modifiers() -> dict:
+    global _CHARACTER_MODIFIERS
+    if _CHARACTER_MODIFIERS is None:
+        _CHARACTER_MODIFIERS = _load_character_modifiers()
+    return _CHARACTER_MODIFIERS
+
+
+def invalidate_character_modifiers_cache():
+    global _CHARACTER_MODIFIERS
+    _CHARACTER_MODIFIERS = None
 
 
 def get_modifier_for_stage(character_id: str, state: dict) -> dict:
-    modifiers = CHARACTER_MODIFIERS.get(character_id)
+    modifiers = _get_character_modifiers().get(character_id)
 
     if not modifiers:
         return None

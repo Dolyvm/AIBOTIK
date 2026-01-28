@@ -3,6 +3,7 @@ from sqlalchemy import (
     ForeignKey, Enum as SQLEnum, ARRAY, BigInteger
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -10,6 +11,13 @@ from datetime import datetime
 import enum
 
 Base = declarative_base()
+
+
+async def get_async_session():
+    from shared.repository import async_session
+
+    async with async_session() as session:
+        yield session
 
 
 class MessageRole(enum.Enum):
@@ -189,3 +197,15 @@ class Transaction(Base):
 
     user = relationship("User", back_populates="transactions")
     chat = relationship("Chat", back_populates="transactions")
+
+
+class Prompt(Base):
+    """Prompt templates for AI interactions"""
+    __tablename__ = "prompts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    category = Column(String(50), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -46,8 +46,11 @@ services:
       - FAL_KEY=${FAL_KEY}
       - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
       - IMAGES_STORAGE_PATH=/app/generated_images
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
+      - SECRET_KEY=${SECRET_KEY}
     volumes:
       - ./webapp/api:/app/api
+      - ./webapp/admin:/app/admin
       - ./webapp/auth:/app/auth
       - ./webapp/services:/app/services
       - ./webapp/static:/app/static
@@ -68,6 +71,7 @@ services:
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - WEBAPP_URL=${WEBAPP_URL}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
     volumes:
       - ./bot/handlers:/app/handlers
       - ./bot/main.py:/app/main.py
@@ -82,6 +86,12 @@ services:
         condition: service_healthy
       webapp:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   seed:
     build: ./bot
@@ -89,6 +99,9 @@ services:
       sh -c "
         echo 'Waiting for migrations to complete...' &&
         sleep 10 &&
+        echo 'Initializing prompts...' &&
+        python /app/scripts/init_prompts.py &&
+        echo 'Seeding content...' &&
         python /app/scripts/seed_content.py
       "
     environment:
@@ -101,7 +114,7 @@ services:
       postgres:
         condition: service_healthy
       bot:
-        condition: service_started
+        condition: service_healthy
     restart: "no"
 
 volumes:

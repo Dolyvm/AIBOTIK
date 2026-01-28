@@ -109,26 +109,20 @@ class SceneAnalyzer:
         character_name: str,
         available_outfits: list[str]
     ) -> SceneAnalysis:
+        from shared.services.prompt_service import get_prompt
+
         recent_messages = history[-5:] if len(history) > 5 else history
         formatted = "\n".join([
             f"{m['role'].upper()}: {m['content'][:200]}"
             for m in recent_messages
         ])
 
-        prompt = f"""WRITE ONLY IN ENGLISH
-Scene: {character_name}
-Chat:
-{formatted}
-
-Outfits: {', '.join(available_outfits)}
-You should make JSON values suitable for use in text to image models. 
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum. 
-You "pose" value should consist of real understandable words and be SHORT. 6 words maximum. 
-Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context. 
-Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list that suits situation the most","emotion":"string","nsfw_level":0-5,"reasoning":"string"}}
-
-nsfw: 0=public/clothed, 2=suggestive, 4=explicit"""
+        prompt_template = get_prompt("scene_analyzer_prompt")
+        prompt = prompt_template.format(
+            character_name=character_name,
+            formatted_chat=formatted,
+            available_outfits=', '.join(available_outfits)
+        )
 
         try:
             response = await self.llm.generate(

@@ -32,3 +32,4 @@ SCENE_ANALYZER_TIMEOUT = int(os.getenv("SCENE_ANALYZER_TIMEOUT", "10"))
 
 IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  
+ADMIN_TELEGRAM_IDS = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip()]  

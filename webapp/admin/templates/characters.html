@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Characters List - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Все персонажи</h2>
+
+    {% if not admin %}
+    <div style="text-align: center; padding: 40px; color: #95a5a6;">
+        <p>🔄 Authenticating...</p>
+        <p style="margin-top: 10px; font-size: 14px;">
+            Please wait while we verify your Telegram credentials.
+        </p>
+    </div>
+    {% else %}
+    <p style="margin-bottom: 20px; color: #7f8c8d;">
+        Управляйте промптами персонажей.
+    </p>
+
+    {% if characters %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">ID</th>
+                <th style="width: 25%;">Name</th>
+                <th style="width: 40%;">Tags</th>
+                <th style="width: 10%;">NSFW</th>
+                <th style="width: 10%;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for character in characters %}
+            <tr>
+                <td>
+                    <code style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px; font-size: 12px;">
+                        {{ character.id }}
+                    </code>
+                </td>
+                <td>
+                    <strong>{{ character.name }}</strong>
+                </td>
+                <td>
+                    {% if character.tags %}
+                        {% for tag in character.tags %}
+                        <span class="category-badge" style="margin-right: 4px;">{{ tag }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span style="color: #95a5a6; font-size: 13px;">No tags</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if character.is_nsfw %}
+                        <span style="color: #e74c3c; font-weight: 600;">Yes</span>
+                    {% else %}
+                        <span style="color: #95a5a6;">No</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/admin/characters/{{ character.id }}" class="btn btn-small">Edit</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="text-align: center; padding: 40px; color: #95a5a6;">
+        <p>No characters found in database.</p>
+        <p style="margin-top: 10px; font-size: 14px;">
+            Run <code>python scripts/seed_content.py</code> to initialize characters.
+        </p>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
