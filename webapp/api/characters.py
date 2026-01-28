@@ -32,7 +32,8 @@ async def list_characters(
             "avatar": char["avatar"],
             "tags": char_tags,
             "model_type": model_type,
-            "scenarios_count": 1 + len(char.get("alternate_greetings", []))
+            "scenarios_count": 1 + len(char.get("alternate_greetings", [])),
+            "author": char.get("author", {"display_name": "AiKai Team"})
         })
 
     return {"characters": result}
@@ -67,7 +68,8 @@ async def get_character_detail(character_id: str):
         "tags": char.get("tags", []),
         "scenarios": scenarios,
         "appearance": char["appearance"],
-        "model_type": char["model_type"]
+        "model_type": char["model_type"],
+        "author": char.get("author", {"display_name": "AiKai Team"})
     }
 
 

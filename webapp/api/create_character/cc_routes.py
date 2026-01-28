@@ -61,6 +61,8 @@ async def create_character_endpoint(
                 scenarios=scenarios,
                 tags=tags,
                 is_nsfw=True,
+                created_by_username_id = user.telegram_id,
+                created_by_username = user.username,
             )
             session.add(character)
             await session.commit()

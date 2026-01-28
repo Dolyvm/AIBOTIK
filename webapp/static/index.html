@@ -98,7 +98,7 @@
                 <!-- Filters Characters -->
                 <div v-if="tab === 'characters'" class="filters">
                     <select v-model="characterFilters.tag" @change="loadCharacters">
-                        <option :value="null">Все теги</option>
+                        <option :value="null">Все тегии</option>
                         <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
                     </select>
                     <select v-model="characterFilters.style" @change="loadCharacters">
@@ -330,6 +330,8 @@
                         <img :src="selectedCharacter.avatar || selectedCharacter.cover_image" class="modal-character-image" alt="Cover">
                         <div class="modal-character-info">
                             <h2>{{ selectedCharacter.name }}</h2>
+                            <!-- Author Info -->
+                            <p>Made by {{selectedCharacter.author.display_name}}</p>
                             <p class="modal-character-description">{{ selectedCharacter.description }}</p>
                         </div>
                     </div>
@@ -379,17 +381,17 @@
 
     <script>
         const { createApp, ref, onMounted, nextTick } = Vue;
-
-        marked.setOptions({ breaks: true, gfm: true });
-
-        createApp({
-            setup() {
-                const tg = window.Telegram.WebApp;
-                
-                // State
-                const currentView = ref('selection');
-                // const currentView = ref('create-character');
-                const tab = ref('characters');
+ 
+        marked.setOptions({ breaks: true, gfm: true }); 
+ 
+        createApp({ 
+            setup() { 
+                const tg = window.Telegram.WebApp; 
+                 
+                // State 
+                const currentView = ref('selection'); 
+                // const currentView = ref('create-character'); 
+                const tab = ref('characters'); 
                 const characters = ref([]);
                 const worlds = ref([]);
                 const activeChats = ref([]);
