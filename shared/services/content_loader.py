@@ -32,6 +32,16 @@ def character_to_dict(char: Character) -> dict:
         elif scenario.get("index", -1) > 0:
             alternate_greetings.append(scenario.get("intro", ""))
 
+    if char.created_by_username_id is not None:
+        username = char.created_by_username
+        if username:
+            display_name = f"@{username}"
+        else:
+            display_name = f"User #{char.created_by_username_id}"
+        author_info = {"user_id":char.created_by_username_id, "username":username, "display_name":display_name}
+    else:
+        author_info = { "display_name":"AiKai Team"}        
+
     return {
         "id": char.id,
         "name": char.name,
@@ -49,7 +59,8 @@ def character_to_dict(char: Character) -> dict:
         "first_mes": first_mes,
         "alternate_greetings": alternate_greetings,
         "tags": char.tags or [],
-        "is_nsfw": char.is_nsfw
+        "is_nsfw": char.is_nsfw,
+        "author": author_info
     }
 
 
@@ -98,7 +109,7 @@ async def get_character(character_id: str) -> Optional[dict]:
 
             if not char:
                 logger.warning(f"Character not found: {character_id}")
-                return None
+                return None    
             return character_to_dict(char)
 
         except Exception as e:

@@ -80,6 +80,8 @@ class Character(Base):
     
     tags = Column(ARRAY(String), default=[]) 
     is_nsfw = Column(Boolean, default=False)
+    created_by_username_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
+    created_by_username = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -94,7 +96,7 @@ class World(Base):
     cover_image = Column(String(500), nullable=True)
 
     scenarios = Column(JSONB, default=[])
-    locations = Column(JSONB, default=[])  
+    locations = Column(JSONB, default=[])
 
     tags = Column(ARRAY(String), default=[])
     is_nsfw = Column(Boolean, default=False)
@@ -109,8 +111,8 @@ class Chat(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
 
-    chat_type = Column(String(20), nullable=False)  
-    target_id = Column(String(100), nullable=False) 
+    chat_type = Column(String(20), nullable=False)
+    target_id = Column(String(100), nullable=False)
     scenario_index = Column(Integer, default=0)
 
     affinity = Column(Integer, default=0)
@@ -118,7 +120,7 @@ class Chat(Base):
     current_location = Column(String(255), nullable=True)
     current_mood = Column(String(100), default="neutral")
 
-    state_meta = Column(JSONB, default={}) 
+    state_meta = Column(JSONB, default={})
 
     summary = Column(Text, default="")
     msgs_since_summary = Column(Integer, default=0)
