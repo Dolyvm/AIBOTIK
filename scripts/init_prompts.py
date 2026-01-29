@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select
-from shared.models import get_async_session, Prompt
+from shared.models import Prompt
+from shared.database import get_session
 from shared.services.prompt_service import DEFAULT_PROMPTS
 
 
@@ -170,7 +171,7 @@ PROMPT_METADATA = {
 
 
 async def init_prompts():
-    async for db in get_async_session():
+    async with get_session() as db:
         result = await db.execute(select(Prompt))
         existing_prompts = {p.key: p for p in result.scalars().all()}
 
@@ -195,7 +196,6 @@ async def init_prompts():
                 created_count += 1
 
         await db.commit()
-        break
 
 
 if __name__ == "__main__":

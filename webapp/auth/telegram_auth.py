@@ -12,9 +12,9 @@ from fastapi import Header, HTTPException, status
 from telegram_init_data import validate, parse
 
 from shared.models import User
-from shared.repository import get_session
+from shared.database import get_session
+from shared.database.repositories import UserRepository
 from shared.config import BOT_TOKEN
-from sqlalchemy import select
 
 
 async def get_current_user(
@@ -98,10 +98,8 @@ async def get_current_user(
         )
 
     async with get_session() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
-        user = result.scalar_one_or_none()
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(telegram_id)
 
     if not user:
         logging.error(f"[AUTH] User {telegram_id} not found in database")

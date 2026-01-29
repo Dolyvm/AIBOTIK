@@ -6,7 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.repository import get_user, get_user_chats
+from shared.database import get_session
+from shared.database.repositories import ChatRepository
 from shared.services.content_loader import get_character, get_world
 from shared.models import User
 from auth.telegram_auth import get_current_user
@@ -34,7 +35,9 @@ async def get_user_active_chats(user_id: int, user: User = Depends(get_current_u
     """User's active chats with resolved names"""
     await verify_user_id_match(user_id, user)
 
-    chats = await get_user_chats(user.telegram_id)
+    async with get_session() as session:
+        chat_repo = ChatRepository(session)
+        chats = await chat_repo.get_user_chats(user.telegram_id)
 
     result = []
 

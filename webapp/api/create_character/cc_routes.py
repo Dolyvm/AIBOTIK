@@ -19,7 +19,7 @@ from .cc_service import (
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.models import User, Character
-from shared.repository import get_session
+from shared.database import get_session
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
 

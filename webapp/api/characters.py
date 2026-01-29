@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pathlib import Path
 import sys
 
@@ -44,7 +44,7 @@ async def get_character_detail(character_id: str):
     """Detailed character information"""
     char = await get_character(character_id)
     if not char:
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
 
     scenarios = [{
         "index": 0,
@@ -92,6 +92,3 @@ async def get_filter_options():
         "tags": sorted(list(all_tags)),
         "styles": sorted(list(styles))
     }
-
-
-

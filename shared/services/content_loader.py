@@ -1,23 +1,11 @@
 import logging
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy import String
-
 from shared.models import Character, World
-from shared.config import DATABASE_URL
+from shared.database import get_session
+from shared.database.repositories import CharacterRepository, WorldRepository
 
 logger = logging.getLogger(__name__)
-
-engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
-async_session_factory = sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
 
 
 def character_to_dict(char: Character) -> dict:
@@ -40,7 +28,7 @@ def character_to_dict(char: Character) -> dict:
             display_name = f"User #{char.created_by_username_id}"
         author_info = {"user_id":char.created_by_username_id, "username":username, "display_name":display_name}
     else:
-        author_info = { "display_name":"AiKai Team"}        
+        author_info = { "display_name":"AiKai Team"}
 
     return {
         "id": char.id,
@@ -100,34 +88,27 @@ def world_to_dict(world: World) -> dict:
 
 
 async def get_character(character_id: str) -> Optional[dict]:
-    async with async_session_factory() as session:
+    async with get_session() as session:
         try:
-            result = await session.execute(
-                select(Character).where(Character.id == character_id)
-            )
-            char = result.scalar_one_or_none()
-
+            repo = CharacterRepository(session)
+            char = await repo.get_by_id(character_id)
             if not char:
                 logger.warning(f"Character not found: {character_id}")
-                return None    
+                return None
             return character_to_dict(char)
-
         except Exception as e:
             logger.error(f"Failed to load character {character_id}: {e}")
             return None
 
-async def get_world(world_id: str) -> Optional[dict]:
-    async with async_session_factory() as session:
-        try:
-            result = await session.execute(
-                select(World).where(World.id == world_id)
-            )
-            world = result.scalar_one_or_none()
 
+async def get_world(world_id: str) -> Optional[dict]:
+    async with get_session() as session:
+        try:
+            repo = WorldRepository(session)
+            world = await repo.get_by_id(world_id)
             if not world:
                 logger.warning(f"World not found: {world_id}")
                 return None
-
             return world_to_dict(world)
         except Exception as e:
             logger.error(f"Failed to load world {world_id}: {e}")
@@ -135,40 +116,22 @@ async def get_world(world_id: str) -> Optional[dict]:
 
 
 async def get_all_characters(tag: Optional[str] = None) -> dict[str, dict]:
-    async with async_session_factory() as session:
+    async with get_session() as session:
         try:
-            query = select(Character)
-
-            if tag:
-                query = query.where(Character.tags.any(tag))
-
-            result = await session.execute(query)
-            characters = result.scalars().all()
-
-            characters_dict = {}
-            for char in characters:
-                characters_dict[char.id] = character_to_dict(char)
-            return characters_dict
-
+            repo = CharacterRepository(session)
+            characters = await repo.get_all_with_filter(tag)
+            return {char.id: character_to_dict(char) for char in characters}
         except Exception as e:
             logger.error(f"Failed to load characters: {e}")
             return {}
 
 
 async def get_all_worlds(tag: Optional[str] = None) -> dict[str, dict]:
-    async with async_session_factory() as session:
+    async with get_session() as session:
         try:
-            query = select(World)
-            if tag:
-                query = query.where(World.tags.any(tag))
-
-            result = await session.execute(query)
-            worlds = result.scalars().all()
-
-            worlds_dict = {}
-            for world in worlds:
-                worlds_dict[world.id] = world_to_dict(world)
-            return worlds_dict
+            repo = WorldRepository(session)
+            worlds = await repo.get_all_with_filter(tag)
+            return {world.id: world_to_dict(world) for world in worlds}
         except Exception as e:
             logger.error(f"Failed to load worlds: {e}")
             return {}
