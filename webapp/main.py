@@ -19,7 +19,7 @@ from shared.services.prompt_service import init_prompt_cache
 
 app = FastAPI(title="AI RP Bot WebApp")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 

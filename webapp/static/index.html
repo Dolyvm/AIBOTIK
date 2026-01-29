@@ -739,6 +739,14 @@
                         isStreaming.value = true;
                         await typeWriter(data.character_response);
 
+                        if (data.image_url) {
+                            chatHistory.value.push({
+                                role: 'assistant',
+                                avatar: data.image_url,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+
                         if (data.affinity !== undefined) {
                         }
                         if (data.arousal !== undefined) {

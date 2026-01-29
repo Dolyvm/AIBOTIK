@@ -80,6 +80,7 @@ def normalize_scene_data(data: dict) -> dict:
         result['nsfw_level'] = 0
 
     result['reasoning'] = str(data.get('reasoning', '')) if data.get('reasoning') else ''
+    result['scene_description'] = str(data.get('scene_description', '')) if data.get('scene_description') else ''
 
     return result
 
@@ -91,6 +92,7 @@ class SceneAnalysis(BaseModel):
     emotion: str = "neutral"
     nsfw_level: int = 0
     reasoning: str = ""
+    scene_description: str = ""  
 
 
 def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
@@ -128,7 +130,7 @@ class SceneAnalyzer:
             response = await self.llm.generate(
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
+                max_tokens=300,
                 temperature=0.1
             )
 

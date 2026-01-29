@@ -24,6 +24,7 @@ def truncate_prompt(prompt: str, max_tokens: int = 75) -> str:
 async def submit_real(
         prompt: str,
         allow_nsfw: bool,
+        nsfw_level: int = 0,
         image_size: ImageSize = ImageSize(width=1024, height=1024)
 ) -> str | None:
     handler = await fal_client.submit_async(
@@ -36,7 +37,7 @@ async def submit_real(
     )
 
     result = await handler.get()
-    logging.info(f"FAL result: {result}")
+    logging.info(f"FAL result (nsfw_level={nsfw_level}): {result}")
 
     if result and "images" in result and result["images"]:
         return result["images"][0]["url"]

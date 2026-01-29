@@ -123,6 +123,8 @@ class Chat(Base):
     summary = Column(Text, default="")
     msgs_since_summary = Column(Integer, default=0)
 
+    last_auto_photo_at = Column(Integer, default=0)
+
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
