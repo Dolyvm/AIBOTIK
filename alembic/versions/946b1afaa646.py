@@ -1,7 +1,7 @@
 """add cover_image to worlds
 
 Revision ID: 946b1afaa646
-Revises: 7640c3edee72
+Revises: 3f18c6807b1c
 Create Date: 2026-01-21 09:08:21.554395
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '946b1afaa646'
-down_revision: Union[str, None] = '7640c3edee72'
+down_revision: Union[str, None] = '3f18c6807b1c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

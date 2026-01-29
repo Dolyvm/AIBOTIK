@@ -1,4 +1,3 @@
-import json
 import logging
 import sys
 from pathlib import Path
@@ -14,7 +13,8 @@ from fastapi import APIRouter, HTTPException, Body, Query, Depends
 from shared.models import Chat, User
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
-from shared.repository import get_session, get_user, save_generated_image, get_chat_history, update_chat_metrics
+from shared.database import get_session
+from shared.database.repositories import MessageRepository, GeneratedImageRepository, ChatRepository
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
@@ -68,23 +68,25 @@ async def gen(
 ):
     chat = await verify_chat_ownership(chat_id, user)
 
+    try:
+        if chat.chat_type == "character":
+            content = await get_character(chat.target_id)
+            character, world = content, None
+        else:
+            content = await get_world(chat.target_id)
+            character, world = None, content
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+    except Exception as e:
+        logging.error(f"Error loading content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     async with get_session() as session:
-        try:
-            if chat.chat_type == "character":
-                content = await get_character(chat.target_id)
-                character, world = content, None
-            else:
-                content = await get_world(chat.target_id)
-                character, world = None, content
+        message_repo = MessageRepository(session)
+        messages = await message_repo.get_history(chat_id)
 
-            if not content:
-                raise HTTPException(status_code=404, detail="Content not found")
-
-        except Exception as e:
-            print(f"Error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    messages = await get_chat_history(chat_id)
     history = [
         {"role": msg.role.value, "content": msg.content}
         for msg in messages
@@ -168,7 +170,7 @@ async def gen(
             local_path = None
             file_size = None
             content_type = None
-            public_url = image_url 
+            public_url = image_url
 
             try:
                 local_path, file_size, content_type = await download_and_save_image(
@@ -180,22 +182,25 @@ async def gen(
             except ImageStorageError as e:
                 logging.warning(f"Failed to save image locally, using provider URL: {e}")
 
-            await save_generated_image(
-                user_id=chat.user_id,
-                chat_id=chat.id,
-                prompt=pos,
-                provider_url=image_url,
-                local_path=local_path,
-                file_size=file_size,
-                content_type=content_type
-            )
-
-            if pose:
-                current_meta = chat.state_meta or {}
-                await update_chat_metrics(
-                    chat.id,
-                    {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
+            async with get_session() as session:
+                image_repo = GeneratedImageRepository(session)
+                await image_repo.save(
+                    user_id=chat.user_id,
+                    chat_id=chat.id,
+                    prompt=pos,
+                    provider_url=image_url,
+                    local_path=local_path,
+                    file_size=file_size,
+                    content_type=content_type
                 )
+
+                if pose:
+                    chat_repo = ChatRepository(session)
+                    current_meta = chat.state_meta or {}
+                    await chat_repo.update_metrics(
+                        chat.id,
+                        {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
+                    )
 
             response = {"url": public_url}
             logging.info(f"Returning response: {response}")

@@ -8,14 +8,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.repository import (
-    get_session,
-    create_chat,
-    get_user,
-    get_chat_history,
-    get_chat_images,
-    reset_chat_history,
-    add_message,
+from shared.database import get_session
+from shared.database.repositories import (
+    ChatRepository,
+    MessageRepository,
+    GeneratedImageRepository
 )
 from shared.models import Chat, User
 from auth.telegram_auth import get_current_user
@@ -46,9 +43,11 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
     chat = await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
+        message_repo = MessageRepository(session)
+        image_repo = GeneratedImageRepository(session)
 
-        messages = await get_chat_history(chat_id)
-        images = await get_chat_images(chat_id)
+        messages = await message_repo.get_history(chat_id)
+        images = await image_repo.get_by_chat_formatted(chat_id)
 
         msg_dicts = [
             {
@@ -79,36 +78,35 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
     """Отправить сообщение и получить ответ"""
     chat = await verify_chat_ownership(chat_id, user)
 
-    async with get_session() as session:
-        try:
-            if chat.chat_type == "character":
-                content = await get_character(chat.target_id)
-                character, world = content, None
-            else:
-                content = await get_world(chat.target_id)
-                character, world = None, content
+    try:
+        if chat.chat_type == "character":
+            content = await get_character(chat.target_id)
+            character, world = content, None
+        else:
+            content = await get_world(chat.target_id)
+            character, world = None, content
 
-            if not content:
-                raise HTTPException(status_code=404, detail="Content not found")
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
 
-            user_name = user.username or "User"
+        user_name = user.username or "User"
 
-            result = await context_manager.process_turn(
-                chat=chat,
-                user_input=payload.text,
-                character=character,
-                world=world,
-                user_name=user_name,
-            )
+        result = await context_manager.process_turn(
+            chat=chat,
+            user_input=payload.text,
+            character=character,
+            world=world,
+            user_name=user_name,
+        )
 
-            return {
-                "response": result["text"],
-                "image_url": result.get("image_url")
-            }
+        return {
+            "response": result["text"],
+            "image_url": result.get("image_url")
+        }
 
-        except Exception as e:
-            logging.error(f"Error in send_message: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error in send_message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/create")
@@ -118,7 +116,10 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
         try:
             user_name = user.username if user.username else "Путешественник"
 
-            chat = await create_chat(
+            chat_repo = ChatRepository(session)
+            message_repo = MessageRepository(session)
+
+            chat = await chat_repo.create_chat(
                 user_id=user.telegram_id,
                 chat_type=payload.chat_type,
                 target_id=payload.target_id,
@@ -133,7 +134,7 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
             )
 
             if first_message:
-                await add_message(chat.id, "assistant", first_message)
+                await message_repo.add(chat.id, "assistant", first_message)
 
             return {"chat_id": chat.id, "success": True}
 
@@ -149,7 +150,8 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
     async with get_session() as session:
         try:
-            await reset_chat_history(chat_id)
+            chat_repo = ChatRepository(session)
+            await chat_repo.reset_history(chat_id)
 
             return {"success": True, "message": "Chat history reset"}
 

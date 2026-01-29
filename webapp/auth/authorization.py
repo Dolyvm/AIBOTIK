@@ -8,17 +8,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import HTTPException, status, Depends
-from sqlalchemy import select
 from shared.models import User, Chat
-from shared.repository import get_session
+from shared.database import get_session
+from shared.database.repositories import ChatRepository
 
 
 async def verify_chat_ownership(chat_id: int, user: User) -> Chat:
     async with get_session() as session:
-        result = await session.execute(
-            select(Chat).where(Chat.id == chat_id)
-        )
-        chat = result.scalar_one_or_none()
+        chat_repo = ChatRepository(session)
+        chat = await chat_repo.get_by_id(chat_id)
 
     if not chat:
         raise HTTPException(
@@ -57,6 +55,6 @@ async def verify_user_id_match(requested_user_id: int, user: User):
 
 async def get_owned_chat(
     chat_id: int,
-    user: User = Depends(lambda: None) 
+    user: User = Depends(lambda: None)
 ) -> Chat:
     return await verify_chat_ownership(chat_id, user)

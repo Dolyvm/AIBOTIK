@@ -12,11 +12,9 @@ import enum
 
 Base = declarative_base()
 
-
 async def get_async_session():
-    from shared.repository import async_session
-
-    async with async_session() as session:
+    from shared.database import get_db
+    async for session in get_db():
         yield session
 
 
