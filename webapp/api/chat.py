@@ -93,7 +93,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
             user_name = user.username or "User"
 
-            clean_text = await context_manager.process_turn(
+            result = await context_manager.process_turn(
                 chat=chat,
                 user_input=payload.text,
                 character=character,
@@ -101,7 +101,10 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
                 user_name=user_name,
             )
 
-            return {"response": clean_text}
+            return {
+                "response": result["text"],
+                "image_url": result.get("image_url")
+            }
 
         except Exception as e:
             logging.error(f"Error in send_message: {e}")
@@ -181,6 +184,7 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
         return {
             "player_message": result["player_message"],
             "character_response": result["character_response"],
+            "image_url": result.get("image_url"),
             "affinity": result["affinity"],
             "arousal": result["arousal"],
             "mood": chat.current_mood,

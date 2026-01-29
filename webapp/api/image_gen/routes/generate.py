@@ -41,6 +41,11 @@ async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = 
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
+    nsfw_keywords = ["nsfw", "nude", "naked", "explicit", "erotic", "orgasm", "masturbat", "penetrat", "sex"]
+    prompt_lower = data.prompt.lower()
+    inferred_nsfw = sum(1 for kw in nsfw_keywords if kw in prompt_lower)
+    nsfw_level = min(5, inferred_nsfw)
+
     image_url = None
     if data.model_type == ModelType.anime:
         image_url = await submit_anime(
@@ -49,7 +54,8 @@ async def generate_image(data: GenerateRequest):
     elif data.model_type == ModelType.real:
         image_url = await submit_real(
             prompt=data.prompt,
-            allow_nsfw=data.allow_nsfw
+            allow_nsfw=data.allow_nsfw,
+            nsfw_level=nsfw_level
         )
     return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
@@ -90,6 +96,7 @@ async def gen(
     environment = ""
     scene_reasoning = ""
     pose = ""
+    scene_description = ""
     if SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
@@ -112,8 +119,10 @@ async def gen(
             pose = scene.pose
             environment = scene.location
             scene_reasoning = scene.reasoning
+            scene_description = scene.scene_description
 
             logging.info(f"Scene analysis: {scene_reasoning}")
+            logging.info(f"Scene description: {scene_description}")
 
         except Exception as e:
             logging.warning(f"Scene analysis failed, using fallback: {e}")
@@ -134,6 +143,7 @@ async def gen(
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
+    prompt.scene_details = scene_description
     pos, neg = prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
@@ -146,7 +156,8 @@ async def gen(
     elif content.get("model_type") == "real":
         image_url = await submit_real(
             prompt=pos,
-            allow_nsfw=True
+            allow_nsfw=True,
+            nsfw_level=nsfw_level
         )
     else:
         image_url = None

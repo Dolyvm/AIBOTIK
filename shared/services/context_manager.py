@@ -31,7 +31,7 @@ class ContextManager:
         character: Optional[dict] = None,
         world: Optional[dict] = None,
         user_name: str = "User"
-    ) -> str:
+    ) -> dict:
         await repository.add_message(chat.id, "user", user_input)
 
         messages = await repository.get_chat_history(chat.id, limit=MAX_HISTORY_LENGTH)
@@ -101,7 +101,22 @@ class ContextManager:
                     setattr(chat, key, value)
         await repository.add_message(chat.id, "assistant", clean_text)
 
-        return clean_text
+        image_url = None
+        if state_updates.get("send_photo", False):
+            msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
+            if msgs_since_photo >= 4:
+                logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
+                image_url = await self._trigger_photo_generation(chat, character, world, history)
+                if image_url:
+                    await repository.update_chat_metrics(
+                        chat.id,
+                        {"last_auto_photo_at": chat.msgs_since_summary}
+                    )
+                    chat.last_auto_photo_at = chat.msgs_since_summary
+            else:
+                logging.info(f"Auto-photo skipped due to cooldown (msgs_since_photo={msgs_since_photo})")
+
+        return {"text": clean_text, "image_url": image_url}
 
     async def _summarize_history(
         self,
@@ -150,6 +165,135 @@ class ContextManager:
             role = "Пользователь" if msg["role"] == "user" else "Персонаж"
             formatted.append(f"{role}: {msg['content']}")
         return "\n".join(formatted)
+
+    async def _trigger_photo_generation(
+        self,
+        chat: Chat,
+        character: Optional[dict],
+        world: Optional[dict],
+        history: list
+    ) -> Optional[str]:
+        try:
+            import sys
+            from pathlib import Path
+
+            # Add webapp to path if not already there
+            webapp_path = Path(__file__).parent.parent.parent / "webapp" / "api"
+            if str(webapp_path) not in sys.path:
+                sys.path.insert(0, str(webapp_path))
+
+            from image_gen.schemas.generate import Prompt
+            from image_gen.services.generate import submit_anime, submit_real
+            from image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
+            from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
+
+            content = character or world
+            if not content:
+                return None
+
+            state_meta = chat.state_meta or {}
+            nsfw_level = 0
+            outfit_key = "default_outfit"
+            environment = ""
+            pose = ""
+
+            if SCENE_ANALYZER_ENABLED and history:
+                try:
+                    scene_llm = LLMClient(model=SCENE_ANALYZER_MODEL)
+                    analyzer = SceneAnalyzer(scene_llm)
+
+                    visual = content.get("visual", {})
+                    wardrobe = visual.get("wardrobe", {})
+                    if not isinstance(wardrobe, dict):
+                        wardrobe = {}
+                    available_outfits = ["default_outfit"] + list(wardrobe.keys())
+
+                    scene = await analyzer.analyze(
+                        history=history,
+                        character_name=content["name"],
+                        available_outfits=available_outfits
+                    )
+
+                    nsfw_level = scene.nsfw_level
+                    outfit_key = scene.outfit_key
+                    pose = scene.pose
+                    environment = scene.location
+
+                    logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
+
+                except Exception as e:
+                    logging.warning(f"Scene analysis failed for auto-photo, using fallback: {e}")
+                    nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                    environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
+            else:
+                nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
+
+            environment = chat.current_location or environment
+
+            prompt = Prompt.from_character(
+                character=content,
+                outfit_key=outfit_key,
+                nsfw_level=nsfw_level,
+                environment=environment,
+            )
+
+            prompt.action = state_meta.get("action") or pose
+            pos, neg = prompt.build_prompt(content.get("model_type"))
+
+            logging.info(f"Auto-photo generation: {pos=}")
+
+            image_url = None
+            if content.get("model_type") == "anime":
+                image_url = await submit_anime(pos, neg)
+            elif content.get("model_type") == "real":
+                image_url = await submit_real(prompt=pos, allow_nsfw=True, nsfw_level=nsfw_level)
+
+            if image_url:
+                try:
+                    # Add webapp to path for image_storage
+                    webapp_services_path = Path(__file__).parent.parent.parent / "webapp"
+                    if str(webapp_services_path) not in sys.path:
+                        sys.path.insert(0, str(webapp_services_path))
+
+                    from services.image_storage import download_and_save_image, get_public_url, ImageStorageError
+
+                    local_path = None
+                    file_size = None
+                    content_type = None
+                    public_url = image_url
+
+                    try:
+                        local_path, file_size, content_type = await download_and_save_image(
+                            provider_url=image_url,
+                            user_id=chat.user_id
+                        )
+                        public_url = get_public_url(local_path)
+                        logging.info(f"Auto-photo saved locally: {local_path}")
+                    except ImageStorageError as e:
+                        logging.warning(f"Failed to save auto-photo locally, using provider URL: {e}")
+
+                    await repository.save_generated_image(
+                        user_id=chat.user_id,
+                        chat_id=chat.id,
+                        prompt=pos,
+                        provider_url=image_url,
+                        local_path=local_path,
+                        file_size=file_size,
+                        content_type=content_type
+                    )
+
+                    return public_url
+
+                except Exception as e:
+                    logging.error(f"Failed to save auto-generated image: {e}")
+                    return image_url
+
+            return None
+
+        except Exception as e:
+            logging.error(f"Auto-photo generation failed: {e}")
+            return None
 
     def _parse_meta(self, response_text: str) -> tuple[str, dict]:
         """
@@ -221,7 +365,7 @@ class ContextManager:
             temperature=0.9
         )
 
-        character_response = await self.process_turn(
+        result = await self.process_turn(
             chat=chat,
             user_input=player_action.strip(),
             character=character,
@@ -231,7 +375,8 @@ class ContextManager:
 
         return {
             "player_message": player_action.strip(),
-            "character_response": character_response,
+            "character_response": result["text"],
+            "image_url": result.get("image_url"),
             "affinity": chat.affinity,
             "arousal": chat.arousal
         }
