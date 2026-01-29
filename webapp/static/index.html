@@ -330,6 +330,8 @@
                         <img :src="selectedCharacter.avatar || selectedCharacter.cover_image" class="modal-character-image" alt="Cover">
                         <div class="modal-character-info">
                             <h2>{{ selectedCharacter.name }}</h2>
+                            <!-- Author Info -->
+                            <p>Made by {{selectedCharacter.author.display_name}}</p>
                             <p class="modal-character-description">{{ selectedCharacter.description }}</p>
                         </div>
                     </div>
