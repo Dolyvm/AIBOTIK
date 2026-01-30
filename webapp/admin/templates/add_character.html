@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Character - Admin Panel{% endblock %}
+
+{% block content %}
+<a href="/admin/characters" class="back-link">← Back to Characters</a>
+
+<div class="card">
+    <h2>Add New Character</h2>
+
+    <form method="POST" action="/admin/characters/new" id="characterForm">
+        <!-- Basic Information Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Basic Information
+            </h3>
+
+            <div class="form-group">
+                <label for="id">Character ID:</label>
+                <input
+                    type="text"
+                    id="id"
+                    name="id"
+                    pattern="[a-z0-9_-]+"
+                    required
+                    placeholder="e.g., my_character_name"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                />
+                <div id="idStatus" style="font-size: 13px; margin-top: 5px; display: none;"></div>
+                <small style="color: #7f8c8d; font-size: 12px;">
+                    Only lowercase letters, numbers, hyphens and underscores. This cannot be changed later.
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="name">Character Name:</label>
+                <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    required
+                    placeholder="Display name of the character"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                />
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description (used in AI prompt):</label>
+                <textarea
+                    id="description"
+                    name="description"
+                    rows="8"
+                    required
+                    class="auto-resize"
+                    placeholder="Detailed description of the character for the AI..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="personality">Personality (used in AI prompt):</label>
+                <textarea
+                    id="personality"
+                    name="personality"
+                    rows="8"
+                    required
+                    class="auto-resize"
+                    placeholder="Character's personality traits, behavior patterns, speaking style..."
+                ></textarea>
+            </div>
+        </div>
+
+        <!-- Scenario and Greetings Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Scenario & Greetings
+            </h3>
+
+            <div class="form-group">
+                <label for="scenario">Scenario (meeting context, used in AI prompt):</label>
+                <textarea
+                    id="scenario"
+                    name="scenario"
+                    rows="6"
+                    required
+                    class="auto-resize"
+                    placeholder="The context or situation in which the user meets this character..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="first_message">First Message (greeting):</label>
+                <textarea
+                    id="first_message"
+                    name="first_message"
+                    rows="4"
+                    required
+                    class="auto-resize"
+                    placeholder="The character's opening message when starting a conversation..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Alternate Greetings:</label>
+                <div id="alternateGreetingsContainer"></div>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateGreeting()">+ Add Alternate Greeting</button>
+            </div>
+        </div>
+
+        <!-- Visual Data Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Visual Data (for image generation)
+            </h3>
+
+            <div class="form-group">
+                <label for="model_type">Model Type:</label>
+                <select
+                    id="model_type"
+                    name="model_type"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                >
+                    <option value="anime">Anime</option>
+                    <option value="real">Real/Photorealistic</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="appearance">Appearance:</label>
+                <textarea
+                    id="appearance"
+                    name="appearance"
+                    rows="3"
+                    class="auto-resize"
+                    placeholder="General appearance description for image generation..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_body">Body:</label>
+                <textarea
+                    id="visual_body"
+                    name="visual_body"
+                    rows="2"
+                    class="auto-resize"
+                    placeholder="Body description (height, build, etc.)..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_face">Face:</label>
+                <textarea
+                    id="visual_face"
+                    name="visual_face"
+                    rows="2"
+                    class="auto-resize"
+                    placeholder="Face description (eyes, hair, features...)..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_default_outfit">Default Outfit:</label>
+                <textarea
+                    id="visual_default_outfit"
+                    name="visual_default_outfit"
+                    rows="2"
+                    class="auto-resize"
+                    placeholder="Default clothing/outfit description..."
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_style_tags">Style Tags:</label>
+                <textarea
+                    id="visual_style_tags"
+                    name="visual_style_tags"
+                    rows="2"
+                    class="auto-resize"
+                    placeholder="Additional style tags for image generation..."
+                ></textarea>
+            </div>
+
+            <!-- Wardrobe Section (Dynamic) -->
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Wardrobe</h4>
+                <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
+                    Add outfit categories for image generation. The AI will select appropriate outfits based on conversation context.
+                </p>
+
+                <div id="wardrobeContainer"></div>
+
+                <button type="button" class="btn btn-secondary btn-small" onclick="addOutfit()">+ Add Outfit</button>
+            </div>
+
+            <!-- Avatar Generation Section -->
+            <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Character Avatar</h4>
+
+                <div id="avatarPreview" style="display: none; margin-bottom: 15px; text-align: center;">
+                    <img id="previewImage" src="" alt="Avatar Preview" style="max-width: 256px; max-height: 256px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="margin-top: 10px;">
+                        <button type="button" class="btn btn-small" onclick="useAsAvatar()">Use as Avatar</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="generateAvatar()">Regenerate</button>
+                    </div>
+                </div>
+
+                <div id="avatarStatus" style="display: none; margin-bottom: 10px; padding: 10px; border-radius: 4px;"></div>
+
+                <button type="button" class="btn" onclick="generateAvatar()" id="generateAvatarBtn">Generate Preview</button>
+                <span id="generatingSpinner" style="display: none; margin-left: 10px; color: #7f8c8d;">Generating...</span>
+
+                <input type="hidden" name="avatar_url" id="avatarUrlInput">
+            </div>
+        </div>
+
+        <!-- Metadata Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Metadata
+            </h3>
+
+            <div class="form-group">
+                <label for="tags">Tags (comma-separated):</label>
+                <input
+                    type="text"
+                    id="tags"
+                    name="tags"
+                    placeholder="e.g., anime, female, fantasy, romance"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                />
+            </div>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input
+                        type="checkbox"
+                        id="is_nsfw"
+                        name="is_nsfw"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    />
+                    <span>NSFW Content</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Author Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Author
+            </h3>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px;">
+                    <input
+                        type="radio"
+                        name="author_type"
+                        value="aikai"
+                        checked
+                        onchange="toggleAuthorField()"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    />
+                    <span>AiKai Team</span>
+                </label>
+
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input
+                        type="radio"
+                        name="author_type"
+                        value="custom"
+                        onchange="toggleAuthorField()"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    />
+                    <span>Custom author</span>
+                </label>
+
+                <div id="customAuthorContainer" style="margin-top: 10px; display: none;">
+                    <input
+                        type="text"
+                        id="created_by_username"
+                        name="created_by_username"
+                        placeholder="Enter author username"
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                    />
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn" id="submitBtn">Create Character</button>
+            <a href="/admin/characters" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Debounce function
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Check character ID availability
+    const checkCharacterId = debounce(async function(id) {
+        const statusDiv = document.getElementById('idStatus');
+        const submitBtn = document.getElementById('submitBtn');
+
+        if (!id || id.length < 2) {
+            statusDiv.style.display = 'none';
+            return;
+        }
+
+        // Validate format first
+        if (!/^[a-z0-9_-]+$/.test(id)) {
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Invalid format. Use only lowercase letters, numbers, hyphens and underscores.</span>';
+            statusDiv.style.display = 'block';
+            submitBtn.disabled = true;
+            return;
+        }
+
+        statusDiv.innerHTML = '<span style="color: #7f8c8d;">Checking...</span>';
+        statusDiv.style.display = 'block';
+
+        try {
+            const response = await fetch(`/admin/api/check-character-id/${encodeURIComponent(id)}`);
+            const data = await response.json();
+
+            if (data.exists) {
+                statusDiv.innerHTML = '<span style="color: #e74c3c;">ID is already taken</span>';
+                submitBtn.disabled = true;
+            } else {
+                statusDiv.innerHTML = '<span style="color: #27ae60;">ID is available</span>';
+                submitBtn.disabled = false;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Error checking ID</span>';
+            submitBtn.disabled = true;
+        }
+    }, 500);
+
+    // ID input listener
+    document.getElementById('id').addEventListener('input', function(e) {
+        // Auto-lowercase and replace invalid chars
+        const originalValue = e.target.value;
+        const newValue = originalValue.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+        if (originalValue !== newValue) {
+            e.target.value = newValue;
+        }
+        checkCharacterId(newValue);
+    });
+
+    // Auto-resize all textareas
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight) + 'px';
+    }
+
+    document.querySelectorAll('.auto-resize').forEach(textarea => {
+        autoResize(textarea);
+        textarea.addEventListener('input', function() {
+            autoResize(this);
+        });
+    });
+
+    // Add alternate greeting
+    let greetingCount = 0;
+    function addAlternateGreeting() {
+        greetingCount++;
+        const container = document.getElementById('alternateGreetingsContainer');
+
+        const div = document.createElement('div');
+        div.className = 'alternate-greeting-item';
+        div.style.marginBottom = '15px';
+        div.style.padding = '15px';
+        div.style.background = '#f8f9fa';
+        div.style.borderRadius = '4px';
+
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong style="font-size: 13px; color: #7f8c8d;">Greeting ${greetingCount}</strong>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateGreeting(this)">Remove</button>
+            </div>
+            <textarea
+                name="alternate_greeting"
+                rows="3"
+                class="auto-resize"
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                placeholder="Alternative greeting message..."
+            ></textarea>
+        `;
+
+        container.appendChild(div);
+
+        const textarea = div.querySelector('textarea');
+        autoResize(textarea);
+        textarea.addEventListener('input', function() {
+            autoResize(this);
+        });
+    }
+
+    // Remove alternate greeting
+    function removeAlternateGreeting(button) {
+        button.closest('.alternate-greeting-item').remove();
+        updateGreetingNumbers();
+    }
+
+    // Update greeting numbers after removal
+    function updateGreetingNumbers() {
+        const items = document.querySelectorAll('.alternate-greeting-item');
+        items.forEach((item, index) => {
+            item.querySelector('strong').textContent = `Greeting ${index + 1}`;
+        });
+        greetingCount = items.length;
+    }
+
+    // Toggle author field
+    function toggleAuthorField() {
+        const customContainer = document.getElementById('customAuthorContainer');
+        const customRadio = document.querySelector('input[name="author_type"][value="custom"]');
+
+        if (customRadio.checked) {
+            customContainer.style.display = 'block';
+        } else {
+            customContainer.style.display = 'none';
+        }
+    }
+
+    // Form validation before submit
+    document.getElementById('characterForm').addEventListener('submit', function(e) {
+        const idField = document.getElementById('id');
+        const idStatus = document.getElementById('idStatus');
+
+        // Check if ID validation passed
+        if (idStatus.querySelector('span')?.style.color === 'rgb(231, 76, 60)') {
+            e.preventDefault();
+            idField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return false;
+        }
+    });
+
+    // ========== DYNAMIC WARDROBE ==========
+    let outfitCount = 0;
+
+    function addOutfit(key = '', value = '') {
+        outfitCount++;
+        const container = document.getElementById('wardrobeContainer');
+
+        const div = document.createElement('div');
+        div.className = 'wardrobe-item';
+        div.style.cssText = 'display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: start; margin-bottom: 10px; padding: 10px; background: white; border-radius: 4px; border: 1px solid #ddd;';
+
+        div.innerHTML = `
+            <input
+                type="text"
+                name="wardrobe_key"
+                value="${key}"
+                placeholder="Outfit name"
+                style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+            />
+            <textarea
+                name="wardrobe_value"
+                rows="2"
+                placeholder="Outfit description for image generation..."
+                style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; resize: vertical;"
+            >${value}</textarea>
+            <button type="button" class="btn btn-danger btn-small" onclick="removeOutfit(this)" style="padding: 8px 12px;">Remove</button>
+        `;
+
+        container.appendChild(div);
+    }
+
+    function removeOutfit(button) {
+        button.closest('.wardrobe-item').remove();
+    }
+
+    // ========== AVATAR GENERATION ==========
+    function collectVisualData() {
+        return {
+            model_type: document.getElementById('model_type').value,
+            appearance: document.getElementById('appearance').value,
+            body: document.getElementById('visual_body').value,
+            face: document.getElementById('visual_face').value,
+            default_outfit: document.getElementById('visual_default_outfit').value,
+            style_tags: document.getElementById('visual_style_tags').value
+        };
+    }
+
+    async function generateAvatar() {
+        const generateBtn = document.getElementById('generateAvatarBtn');
+        const spinner = document.getElementById('generatingSpinner');
+        const statusDiv = document.getElementById('avatarStatus');
+        const previewDiv = document.getElementById('avatarPreview');
+
+        // Validate required fields
+        const visual = collectVisualData();
+        if (!visual.appearance && !visual.body && !visual.face) {
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Please fill in at least one visual field (Appearance, Body, or Face)</span>';
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#fdecea';
+            return;
+        }
+
+        generateBtn.disabled = true;
+        spinner.style.display = 'inline';
+        statusDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/admin/api/generate-avatar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(visual)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.detail || 'Generation failed');
+            }
+
+            document.getElementById('previewImage').src = data.url;
+            previewDiv.style.display = 'block';
+
+            statusDiv.innerHTML = '<span style="color: #27ae60;">Avatar generated! Click "Use as Avatar" to save it.</span>';
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#e8f8e8';
+
+        } catch (error) {
+            statusDiv.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span>`;
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#fdecea';
+        } finally {
+            generateBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    function useAsAvatar() {
+        const previewImage = document.getElementById('previewImage');
+        const avatarInput = document.getElementById('avatarUrlInput');
+        const statusDiv = document.getElementById('avatarStatus');
+
+        avatarInput.value = previewImage.src;
+
+        statusDiv.innerHTML = '<span style="color: #27ae60;">Avatar selected! It will be saved when you create the character.</span>';
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#e8f8e8';
+    }
+</script>
+{% endblock %}

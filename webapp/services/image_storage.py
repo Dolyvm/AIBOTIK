@@ -87,3 +87,35 @@ def delete_image(local_path: str) -> bool:
     except IOError as e:
         logger.error(f"Error deleting image {local_path}: {e}")
         return False
+
+
+async def save_avatar(provider_url: str, character_id: str) -> str:
+    try:
+        avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
+        avatars_dir.mkdir(parents=True, exist_ok=True)
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(provider_url, timeout=30) as response:
+                if response.status != 200:
+                    raise ImageStorageError(
+                        f"Failed to download avatar: HTTP {response.status}"
+                    )
+
+                content = await response.read()
+
+        filename = f"{character_id}.png"
+        full_path = avatars_dir / filename
+        local_path = f"avatars/{filename}"
+
+        async with aiofiles.open(full_path, "wb") as f:
+            await f.write(content)
+
+        logger.info(f"Avatar saved: {local_path}")
+        return local_path
+
+    except aiohttp.ClientError as e:
+        logger.error(f"Network error downloading avatar: {e}")
+        raise ImageStorageError(f"Network error: {e}")
+    except IOError as e:
+        logger.error(f"IO error saving avatar: {e}")
+        raise ImageStorageError(f"Storage error: {e}")

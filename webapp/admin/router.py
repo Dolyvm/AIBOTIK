@@ -6,12 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import logging
 import json
+import re
 
 from shared.models import Prompt, User, Character, World, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
 from shared.services.prompt_service import reload_cache_sync, DEFAULT_PROMPTS
 from shared.constants import invalidate_character_modifiers_cache
-from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache
+from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
+from api.image_gen.services.generate import submit_anime, submit_real
+from services.image_storage import save_avatar, get_public_url
 from telegram_init_data import validate, parse
 
 logger = logging.getLogger(__name__)
@@ -270,6 +273,175 @@ async def list_characters(
             "admin": admin
         }
     )
+
+
+@router.get("/api/check-character-id/{character_id}")
+async def check_character_id(
+    character_id: str,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    """Check if a character ID already exists"""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+    return {"exists": character is not None}
+
+
+@router.post("/api/generate-avatar")
+async def generate_avatar(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    """Generate preview avatar from visual data"""
+    data = await request.json()
+
+    model_type = data.get("model_type", "anime")
+    appearance = data.get("appearance", "")
+    body = data.get("body", "")
+    face = data.get("face", "")
+    default_outfit = data.get("default_outfit", "")
+    style_tags = data.get("style_tags", "")
+
+    prompt = ImagePrompt(
+        character_base=", ".join(filter(None, [appearance, body])),
+        facial_expression=face,
+        clothing=default_outfit,
+        style=style_tags,
+        nsfw_level=0
+    )
+
+    pos, neg = prompt.build_prompt(model_type)
+
+    try:
+        if model_type == "real":
+            image_url = await submit_real(prompt=pos, allow_nsfw=False, nsfw_level=0)
+        else:
+            image_url = await submit_anime(pos, neg)
+
+        if not image_url:
+            raise HTTPException(status_code=500, detail="Image generation failed")
+
+        return {"url": image_url, "prompt": pos}
+    except Exception as e:
+        logger.error(f"Avatar generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+
+@router.get("/characters/new", response_class=HTMLResponse)
+async def add_character_form(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    return templates.TemplateResponse(
+        "add_character.html",
+        {
+            "request": request,
+            "admin": admin
+        }
+    )
+
+
+@router.post("/characters/new")
+async def create_character(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    form_data = await request.form()
+
+    character_id = form_data.get("id", "").strip()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+    personality = form_data.get("personality", "").strip()
+    scenario = form_data.get("scenario", "").strip()
+    first_message = form_data.get("first_message", "").strip()
+    tags_str = form_data.get("tags", "").strip()
+    is_nsfw = form_data.get("is_nsfw") == "on"
+
+    if not character_id or not name or not description or not personality or not scenario or not first_message:
+        raise HTTPException(status_code=400, detail="All main fields are required")
+
+    if not re.match(r'^[a-z0-9_-]+$', character_id):
+        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Character with ID '{character_id}' already exists")
+
+    wardrobe_keys = form_data.getlist("wardrobe_key")
+    wardrobe_values = form_data.getlist("wardrobe_value")
+    wardrobe = {
+        k.strip(): v.strip()
+        for k, v in zip(wardrobe_keys, wardrobe_values)
+        if k.strip()
+    }
+
+    visual_data = {
+        "model_type": form_data.get("model_type", "anime"),
+        "appearance": form_data.get("appearance", "").strip(),
+        "body": form_data.get("visual_body", "").strip(),
+        "face": form_data.get("visual_face", "").strip(),
+        "default_outfit": form_data.get("visual_default_outfit", "").strip(),
+        "style_tags": form_data.get("visual_style_tags", "").strip(),
+        "wardrobe": wardrobe
+    }
+
+    avatar_url = form_data.get("avatar_url", "").strip()
+    if avatar_url:
+        try:
+            avatar_path = await save_avatar(avatar_url, character_id)
+            visual_data["avatar"] = f"/images/{avatar_path}"
+        except Exception as e:
+            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+            visual_data["avatar"] = avatar_url
+
+    tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
+
+    alternate_greetings = []
+    if "alternate_greeting" in form_data:
+        alt_values = form_data.getlist("alternate_greeting")
+        alternate_greetings = [v.strip() for v in alt_values if v.strip()]
+
+    scenarios = [
+        {
+            "index": 0,
+            "scenario": scenario,
+            "intro": first_message
+        }
+    ]
+
+    for idx, alt_greeting in enumerate(alternate_greetings, start=1):
+        scenarios.append({
+            "index": idx,
+            "scenario": scenario,
+            "intro": alt_greeting
+        })
+
+    author_type = form_data.get("author_type", "aikai")
+    if author_type == "custom":
+        created_by_username = form_data.get("created_by_username", "").strip() or None
+    else:
+        created_by_username = "AiKai Team"
+
+    new_character = Character(
+        id=character_id,
+        name=name,
+        description=description,
+        personality=personality,
+        visual_data=visual_data,
+        scenarios=scenarios,
+        tags=tags,
+        is_nsfw=is_nsfw,
+        created_by_username=created_by_username
+    )
+
+    db.add(new_character)
+    await db.commit()
+
+    logger.info(f"Admin {admin.get('telegram_id')} created character '{character_id}'")
+
+    return RedirectResponse(url="/admin/characters", status_code=303)
 
 
 @router.get("/characters/{character_id}", response_class=HTMLResponse)
