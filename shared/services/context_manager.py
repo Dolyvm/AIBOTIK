@@ -108,12 +108,18 @@ class ContextManager:
             await message_repo.add(chat.id, "assistant", clean_text)
 
             image_url = None
+            nsfw_level = None
             if state_updates.get("send_photo", False):
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
                 if msgs_since_photo >= 4:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
-                    image_url = await self._trigger_photo_generation(chat, character, world, history, session)
-                    if image_url:
+                    photo_result = await self._trigger_photo_generation(chat, character, world, history, session)
+                    if photo_result:
+                        if isinstance(photo_result, dict):
+                            image_url = photo_result.get("url")
+                            nsfw_level = photo_result.get("nsfw_level")
+                        else:
+                            image_url = photo_result
                         await chat_repo.update_metrics(
                             chat.id,
                             {"last_auto_photo_at": chat.msgs_since_summary}
@@ -122,7 +128,7 @@ class ContextManager:
                 else:
                     logging.info(f"Auto-photo skipped due to cooldown (msgs_since_photo={msgs_since_photo})")
 
-        return {"text": clean_text, "image_url": image_url}
+        return {"text": clean_text, "image_url": image_url, "nsfw_level": nsfw_level}
 
     async def _summarize_history(
         self,
@@ -303,7 +309,8 @@ class ContextManager:
                             provider_url=image_url,
                             local_path=local_path,
                             file_size=file_size,
-                            content_type=content_type
+                            content_type=content_type,
+                            nsfw_level=nsfw_level
                         )
                     else:
                         async with get_session() as new_session:
@@ -315,10 +322,11 @@ class ContextManager:
                                 provider_url=image_url,
                                 local_path=local_path,
                                 file_size=file_size,
-                                content_type=content_type
+                                content_type=content_type,
+                                nsfw_level=nsfw_level
                             )
 
-                    return public_url
+                    return {"url": public_url, "nsfw_level": nsfw_level}
 
                 except Exception as e:
                     logging.error(f"Failed to save auto-generated image: {e}")
@@ -415,6 +423,7 @@ class ContextManager:
             "player_message": player_action.strip(),
             "character_response": result["text"],
             "image_url": result.get("image_url"),
+            "nsfw_level": result.get("nsfw_level"),
             "affinity": chat.affinity,
             "arousal": chat.arousal
         }

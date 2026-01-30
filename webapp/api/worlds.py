@@ -32,7 +32,8 @@ async def list_worlds(
             "name": world["name"],
             "cover_image": world.get("cover_image", ""),
             "tags": world_tags,
-            "description_short": description_short
+            "description_short": description_short,
+            "is_nsfw": world.get("is_nsfw", False)
         })
 
     return {"worlds": result}
