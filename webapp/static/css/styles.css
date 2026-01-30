@@ -806,3 +806,68 @@ body {
 .transaction-amount.negative {
     color: #e74c3c;
 }
+
+/* === NSFW Blur === */
+.nsfw-blur {
+    filter: blur(20px);
+    transition: filter 0.3s ease;
+    cursor: pointer;
+}
+
+.nsfw-blur.revealed {
+    filter: none;
+}
+
+/* Badge 18+ */
+.nsfw-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: #ff4444;
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    z-index: 3;
+}
+
+/* Overlay для карточек */
+.nsfw-blur-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 2;
+}
+
+.card.revealed .nsfw-blur-overlay {
+    display: none;
+}
+
+/* Подсказка */
+.click-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* Photo container в чате */
+.photo-container {
+    position: relative;
+    display: inline-block;
+}
+
+.photo-container .click-hint {
+    white-space: nowrap;
+}

@@ -33,7 +33,8 @@ async def list_characters(
             "tags": char_tags,
             "model_type": model_type,
             "scenarios_count": 1 + len(char.get("alternate_greetings", [])),
-            "author": char.get("author", {"display_name": "AiKai Team"})
+            "author": char.get("author", {"display_name": "AiKai Team"}),
+            "is_nsfw": char.get("is_nsfw", False)
         })
 
     return {"characters": result}

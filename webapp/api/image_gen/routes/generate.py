@@ -191,7 +191,8 @@ async def gen(
                     provider_url=image_url,
                     local_path=local_path,
                     file_size=file_size,
-                    content_type=content_type
+                    content_type=content_type,
+                    nsfw_level=nsfw_level
                 )
 
                 if pose:
@@ -202,7 +203,7 @@ async def gen(
                         {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
                     )
 
-            response = {"url": public_url}
+            response = {"url": public_url, "nsfw_level": nsfw_level}
             logging.info(f"Returning response: {response}")
             return response
 

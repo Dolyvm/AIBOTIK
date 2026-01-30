@@ -17,7 +17,8 @@ class GeneratedImageRepository(BaseRepository[GeneratedImage]):
         provider_url: str,
         local_path: Optional[str] = None,
         file_size: Optional[int] = None,
-        content_type: Optional[str] = None
+        content_type: Optional[str] = None,
+        nsfw_level: int = 0
     ) -> GeneratedImage:
         image = GeneratedImage(
             user_id=user_id,
@@ -26,7 +27,8 @@ class GeneratedImageRepository(BaseRepository[GeneratedImage]):
             provider_url=provider_url,
             local_path=local_path,
             file_size=file_size,
-            content_type=content_type
+            content_type=content_type,
+            nsfw_level=nsfw_level
         )
         self.session.add(image)
         await self.session.commit()
@@ -48,7 +50,8 @@ class GeneratedImageRepository(BaseRepository[GeneratedImage]):
             {
                 "role": "assistant",
                 "avatar": img.public_url,
-                "timestamp": img.created_at.isoformat()
+                "timestamp": img.created_at.isoformat(),
+                "nsfw_level": img.nsfw_level or 0
             }
             for img in images
         ]

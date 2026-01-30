@@ -86,3 +86,19 @@ class UserRepository(BaseRepository[User]):
 
         await self.session.commit()
         return new_balance
+
+    async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None) -> bool:
+        updates = {}
+        if nsfw_blur is not None:
+            updates["nsfw_blur"] = nsfw_blur
+
+        if not updates:
+            return True
+
+        await self.session.execute(
+            update(UserSettings)
+            .where(UserSettings.user_id == telegram_id)
+            .values(**updates)
+        )
+        await self.session.commit()
+        return True

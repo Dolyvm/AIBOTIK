@@ -123,8 +123,17 @@
                             Создать персонажа
                         </div>
                     </div>
-                    <div v-for="char in characters" :key="char.id" class="card" @click="selectItem('character', char)">
-                        <img :src="char.avatar" loading="lazy">
+                    <div v-for="char in characters" :key="char.id"
+                         class="card"
+                         :class="{revealed: isRevealed('card-'+char.id)}"
+                         @click="shouldBlurCard(char) && !isRevealed('card-'+char.id) ? revealCard($event, char.id) : selectItem('character', char)">
+                        <img :src="char.avatar"
+                             loading="lazy"
+                             :class="{'nsfw-blur': shouldBlurCard(char) && !isRevealed('card-'+char.id)}">
+                        <span v-if="char.is_nsfw" class="nsfw-badge">18+</span>
+                        <div v-if="shouldBlurCard(char) && !isRevealed('card-'+char.id)" class="nsfw-blur-overlay">
+                            <span class="click-hint">Нажмите для просмотра</span>
+                        </div>
                         <div class="card-title">
                             {{ char.name }}
                         </div>
@@ -134,8 +143,17 @@
 
                 <!-- Grid Worlds -->
                 <div v-if="tab === 'worlds'" class="grid">
-                    <div v-for="world in worlds" :key="world.id" class="card" @click="selectItem('world', world)">
-                        <img :src="world.cover_image" loading="lazy">
+                    <div v-for="world in worlds" :key="world.id"
+                         class="card"
+                         :class="{revealed: isRevealed('card-'+world.id)}"
+                         @click="shouldBlurCard(world) && !isRevealed('card-'+world.id) ? revealCard($event, world.id) : selectItem('world', world)">
+                        <img :src="world.cover_image"
+                             loading="lazy"
+                             :class="{'nsfw-blur': shouldBlurCard(world) && !isRevealed('card-'+world.id)}">
+                        <span v-if="world.is_nsfw" class="nsfw-badge">18+</span>
+                        <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
+                            <span class="click-hint">Нажмите для просмотра</span>
+                        </div>
                         <div class="card-title">{{ world.name }}</div>
                     </div>
                     <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
@@ -233,7 +251,15 @@
                      :class="msg.role === 'user' ? 'own' : 'foreign'">
                     <div class="message-bubble">
                         <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
-                        <img class="message-photo" v-if="msg.avatar" :src="msg.avatar" @click="expandImage(msg.avatar)">
+                        <div v-if="msg.avatar" class="photo-container">
+                            <img class="message-photo"
+                                 :src="msg.avatar"
+                                 :class="{'nsfw-blur': shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)}"
+                                 @click="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar) ? reveal(msg.avatar) : expandImage(msg.avatar)">
+                            <span v-if="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)" class="click-hint">
+                                Нажмите для просмотра
+                            </span>
+                        </div>
                     </div>
                 </div>
                 
@@ -435,7 +461,7 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted, nextTick } = Vue;
+        const { createApp, ref, onMounted, nextTick, watch } = Vue;
 
         marked.setOptions({ breaks: true, gfm: true });
 
@@ -500,6 +526,43 @@
                     { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
                     { id: 3, amount: -50, source: 'image_generated', description: 'Генерация изображения', created_at: new Date(Date.now() - 7200000).toISOString() }
                 ]);
+
+                // NSFW Blur state
+                const revealedImages = ref(new Set());
+
+                const shouldBlurImage = (nsfwLevel) => {
+                    return profileSettings.value.nsfw_blur && nsfwLevel >= 3;
+                };
+
+                const shouldBlurCard = (item) => {
+                    return profileSettings.value.nsfw_blur && item.is_nsfw;
+                };
+
+                const isRevealed = (key) => {
+                    return revealedImages.value.has(key);
+                };
+
+                const reveal = (key) => {
+                    revealedImages.value.add(key);
+                };
+
+                const revealCard = (e, id) => {
+                    e.stopPropagation();
+                    if (confirm('Контент 18+. Продолжить?')) {
+                        reveal(`card-${id}`);
+                    }
+                };
+
+                const saveNsfwBlur = async (val) => {
+                    if (!userId.value) return;
+                    try {
+                        await axios.patch(`/api/user/${userId.value}/settings`, { nsfw_blur: val });
+                        showToast('Настройки сохранены', 'success');
+                    } catch (e) {
+                        console.error('Failed to save nsfw_blur setting:', e);
+                        showToast('Ошибка сохранения настроек', 'error');
+                    }
+                };
 
                 const showToast = (message, type = 'error') => {
                     toast.value = { show: true, message, type };
@@ -603,6 +666,9 @@
                     } catch (e) { console.error(e); }
                 };
 
+                // Флаг для игнорирования watch при загрузке из API
+                let isLoadingSettings = false;
+
                 const loadProfile = async () => {
                     tab.value = 'profile';
 
@@ -613,14 +679,30 @@
                         userProfile.value.avatar_url = tgUser.photo_url || '';
                     }
 
-                    // Баланс из API
+                    // Баланс и настройки из API
                     if (userId.value) {
                         try {
+                            isLoadingSettings = true;
                             const res = await axios.get(`/api/user/${userId.value}`);
                             userProfile.value.balance = res.data.balance;
-                        } catch (e) { console.error(e); }
+                            profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                            // Даём Vue обработать изменение перед сбросом флага
+                            await nextTick();
+                            isLoadingSettings = false;
+                        } catch (e) {
+                            isLoadingSettings = false;
+                            console.error(e);
+                        }
                     }
                 };
+
+                // Watch for nsfw_blur changes (только при ручном изменении)
+                watch(() => profileSettings.value.nsfw_blur, (val, oldVal) => {
+                    if (isLoadingSettings) return;
+                    if (oldVal !== undefined) {
+                        saveNsfwBlur(val);
+                    }
+                });
 
                 // --- NAVIGATION ---
                 const selectItem = async (type, item) => {
@@ -739,7 +821,11 @@
                     isWaitingResponse.value = true;
                     try {
                         const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
-                        chatHistory.value.push({ role: 'assistant', avatar: res.data.url });
+                        chatHistory.value.push({
+                            role: 'assistant',
+                            avatar: res.data.url,
+                            nsfw_level: res.data.nsfw_level || 0
+                        });
                         scrollToBottom();
                     } catch (e) {
                         showToast('Не удалось создать фото');
@@ -835,6 +921,7 @@
                             chatHistory.value.push({
                                 role: 'assistant',
                                 avatar: data.image_url,
+                                nsfw_level: data.nsfw_level || 0,
                                 timestamp: new Date().toISOString()
                             });
                         }
@@ -981,7 +1068,9 @@
                     stepsList, createCharacterData, changeStep, generateNewCharacterPreview,
                     isCreatingCharacter, createCharacterFinal, isGeneratingScenario,
                     // Profile
-                    userProfile, profileSettings, mockTransactions, loadProfile
+                    userProfile, profileSettings, mockTransactions, loadProfile,
+                    // NSFW Blur
+                    revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard
                 };
             }
         }).mount('#app');
