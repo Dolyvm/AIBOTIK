@@ -92,6 +92,7 @@
                 <button :class="{active: tab === 'characters'}" @click="tab = 'characters'">Персонажи</button>
                 <button :class="{active: tab === 'worlds'}" @click="tab = 'worlds'">Миры</button>
                 <button :class="{active: tab === 'chats'}" @click="loadChats">Мои чаты</button>
+                <button :class="{active: tab === 'profile'}" @click="loadProfile">Профиль</button>
             </div>
 
             <div class="grid-container">
@@ -152,6 +153,60 @@
                         </div>
                     </div>
                     <div v-if="activeChats.length === 0" class="empty-state">Активные чаты не найдены</div>
+                </div>
+
+                <!-- Profile -->
+                <div v-if="tab === 'profile'" class="profile-view">
+                    <!-- Profile Header -->
+                    <div class="profile-header">
+                        <div class="profile-avatar">
+                            <img :src="userProfile.avatar_url || 'https://via.placeholder.com/80'" alt="Avatar">
+                        </div>
+                        <div class="profile-info">
+                            <div class="profile-name">{{ userProfile.username }}</div>
+                            <div class="profile-balance">
+                                <i class="fas fa-coins"></i>
+                                {{ userProfile.balance }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Section -->
+                    <div class="profile-section">
+                        <div class="section-title">Настройки</div>
+                        <div class="settings-list">
+                            <div class="setting-item">
+                                <span class="setting-label">NSFW Blur</span>
+                                <label class="toggle">
+                                    <input type="checkbox" v-model="profileSettings.nsfw_blur">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <span class="setting-label">Язык</span>
+                                <select v-model="profileSettings.language" class="setting-select">
+                                    <option value="ru">Русский</option>
+                                    <option value="en">English</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Transactions Section -->
+                    <div class="profile-section">
+                        <div class="section-title">История транзакций</div>
+                        <div class="transactions-list">
+                            <div v-for="tx in mockTransactions" :key="tx.id" class="transaction-item">
+                                <div class="transaction-info">
+                                    <div class="transaction-desc">{{ tx.description }}</div>
+                                    <div class="transaction-date">{{ formatDate(tx.created_at) }}</div>
+                                </div>
+                                <div class="transaction-amount" :class="tx.amount > 0 ? 'positive' : 'negative'">
+                                    {{ tx.amount > 0 ? '+' : '' }}{{ tx.amount }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -430,6 +485,22 @@
                 // Toast
                 const toast = ref({ show: false, message: '', type: 'error' });
 
+                // Profile state
+                const userProfile = ref({
+                    username: '',
+                    avatar_url: '',
+                    balance: 0
+                });
+                const profileSettings = ref({
+                    nsfw_blur: true,
+                    language: 'ru'
+                });
+                const mockTransactions = ref([
+                    { id: 1, amount: 100, source: 'daily_bonus', description: 'Ежедневный бонус', created_at: new Date().toISOString() },
+                    { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
+                    { id: 3, amount: -50, source: 'image_generated', description: 'Генерация изображения', created_at: new Date(Date.now() - 7200000).toISOString() }
+                ]);
+
                 const showToast = (message, type = 'error') => {
                     toast.value = { show: true, message, type };
                     setTimeout(() => toast.value.show = false, 3000);
@@ -530,6 +601,25 @@
                         const res = await axios.get(`/api/user/${userId.value}/chats`);
                         activeChats.value = res.data.chats;
                     } catch (e) { console.error(e); }
+                };
+
+                const loadProfile = async () => {
+                    tab.value = 'profile';
+
+                    // Данные из Telegram
+                    const tgUser = tg.initDataUnsafe?.user;
+                    if (tgUser) {
+                        userProfile.value.username = tgUser.username || tgUser.first_name || 'Пользователь';
+                        userProfile.value.avatar_url = tgUser.photo_url || '';
+                    }
+
+                    // Баланс из API
+                    if (userId.value) {
+                        try {
+                            const res = await axios.get(`/api/user/${userId.value}`);
+                            userProfile.value.balance = res.data.balance;
+                        } catch (e) { console.error(e); }
+                    }
                 };
 
                 // --- NAVIGATION ---
@@ -889,7 +979,9 @@
                     newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
                     createCharacterOnClick, selectCCItem, currentCCStep, newCharacterPreview,
                     stepsList, createCharacterData, changeStep, generateNewCharacterPreview,
-                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario
+                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario,
+                    // Profile
+                    userProfile, profileSettings, mockTransactions, loadProfile
                 };
             }
         }).mount('#app');
