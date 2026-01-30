@@ -167,6 +167,23 @@ PROMPT_METADATA = {
         "category": "modifiers",
         "name": "Aiko - Stage 4 (Affinity 80+)"
     },
+
+    "meta_instruction_sfw": {
+        "category": "character",
+        "name": "Meta Instruction (SFW Mode)"
+    },
+    "behavior_arousal_high_sfw": {
+        "category": "character",
+        "name": "Behavior: High Arousal (SFW)"
+    },
+    "sfw_content_restriction": {
+        "category": "character",
+        "name": "SFW Content Restriction"
+    },
+    "scene_analyzer_prompt_sfw": {
+        "category": "scene_analysis",
+        "name": "Scene Analyzer (SFW)"
+    },
 }
 
 

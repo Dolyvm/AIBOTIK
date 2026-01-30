@@ -100,6 +100,10 @@ def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
     return min(5, max(0, int(score / 20)))
 
 
+def calculate_sfw_fallback(arousal: int, affinity: int) -> int:
+    return 1 if affinity > 50 else 0
+
+
 class SceneAnalyzer:
 
     def __init__(self, llm_client: LLMClient):
@@ -109,7 +113,8 @@ class SceneAnalyzer:
         self,
         history: list[dict],
         character_name: str,
-        available_outfits: list[str]
+        available_outfits: list[str],
+        allow_nsfw: bool = True
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
@@ -119,7 +124,13 @@ class SceneAnalyzer:
             for m in recent_messages
         ])
 
-        prompt_template = get_prompt("scene_analyzer_prompt")
+        prompt_key = "scene_analyzer_prompt" if allow_nsfw else "scene_analyzer_prompt_sfw"
+        try:
+            prompt_template = get_prompt(prompt_key)
+        except KeyError:
+            logger.warning(f"Prompt '{prompt_key}' not found, falling back to default")
+            prompt_template = get_prompt("scene_analyzer_prompt")
+
         prompt = prompt_template.format(
             character_name=character_name,
             formatted_chat=formatted,
@@ -138,7 +149,12 @@ class SceneAnalyzer:
 
             data = extract_json(response)
             data = normalize_scene_data(data)
-            return SceneAnalysis(**data)
+            scene = SceneAnalysis(**data)
+
+            if not allow_nsfw:
+                scene.nsfw_level = min(scene.nsfw_level, 1)
+
+            return scene
 
         except Exception as e:
             logger.error(f"SceneAnalyzer parse error: {str(e)}")

@@ -31,7 +31,8 @@ class ContextManager:
         user_input: str,
         character: Optional[dict] = None,
         world: Optional[dict] = None,
-        user_name: str = "User"
+        user_name: str = "User",
+        allow_nsfw: bool = True
     ) -> dict:
         async with get_session() as session:
             message_repo = MessageRepository(session)
@@ -54,11 +55,12 @@ class ContextManager:
                     character=character,
                     chat=chat,
                     summary=chat.summary,
-                    user_name=user_name
+                    user_name=user_name,
+                    allow_nsfw=allow_nsfw
                 )
             elif world:
                 max_tokens = LLM_MAX_TOKENS_WORLD
-                system_prompt = build_world_prompt(world, chat.summary, user_name)
+                system_prompt = build_world_prompt(world, chat.summary, user_name, allow_nsfw)
             else:
                 raise ValueError("Either character or world must be provided")
 
@@ -113,7 +115,9 @@ class ContextManager:
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
                 if msgs_since_photo >= 4:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
-                    photo_result = await self._trigger_photo_generation(chat, character, world, history, session)
+                    photo_result = await self._trigger_photo_generation(
+                        chat, character, world, history, session, allow_nsfw
+                    )
                     if photo_result:
                         if isinstance(photo_result, dict):
                             image_url = photo_result.get("url")
@@ -197,7 +201,8 @@ class ContextManager:
         character: Optional[dict],
         world: Optional[dict],
         history: list,
-        session=None
+        session=None,
+        allow_nsfw: bool = True
     ) -> Optional[str]:
         try:
             import sys
@@ -210,7 +215,11 @@ class ContextManager:
 
             from image_gen.schemas.generate import Prompt
             from image_gen.services.generate import submit_anime, submit_real
-            from image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
+            from image_gen.services.scene_analyzer import (
+                SceneAnalyzer,
+                calculate_nsfw_fallback,
+                calculate_sfw_fallback
+            )
             from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 
             content = character or world
@@ -237,7 +246,8 @@ class ContextManager:
                     scene = await analyzer.analyze(
                         history=history,
                         character_name=content["name"],
-                        available_outfits=available_outfits
+                        available_outfits=available_outfits,
+                        allow_nsfw=allow_nsfw
                     )
 
                     nsfw_level = scene.nsfw_level
@@ -249,11 +259,20 @@ class ContextManager:
 
                 except Exception as e:
                     logging.warning(f"Scene analysis failed for auto-photo, using fallback: {e}")
-                    nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                    if allow_nsfw:
+                        nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                    else:
+                        nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
                     environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
             else:
-                nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                if allow_nsfw:
+                    nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+                else:
+                    nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
                 environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
+
+            if not allow_nsfw:
+                nsfw_level = min(nsfw_level, 1)
 
             environment = chat.current_location or environment
 
@@ -374,7 +393,8 @@ class ContextManager:
         chat: Chat,
         character: Optional[dict] = None,
         world: Optional[dict] = None,
-        user_name: str = "User"
+        user_name: str = "User",
+        allow_nsfw: bool = True
     ) -> dict:
 
         async with get_session() as session:
@@ -416,7 +436,8 @@ class ContextManager:
             user_input=player_action.strip(),
             character=character,
             world=world,
-            user_name=user_name
+            user_name=user_name,
+            allow_nsfw=allow_nsfw
         )
 
         return {

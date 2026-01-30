@@ -91,12 +91,15 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
         user_name = user.username or "User"
 
+        allow_nsfw = character.get("is_nsfw", True) if character else True
+
         result = await context_manager.process_turn(
             chat=chat,
             user_input=payload.text,
             character=character,
             world=world,
             user_name=user_name,
+            allow_nsfw=allow_nsfw,
         )
 
         return {
@@ -177,11 +180,14 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
 
         user_name = user.username or "User"
 
+        allow_nsfw = character.get("is_nsfw", True) if character else True
+
         result = await context_manager.auto_reply_cycle(
             chat=chat,
             character=character,
             world=world,
-            user_name=user_name
+            user_name=user_name,
+            allow_nsfw=allow_nsfw
         )
 
         return {

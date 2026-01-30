@@ -45,7 +45,7 @@ def invalidate_character_modifiers_cache():
     _CHARACTER_MODIFIERS = None
 
 
-def get_modifier_for_stage(character_id: str, state: dict) -> dict:
+def get_modifier_for_stage(character_id: str, state: dict, allow_nsfw: bool = True) -> dict:
     modifiers = _get_character_modifiers().get(character_id)
 
     if not modifiers:
