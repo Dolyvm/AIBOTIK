@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Edit World: {{ world.name }} - Admin Panel{% endblock %}
+{% block title %}Редактировать мир: {{ world.name }} - Админ Панель{% endblock %}
 
 {% block content %}
-<a href="/admin/worlds" class="back-link">← Back to Worlds</a>
+<a href="/admin/worlds" class="back-link">← Назад к мирам</a>
 
 <div class="card">
-    <h2>Edit World</h2>
+    <h2>Редактировать мир</h2>
 
     <div style="margin-bottom: 20px;">
         <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
@@ -25,7 +25,7 @@
 
     <form method="POST" action="/admin/worlds/{{ world.id }}" id="worldForm">
         <div class="form-group">
-            <label for="name">World Name:</label>
+            <label for="name">Название мира:</label>
             <input
                 type="text"
                 id="name"
@@ -37,7 +37,7 @@
         </div>
 
         <div class="form-group">
-            <label for="description">Description (used in AI prompt):</label>
+            <label for="description">Описание (используется в AI промпте):</label>
             <textarea
                 id="description"
                 name="description"
@@ -48,7 +48,7 @@
         </div>
 
         <div class="form-group">
-            <label for="gm_instructions">GM Instructions (Game Master instructions, used in AI prompt):</label>
+            <label for="gm_instructions">Инструкции для ГМ (инструкции Мастера Игры, используются в AI промпте):</label>
             <textarea
                 id="gm_instructions"
                 name="gm_instructions"
@@ -56,12 +56,12 @@
                 class="auto-resize"
             >{{ gm_instructions }}</textarea>
             <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
-                Note: GM instructions for future use. Currently not active in AI prompts.
+                Примечание: Инструкции для ГМ для будущего использования. В настоящее время не активны в AI промптах.
             </div>
         </div>
 
         <div class="form-group">
-            <label for="intro_message">Intro Message (main scenario introduction):</label>
+            <label for="intro_message">Вступительное сообщение (введение в основной сценарий):</label>
             <textarea
                 id="intro_message"
                 name="intro_message"
@@ -72,36 +72,36 @@
         </div>
 
         <div class="form-group">
-            <label>Alternate Scenarios:</label>
-            <div id="alternateScenariosContainer">
+            <label>Альтернативные сценарии:</label>
+            <div id="alternateСценарийsContainer">
                 {% for scenario in alternate_scenarios %}
                 <div class="alternate-scenario-item" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <strong style="font-size: 13px; color: #7f8c8d;">Scenario {{ loop.index }}</strong>
-                        <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateScenario(this)">Remove</button>
+                        <strong style="font-size: 13px; color: #7f8c8d;">Сценарий {{ loop.index }}</strong>
+                        <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateСценарий(this)">Удалить</button>
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Title:</label>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Название:</label>
                         <input
                             type="text"
                             name="alt_scenario_title"
                             value="{{ scenario.title }}"
-                            placeholder="Scenario title"
+                            placeholder="Сценарий title"
                             style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
                         />
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Intro:</label>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Вступление:</label>
                         <textarea
                             name="alt_scenario_intro"
                             rows="3"
                             class="auto-resize"
-                            placeholder="Scenario intro message"
+                            placeholder="Сценарий intro message"
                             style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
                         >{{ scenario.intro }}</textarea>
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">GM Instructions:</label>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Инструкции для ГМ:</label>
                         <textarea
                             name="alt_scenario_gm_instructions"
                             rows="3"
@@ -113,11 +113,11 @@
                 </div>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateScenario()">+ Add Alternate Scenario</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateСценарий()">+ Добавить альтернативный сценарий</button>
         </div>
 
         <div class="form-group">
-            <label for="tags">Tags (comma-separated):</label>
+            <label for="tags">Теги (через запятую):</label>
             <input
                 type="text"
                 id="tags"
@@ -136,17 +136,17 @@
                     {% if world.is_nsfw %}checked{% endif %}
                     style="width: 18px; height: 18px; cursor: pointer;"
                 />
-                <span>NSFW Content</span>
+                <span>NSFW контент</span>
             </label>
         </div>
 
         <div class="meta-info">
-            Last updated: {{ world.updated_at.strftime('%Y-%m-%d %H:%M:%S') if world.updated_at else 'Never' }}
+            Последнее обновление: {{ world.updated_at.strftime('%Y-%m-%d %H:%M:%S') if world.updated_at else 'Никогда' }}
         </div>
 
         <div class="actions">
-            <button type="submit" class="btn">Save Changes</button>
-            <a href="/admin/worlds" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn">Сохранить изменения</button>
+            <a href="/admin/worlds" class="btn btn-secondary">Отмена</a>
         </div>
     </form>
 </div>
@@ -166,8 +166,8 @@
     });
 
     // Add alternate scenario
-    function addAlternateScenario() {
-        const container = document.getElementById('alternateScenariosContainer');
+    function addAlternateСценарий() {
+        const container = document.getElementById('alternateСценарийsContainer');
         const count = container.querySelectorAll('.alternate-scenario-item').length;
 
         const div = document.createElement('div');
@@ -179,30 +179,30 @@
 
         div.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <strong style="font-size: 13px; color: #7f8c8d;">Scenario ${count + 1}</strong>
-                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateScenario(this)">Remove</button>
+                <strong style="font-size: 13px; color: #7f8c8d;">Сценарий ${count + 1}</strong>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateСценарий(this)">Удалить</button>
             </div>
             <div style="margin-bottom: 10px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Title:</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Название:</label>
                 <input
                     type="text"
                     name="alt_scenario_title"
-                    placeholder="Scenario title"
+                    placeholder="Сценарий title"
                     style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
                 />
             </div>
             <div style="margin-bottom: 10px;">
-                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Intro:</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Вступление:</label>
                 <textarea
                     name="alt_scenario_intro"
                     rows="3"
                     class="auto-resize"
-                    placeholder="Scenario intro message"
+                    placeholder="Сценарий intro message"
                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
                 ></textarea>
             </div>
             <div>
-                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">GM Instructions:</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Инструкции для ГМ:</label>
                 <textarea
                     name="alt_scenario_gm_instructions"
                     rows="3"
@@ -224,17 +224,17 @@
         });
     }
 
-    // Remove alternate scenario
-    function removeAlternateScenario(button) {
+    // Удалить alternate scenario
+    function removeAlternateСценарий(button) {
         button.closest('.alternate-scenario-item').remove();
-        updateScenarioNumbers();
+        updateСценарийNumbers();
     }
 
     // Update scenario numbers after removal
-    function updateScenarioNumbers() {
+    function updateСценарийNumbers() {
         const items = document.querySelectorAll('.alternate-scenario-item');
         items.forEach((item, index) => {
-            item.querySelector('strong').textContent = `Scenario ${index + 1}`;
+            item.querySelector('strong').textContent = `Сценарий ${index + 1}`;
         });
     }
 </script>
