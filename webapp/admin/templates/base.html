@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Admin Panel{% endblock %}</title>
+    <title>{% block title %}Админ Панель{% endblock %}</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -220,12 +220,12 @@
 <body>
     <header>
         <div class="container">
-            <h1>🔧 Admin Panel - AiKai Bot</h1>
+            <h1>🔧 Админ Панель - AiKai Bot</h1>
             <div class="user-info">
                 {% if admin %}
-                Admin: {{ admin.first_name or admin.username }}
+                Администратор: {{ admin.first_name or admin.username }}
                 {% else %}
-                Loading...
+                Загрузка...
                 {% endif %}
             </div>
         </div>
@@ -282,7 +282,7 @@
                     });
                 } else {
                     console.error('No initData available');
-                    tg.showAlert('Please open this page from Telegram bot');
+                    tg.showAlert('Пожалуйста, откройте эту страницу из Telegram бота');
                 }
             }
         })();

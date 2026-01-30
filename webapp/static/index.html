@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Roleplay</title>
+    <title>AI Ролевая игра</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
@@ -128,7 +128,7 @@
                             {{ char.name }}
                         </div>
                     </div>
-                    <div v-if="characters.length === 0" class="empty-state">Нет персонажей</div>
+                    <div v-if="characters.length === 0" class="empty-state">Персонажи не найдены</div>
                 </div>
 
                 <!-- Grid Worlds -->
@@ -137,7 +137,7 @@
                         <img :src="world.cover_image" loading="lazy">
                         <div class="card-title">{{ world.name }}</div>
                     </div>
-                    <div v-if="worlds.length === 0" class="empty-state">Нет миров</div>
+                    <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
                 </div>
 
                 <!-- List Chats -->
@@ -151,7 +151,7 @@
                             <div class="chat-row-date">{{ formatDate(chat.updated_at) }}</div>
                         </div>
                     </div>
-                    <div v-if="activeChats.length === 0" class="empty-state">Нет активных чатов</div>
+                    <div v-if="activeChats.length === 0" class="empty-state">Активные чаты не найдены</div>
                 </div>
             </div>
         </div>
@@ -659,11 +659,11 @@
                 };
 
                 const resetChat = async () => {
-                    if (!confirm('Начать историю заново? Память будет очищена.')) return;
+                    if (!confirm('Начать сценарий заново? Память будет очищена.')) return;
                     try {
                         await axios.post(`/api/chat/${currentChatId.value}/reset`);
                         chatHistory.value = [];
-                        showToast('История сброшена', 'success');
+                        showToast('Сценарий сброшен', 'success');
                     } catch (e) { showToast('Ошибка сброса'); }
                 };
 
@@ -707,7 +707,7 @@
                         message: 'Открыть в полном размере?',
                         buttons: [
                             {id: 'open', type: 'default', text: 'Открыть'},
-                            {id: 'cancel', type: 'cancel'}
+                            {id: 'cancel', type: 'cancel', text: 'Отмена'}
                         ]
                     }, (btn) => {
                         if (btn === 'open') tg.openLink(url);

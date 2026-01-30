@@ -1,212 +1,212 @@
 {% extends "base.html" %}
 
-{% block title %}Add New Character - Admin Panel{% endblock %}
+{% block title %}Добавить персонажа - Админ Панель{% endblock %}
 
 {% block content %}
-<a href="/admin/characters" class="back-link">← Back to Characters</a>
+<a href="/admin/characters" class="back-link">← Назад к персонажам</a>
 
 <div class="card">
-    <h2>Add New Character</h2>
+    <h2>Добавить нового персонажа</h2>
 
     <form method="POST" action="/admin/characters/new" id="characterForm">
         <!-- Basic Information Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Basic Information
+                Основная информация
             </h3>
 
             <div class="form-group">
-                <label for="id">Character ID:</label>
+                <label for="id">ID персонажа:</label>
                 <input
                     type="text"
                     id="id"
                     name="id"
                     pattern="[a-z0-9_-]+"
                     required
-                    placeholder="e.g., my_character_name"
+                    placeholder="например, my_character_name"
                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                 />
                 <div id="idStatus" style="font-size: 13px; margin-top: 5px; display: none;"></div>
                 <small style="color: #7f8c8d; font-size: 12px;">
-                    Only lowercase letters, numbers, hyphens and underscores. This cannot be changed later.
+                    Только строчные буквы, цифры, дефисы и подчеркивания. Это нельзя будет изменить позже.
                 </small>
             </div>
 
             <div class="form-group">
-                <label for="name">Character Name:</label>
+                <label for="name">Имя персонажа:</label>
                 <input
                     type="text"
                     id="name"
                     name="name"
                     required
-                    placeholder="Display name of the character"
+                    placeholder="Отображаемое имя персонажа"
                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                 />
             </div>
 
             <div class="form-group">
-                <label for="description">Description (used in AI prompt):</label>
+                <label for="description">Описание (используется в AI промпте):</label>
                 <textarea
                     id="description"
                     name="description"
                     rows="8"
                     required
                     class="auto-resize"
-                    placeholder="Detailed description of the character for the AI..."
+                    placeholder="Подробное описание персонажа для AI..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="personality">Personality (used in AI prompt):</label>
+                <label for="personality">Характер (используется в AI промпте):</label>
                 <textarea
                     id="personality"
                     name="personality"
                     rows="8"
                     required
                     class="auto-resize"
-                    placeholder="Character's personality traits, behavior patterns, speaking style..."
+                    placeholder="Черты характера, модели поведения, стиль речи..."
                 ></textarea>
             </div>
         </div>
 
-        <!-- Scenario and Greetings Section -->
+        <!-- Scenario and Приветствиеs Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Scenario & Greetings
+                Сценарий и приветствия
             </h3>
 
             <div class="form-group">
-                <label for="scenario">Scenario (meeting context, used in AI prompt):</label>
+                <label for="scenario">Сценарий (контекст встречи, используется в AI промпте):</label>
                 <textarea
                     id="scenario"
                     name="scenario"
                     rows="6"
                     required
                     class="auto-resize"
-                    placeholder="The context or situation in which the user meets this character..."
+                    placeholder="Контекст или ситуация, в которой пользователь встречает этого персонажа..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="first_message">First Message (greeting):</label>
+                <label for="first_message">Первое сообщение (приветствие):</label>
                 <textarea
                     id="first_message"
                     name="first_message"
                     rows="4"
                     required
                     class="auto-resize"
-                    placeholder="The character's opening message when starting a conversation..."
+                    placeholder="Вступительное сообщение персонажа при начале разговора..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label>Alternate Greetings:</label>
-                <div id="alternateGreetingsContainer"></div>
-                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateGreeting()">+ Add Alternate Greeting</button>
+                <label>Альтернативные приветствия:</label>
+                <div id="alternateПриветствиеsContainer"></div>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>
             </div>
         </div>
 
         <!-- Visual Data Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Visual Data (for image generation)
+                Визуальные данные (для генерации изображений)
             </h3>
 
             <div class="form-group">
-                <label for="model_type">Model Type:</label>
+                <label for="model_type">Тип модели:</label>
                 <select
                     id="model_type"
                     name="model_type"
                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                 >
-                    <option value="anime">Anime</option>
-                    <option value="real">Real/Photorealistic</option>
+                    <option value="anime">Аниме</option>
+                    <option value="real">Реалистичный/Фотореалистичный</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="appearance">Appearance:</label>
+                <label for="appearance">Внешность:</label>
                 <textarea
                     id="appearance"
                     name="appearance"
                     rows="3"
                     class="auto-resize"
-                    placeholder="General appearance description for image generation..."
+                    placeholder="Общее описание внешности для генерации изображений..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="visual_body">Body:</label>
+                <label for="visual_body">Тело:</label>
                 <textarea
                     id="visual_body"
                     name="visual_body"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Body description (height, build, etc.)..."
+                    placeholder="Описание тела (рост, телосложение и т.д.)..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="visual_face">Face:</label>
+                <label for="visual_face">Лицо:</label>
                 <textarea
                     id="visual_face"
                     name="visual_face"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Face description (eyes, hair, features...)..."
+                    placeholder="Описание лица (глаза, волосы, черты...)..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="visual_default_outfit">Default Outfit:</label>
+                <label for="visual_default_outfit">Стандартный наряд:</label>
                 <textarea
                     id="visual_default_outfit"
                     name="visual_default_outfit"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Default clothing/outfit description..."
+                    placeholder="Описание стандартной одежды/наряда..."
                 ></textarea>
             </div>
 
             <div class="form-group">
-                <label for="visual_style_tags">Style Tags:</label>
+                <label for="visual_style_tags">Теги стиля:</label>
                 <textarea
                     id="visual_style_tags"
                     name="visual_style_tags"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Additional style tags for image generation..."
+                    placeholder="Дополнительные теги стиля для генерации изображений..."
                 ></textarea>
             </div>
 
             <!-- Wardrobe Section (Dynamic) -->
             <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Wardrobe</h4>
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Гардероб</h4>
                 <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
-                    Add outfit categories for image generation. The AI will select appropriate outfits based on conversation context.
+                    Добавьте категории нарядов для генерации изображений. AI будет выбирать подходящие наряды на основе контекста разговора.
                 </p>
 
                 <div id="wardrobeContainer"></div>
 
-                <button type="button" class="btn btn-secondary btn-small" onclick="addOutfit()">+ Add Outfit</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addOutfit()">+ Добавить наряд</button>
             </div>
 
             <!-- Avatar Generation Section -->
             <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
-                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Character Avatar</h4>
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Аватар персонажа</h4>
 
                 <div id="avatarPreview" style="display: none; margin-bottom: 15px; text-align: center;">
-                    <img id="previewImage" src="" alt="Avatar Preview" style="max-width: 256px; max-height: 256px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <img id="previewImage" src="" alt="Предпросмотр аватара" style="max-width: 256px; max-height: 256px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                     <div style="margin-top: 10px;">
-                        <button type="button" class="btn btn-small" onclick="useAsAvatar()">Use as Avatar</button>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="generateAvatar()">Regenerate</button>
+                        <button type="button" class="btn btn-small" onclick="useAsAvatar()">Использовать как аватар</button>
+                        <button type="button" class="btn btn-secondary btn-small" onclick="generateAvatar()">Перегенерировать</button>
                     </div>
                 </div>
 
                 <div id="avatarStatus" style="display: none; margin-bottom: 10px; padding: 10px; border-radius: 4px;"></div>
 
-                <button type="button" class="btn" onclick="generateAvatar()" id="generateAvatarBtn">Generate Preview</button>
-                <span id="generatingSpinner" style="display: none; margin-left: 10px; color: #7f8c8d;">Generating...</span>
+                <button type="button" class="btn" onclick="generateAvatar()" id="generateAvatarBtn">Сгенерировать превью</button>
+                <span id="generatingSpinner" style="display: none; margin-left: 10px; color: #7f8c8d;">Генерация...</span>
 
                 <input type="hidden" name="avatar_url" id="avatarUrlInput">
             </div>
@@ -215,16 +215,16 @@
         <!-- Metadata Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Metadata
+                Метаданные
             </h3>
 
             <div class="form-group">
-                <label for="tags">Tags (comma-separated):</label>
+                <label for="tags">Теги (через запятую):</label>
                 <input
                     type="text"
                     id="tags"
                     name="tags"
-                    placeholder="e.g., anime, female, fantasy, romance"
+                    placeholder="например, anime, female, fantasy, romance"
                     style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                 />
             </div>
@@ -237,7 +237,7 @@
                         name="is_nsfw"
                         style="width: 18px; height: 18px; cursor: pointer;"
                     />
-                    <span>NSFW Content</span>
+                    <span>NSFW контент</span>
                 </label>
             </div>
         </div>
@@ -245,7 +245,7 @@
         <!-- Author Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Author
+                Автор
             </h3>
 
             <div class="form-group">
@@ -258,7 +258,7 @@
                         onchange="toggleAuthorField()"
                         style="width: 18px; height: 18px; cursor: pointer;"
                     />
-                    <span>AiKai Team</span>
+                    <span>Команда AiKai</span>
                 </label>
 
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -269,7 +269,7 @@
                         onchange="toggleAuthorField()"
                         style="width: 18px; height: 18px; cursor: pointer;"
                     />
-                    <span>Custom author</span>
+                    <span>Пользовательский автор</span>
                 </label>
 
                 <div id="customAuthorContainer" style="margin-top: 10px; display: none;">
@@ -277,7 +277,7 @@
                         type="text"
                         id="created_by_username"
                         name="created_by_username"
-                        placeholder="Enter author username"
+                        placeholder="Введите имя пользователя автора"
                         style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
                     />
                 </div>
@@ -285,8 +285,8 @@
         </div>
 
         <div class="actions">
-            <button type="submit" class="btn" id="submitBtn">Create Character</button>
-            <a href="/admin/characters" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn" id="submitBtn">Создать персонажа</button>
+            <a href="/admin/characters" class="btn btn-secondary">Отмена</a>
         </div>
     </form>
 </div>
@@ -317,13 +317,13 @@
 
         // Validate format first
         if (!/^[a-z0-9_-]+$/.test(id)) {
-            statusDiv.innerHTML = '<span style="color: #e74c3c;">Invalid format. Use only lowercase letters, numbers, hyphens and underscores.</span>';
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Неверный формат. Используйте только строчные буквы, цифры, дефисы и подчеркивания.</span>';
             statusDiv.style.display = 'block';
             submitBtn.disabled = true;
             return;
         }
 
-        statusDiv.innerHTML = '<span style="color: #7f8c8d;">Checking...</span>';
+        statusDiv.innerHTML = '<span style="color: #7f8c8d;">Проверка...</span>';
         statusDiv.style.display = 'block';
 
         try {
@@ -331,14 +331,14 @@
             const data = await response.json();
 
             if (data.exists) {
-                statusDiv.innerHTML = '<span style="color: #e74c3c;">ID is already taken</span>';
+                statusDiv.innerHTML = '<span style="color: #e74c3c;">ID уже занят</span>';
                 submitBtn.disabled = true;
             } else {
-                statusDiv.innerHTML = '<span style="color: #27ae60;">ID is available</span>';
+                statusDiv.innerHTML = '<span style="color: #27ae60;">ID доступен</span>';
                 submitBtn.disabled = false;
             }
         } catch (error) {
-            statusDiv.innerHTML = '<span style="color: #e74c3c;">Error checking ID</span>';
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Ошибка проверки ID</span>';
             submitBtn.disabled = true;
         }
     }, 500);
@@ -369,9 +369,9 @@
 
     // Add alternate greeting
     let greetingCount = 0;
-    function addAlternateGreeting() {
+    function addAlternateПриветствие() {
         greetingCount++;
-        const container = document.getElementById('alternateGreetingsContainer');
+        const container = document.getElementById('alternateПриветствиеsContainer');
 
         const div = document.createElement('div');
         div.className = 'alternate-greeting-item';
@@ -382,15 +382,15 @@
 
         div.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong style="font-size: 13px; color: #7f8c8d;">Greeting ${greetingCount}</strong>
-                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateGreeting(this)">Remove</button>
+                <strong style="font-size: 13px; color: #7f8c8d;">Приветствие ${greetingCount}</strong>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateПриветствие(this)">Удалить</button>
             </div>
             <textarea
                 name="alternate_greeting"
                 rows="3"
                 class="auto-resize"
                 style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
-                placeholder="Alternative greeting message..."
+                placeholder="Альтернативное приветственное сообщение..."
             ></textarea>
         `;
 
@@ -403,17 +403,17 @@
         });
     }
 
-    // Remove alternate greeting
-    function removeAlternateGreeting(button) {
+    // Удалить alternate greeting
+    function removeAlternateПриветствие(button) {
         button.closest('.alternate-greeting-item').remove();
-        updateGreetingNumbers();
+        updateПриветствиеNumbers();
     }
 
     // Update greeting numbers after removal
-    function updateGreetingNumbers() {
+    function updateПриветствиеNumbers() {
         const items = document.querySelectorAll('.alternate-greeting-item');
         items.forEach((item, index) => {
-            item.querySelector('strong').textContent = `Greeting ${index + 1}`;
+            item.querySelector('strong').textContent = `Приветствие ${index + 1}`;
         });
         greetingCount = items.length;
     }
@@ -459,16 +459,16 @@
                 type="text"
                 name="wardrobe_key"
                 value="${key}"
-                placeholder="Outfit name"
+                placeholder="Название наряда"
                 style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
             />
             <textarea
                 name="wardrobe_value"
                 rows="2"
-                placeholder="Outfit description for image generation..."
+                placeholder="Описание наряда для генерации изображений..."
                 style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; resize: vertical;"
             >${value}</textarea>
-            <button type="button" class="btn btn-danger btn-small" onclick="removeOutfit(this)" style="padding: 8px 12px;">Remove</button>
+            <button type="button" class="btn btn-danger btn-small" onclick="removeOutfit(this)" style="padding: 8px 12px;">Удалить</button>
         `;
 
         container.appendChild(div);
@@ -499,7 +499,7 @@
         // Validate required fields
         const visual = collectVisualData();
         if (!visual.appearance && !visual.body && !visual.face) {
-            statusDiv.innerHTML = '<span style="color: #e74c3c;">Please fill in at least one visual field (Appearance, Body, or Face)</span>';
+            statusDiv.innerHTML = '<span style="color: #e74c3c;">Пожалуйста, заполните хотя бы одно визуальное поле (Внешность, Тело или Лицо)</span>';
             statusDiv.style.display = 'block';
             statusDiv.style.background = '#fdecea';
             return;
@@ -525,12 +525,12 @@
             document.getElementById('previewImage').src = data.url;
             previewDiv.style.display = 'block';
 
-            statusDiv.innerHTML = '<span style="color: #27ae60;">Avatar generated! Click "Use as Avatar" to save it.</span>';
+            statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар сгенерирован! Нажмите "Использовать как аватар", чтобы сохранить его.</span>';
             statusDiv.style.display = 'block';
             statusDiv.style.background = '#e8f8e8';
 
         } catch (error) {
-            statusDiv.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span>`;
+            statusDiv.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${error.message}</span>`;
             statusDiv.style.display = 'block';
             statusDiv.style.background = '#fdecea';
         } finally {
@@ -546,7 +546,7 @@
 
         avatarInput.value = previewImage.src;
 
-        statusDiv.innerHTML = '<span style="color: #27ae60;">Avatar selected! It will be saved when you create the character.</span>';
+        statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар выбран! Он будет сохранен при создании персонажа.</span>';
         statusDiv.style.display = 'block';
         statusDiv.style.background = '#e8f8e8';
     }

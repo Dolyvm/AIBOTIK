@@ -14,7 +14,7 @@ from shared.services.prompt_service import reload_cache_sync, DEFAULT_PROMPTS
 from shared.constants import invalidate_character_modifiers_cache
 from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
 from api.image_gen.services.generate import submit_anime, submit_real
-from services.image_storage import save_avatar, get_public_url
+from services.image_storage import save_avatar, save_world_cover, get_public_url
 from telegram_init_data import validate, parse
 
 logger = logging.getLogger(__name__)
@@ -285,6 +285,17 @@ async def check_character_id(
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
     return {"exists": character is not None}
+
+
+@router.get("/api/check-world-id/{world_id}")
+async def check_world_id(
+    world_id: str,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    result = await db.execute(select(World).where(World.id == world_id))
+    world = result.scalar_one_or_none()
+    return {"exists": world is not None}
 
 
 @router.post("/api/generate-avatar")
@@ -595,6 +606,103 @@ async def list_worlds(
             "admin": admin
         }
     )
+
+
+@router.get("/worlds/new", response_class=HTMLResponse)
+async def add_world_form(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    return templates.TemplateResponse(
+        "add_world.html",
+        {
+            "request": request,
+            "admin": admin
+        }
+    )
+
+
+@router.post("/worlds/new")
+async def create_world(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    form_data = await request.form()
+
+    world_id = form_data.get("id", "").strip()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+    gm_instructions = form_data.get("gm_instructions", "").strip()
+    intro_message = form_data.get("intro_message", "").strip()
+    cover_image = form_data.get("cover_image", "").strip() or None
+    tags_str = form_data.get("tags", "").strip()
+
+    if not world_id or not name or not description or not intro_message:
+        raise HTTPException(status_code=400, detail="ID, name, description, and intro message are required")
+
+    if not re.match(r'^[a-z0-9_-]+$', world_id):
+        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+
+    result = await db.execute(select(World).where(World.id == world_id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"World with ID '{world_id}' already exists")
+
+    tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
+
+    alt_titles = form_data.getlist("alt_scenario_title")
+    alt_intros = form_data.getlist("alt_scenario_intro")
+    alt_gm_instructions = form_data.getlist("alt_scenario_gm_instructions")
+
+    scenarios = [
+        {
+            "index": 0,
+            "intro": intro_message,
+            "gm_instructions": gm_instructions
+        }
+    ]
+
+    for idx in range(len(alt_titles)):
+        title = alt_titles[idx].strip() if idx < len(alt_titles) else ""
+        intro = alt_intros[idx].strip() if idx < len(alt_intros) else ""
+        gm_instr = alt_gm_instructions[idx].strip() if idx < len(alt_gm_instructions) else ""
+
+        if title or intro:
+            scenarios.append({
+                "index": idx + 1,
+                "title": title,
+                "intro": intro,
+                "gm_instructions": gm_instr
+            })
+
+    # Скачивание и сохранение обложки
+    saved_cover_image = None
+    if cover_image:
+        try:
+            cover_path = await save_world_cover(cover_image, world_id)
+            saved_cover_image = get_public_url(cover_path)
+        except Exception as e:
+            logger.warning(f"Failed to save world cover, using original URL: {e}")
+            saved_cover_image = cover_image
+
+    new_world = World(
+        id=world_id,
+        name=name,
+        description=description,
+        cover_image=saved_cover_image,
+        scenarios=scenarios,
+        locations=[],
+        tags=tags,
+        is_nsfw=False
+    )
+
+    db.add(new_world)
+    await db.commit()
+
+    logger.info(f"Admin {admin.get('telegram_id')} created world '{world_id}'")
+
+    return RedirectResponse(url="/admin/worlds", status_code=303)
 
 
 @router.get("/worlds/{world_id}", response_class=HTMLResponse)
