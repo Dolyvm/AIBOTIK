@@ -10,7 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v=4">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
@@ -132,7 +132,7 @@
                              :class="{'nsfw-blur': shouldBlurCard(char) && !isRevealed('card-'+char.id)}">
                         <span v-if="char.is_nsfw" class="nsfw-badge">18+</span>
                         <div v-if="shouldBlurCard(char) && !isRevealed('card-'+char.id)" class="nsfw-blur-overlay">
-                            <span class="click-hint">Нажмите для просмотра</span>
+                            <span class="click-hint">👁</span>
                         </div>
                         <div class="card-title">
                             {{ char.name }}
@@ -152,7 +152,7 @@
                              :class="{'nsfw-blur': shouldBlurCard(world) && !isRevealed('card-'+world.id)}">
                         <span v-if="world.is_nsfw" class="nsfw-badge">18+</span>
                         <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
-                            <span class="click-hint">Нажмите для просмотра</span>
+                            <span class="click-hint">👁</span>
                         </div>
                         <div class="card-title">{{ world.name }}</div>
                     </div>
@@ -601,9 +601,24 @@
 
 
 
+                const updateDeviceClass = () => {
+                    const width = window.innerWidth;
+                    document.body.classList.remove('mobile', 'tablet', 'desktop');
+                    if (width < 500) {
+                        document.body.classList.add('mobile');
+                    } else if (width < 800) {
+                        document.body.classList.add('tablet');
+                    } else {
+                        document.body.classList.add('desktop');
+                    }
+                };
+
                 onMounted(async () => {
                     tg.ready();
                     tg.expand();
+
+                    updateDeviceClass();
+                    window.addEventListener('resize', updateDeviceClass);
 
                     const urlParams = new URLSearchParams(window.location.search);
                     userId.value = tg.initDataUnsafe?.user?.id || urlParams.get('user_id');

@@ -90,16 +90,30 @@ body {
 
 .grid {
     display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+body.mobile .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+}
+
+body.tablet .grid {
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+}
+
+body.desktop .grid {
+    grid-template-columns: repeat(4, 1fr);
 }
 
 .card {
     position: relative;
     aspect-ratio: 3/4;
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
     cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .selected {
@@ -117,11 +131,12 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
     color: white;
-    font-size: 12px;
-    padding: 12px 4px 4px;
+    font-size: 13px;
+    padding: 20px 8px 8px;
     text-align: center;
+    font-weight: 500;
 }
 
 /* Chats List Style */
@@ -819,8 +834,9 @@ body {
 }
 
 .card .nsfw-blur {
-    border-radius: 8px;
-    clip-path: inset(0 round 8px);
+    filter: blur(25px) saturate(0.5);
+    transform: scale(1.1);
+    border-radius: 12px;
 }
 
 /* Badge 18+ */
@@ -828,13 +844,14 @@ body {
     position: absolute;
     top: 8px;
     right: 8px;
-    background: #ff4444;
+    background: linear-gradient(135deg, #ff4444, #cc0000);
     color: white;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: bold;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
     z-index: 3;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Overlay для карточек */
@@ -842,11 +859,13 @@ body {
     position: absolute;
     inset: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
     z-index: 2;
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
 }
 
@@ -854,7 +873,6 @@ body {
     display: none;
 }
 
-/* Подсказка */
 .click-hint {
     position: absolute;
     top: 50%;
@@ -869,6 +887,23 @@ body {
     z-index: 4;
 }
 
+.card .click-hint {
+    position: static;
+    transform: none;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    filter: grayscale(1);
+}
+
 /* Photo container в чате */
 .photo-container {
     position: relative;
@@ -877,11 +912,4 @@ body {
 
 .photo-container .click-hint {
     white-space: nowrap;
-}
-
-.card .click-hint {
-    position: static;
-    transform: none;
-    max-width: 80%;
-    text-align: center;
 }
