@@ -4,17 +4,15 @@ from typing import Optional
 
 from pydantic import BaseModel
 from shared.services.prompt_service import get_prompt
-
+from shared.services.cache import get_cache
 
 class ModelType(enum.Enum):
     real = "real"
     anime = "anime"
 
-
 class ImageSize(BaseModel):
     width: int = 1024
     height: int = 1024
-
 
 class GenerateRequest(BaseModel):
     prompt: str
@@ -23,75 +21,57 @@ class GenerateRequest(BaseModel):
     size: ImageSize = ImageSize(width=1024, height=1024)
     allow_nsfw: bool = True
 
-
 class TerminatePodRequest(BaseModel):
     pod_id: str
-
 
 @dataclass(frozen=True)
 class PromptLayer:
     prompt: str = ""
     negative_prompt: str = ""
 
+async def _build_nsfw_levels() -> list[dict]:
+    levels = []
+    for i in range(6):
+        prompt = await get_prompt(f"nsfw_level_{i}")
+        negative_prompt = await get_prompt(f"nsfw_level_{i}_neg")
+        levels.append({
+            "prompt": prompt,
+            "negative_prompt": negative_prompt
+        })
+    return levels
 
-def _get_nsfw_levels() -> list[PromptLayer]:
-    return [
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_0"),
-            negative_prompt=get_prompt("nsfw_level_0_neg")
-        ),
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_1"),
-            negative_prompt=get_prompt("nsfw_level_1_neg")
-        ),
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_2"),
-            negative_prompt=get_prompt("nsfw_level_2_neg")
-        ),
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_3"),
-            negative_prompt=get_prompt("nsfw_level_3_neg")
-        ),
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_4"),
-            negative_prompt=get_prompt("nsfw_level_4_neg")
-        ),
-        PromptLayer(
-            prompt=get_prompt("nsfw_level_5"),
-            negative_prompt=get_prompt("nsfw_level_5_neg")
-        ),
-    ]
+async def get_nsfw_levels() -> list[PromptLayer]:
+    cache = get_cache()
 
+    if cache:
+        cached = await cache.get_nsfw_levels()
+        if cached:
+            return [PromptLayer(prompt=l["prompt"], negative_prompt=l["negative_prompt"]) for l in cached]
 
-_NSFW_LEVELS_CACHE = None
+    levels_data = await _build_nsfw_levels()
 
+    if cache:
+        await cache.set_nsfw_levels(levels_data)
 
-def get_nsfw_levels() -> list[PromptLayer]:
-    global _NSFW_LEVELS_CACHE
-    if _NSFW_LEVELS_CACHE is None:
-        _NSFW_LEVELS_CACHE = _get_nsfw_levels()
-    return _NSFW_LEVELS_CACHE
+    return [PromptLayer(prompt=l["prompt"], negative_prompt=l["negative_prompt"]) for l in levels_data]
 
+async def invalidate_nsfw_levels_cache():
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_nsfw_levels()
 
-def invalidate_nsfw_levels_cache():
-    global _NSFW_LEVELS_CACHE
-    _NSFW_LEVELS_CACHE = None
+async def get_anime_base_positive() -> str:
+    return await get_prompt("anime_base_positive")
 
-
-def get_anime_base_positive() -> str:
-    return get_prompt("anime_base_positive")
-
-
-def get_anime_base_negative() -> str:
-    return get_prompt("anime_base_negative")
-
+async def get_anime_base_negative() -> str:
+    return await get_prompt("anime_base_negative")
 
 class Prompt(BaseModel):
     character_base: Optional[str] = ""
     signature: Optional[str] = ""
     body_state: Optional[str] = ""
     facial_expression: Optional[str] = ""
-    scene_details: Optional[str] = ""  
+    scene_details: Optional[str] = ""
     clothing: Optional[str] = ""
     environment: Optional[str] = ""
     action: Optional[str] = ""
@@ -135,13 +115,15 @@ class Prompt(BaseModel):
             nsfw_level=nsfw_level
         )
 
-    def build_prompt(self, build_as_type: ModelType = None) -> tuple[str, str]:
+    async def build_prompt(self, build_as_type: ModelType = None) -> tuple[str, str]:
         prompt_parts = []
         negative_parts = []
 
         if build_as_type == "anime":
-            prompt_parts.append(get_anime_base_positive())
-            negative_parts.append(get_anime_base_negative())
+            prompt_parts.append(await get_anime_base_positive())
+            negative_parts.append(await get_anime_base_negative())
+
+        nsfw_levels = await get_nsfw_levels()
 
         for field_name, _ in self.__class__.model_fields.items():
             value = getattr(self, field_name)
@@ -149,8 +131,8 @@ class Prompt(BaseModel):
                 continue
 
             if field_name == "nsfw_level":
-                # value: int
-                nsfw_level = get_nsfw_levels()[value]
+                            
+                nsfw_level = nsfw_levels[value]
                 prompt_parts.append(nsfw_level.prompt)
                 negative_parts.append(nsfw_level.negative_prompt)
                 continue

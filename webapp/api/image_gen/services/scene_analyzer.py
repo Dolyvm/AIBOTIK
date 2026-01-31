@@ -1,15 +1,15 @@
+import hashlib
 import json
 import logging
 import re
 from typing import Optional
 from pydantic import BaseModel
 from shared.services.llm import LLMClient
+from shared.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
 
-
 def extract_json(text: str) -> dict:
-    """Извлекает JSON из ответа LLM, даже если он обёрнут в markdown."""
     text = text.strip()
 
     if text.startswith('{'):
@@ -40,7 +40,6 @@ def extract_json(text: str) -> dict:
                         break
 
     raise ValueError(f"Could not extract JSON from response")
-
 
 def normalize_scene_data(data: dict) -> dict:
     if 'scene_analysis' in data:
@@ -84,7 +83,6 @@ def normalize_scene_data(data: dict) -> dict:
 
     return result
 
-
 class SceneAnalysis(BaseModel):
     location: str = "unknown"
     pose: str = "standing"
@@ -94,15 +92,12 @@ class SceneAnalysis(BaseModel):
     reasoning: str = ""
     scene_description: str = ""  
 
-
 def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
     score = arousal * 0.75 + affinity * 0.25
     return min(5, max(0, int(score / 20)))
 
-
 def calculate_sfw_fallback(arousal: int, affinity: int) -> int:
     return 1 if affinity > 50 else 0
-
 
 class SceneAnalyzer:
 
@@ -114,11 +109,23 @@ class SceneAnalyzer:
         history: list[dict],
         character_name: str,
         available_outfits: list[str],
-        allow_nsfw: bool = True
+        allow_nsfw: bool = True,
+        chat_id: int = None
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
         recent_messages = history[-5:] if len(history) > 5 else history
+
+        context_str = f"{character_name}:{allow_nsfw}:{recent_messages}"
+        context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
+
+        cache = get_cache()
+        if cache and chat_id:
+            cached = await cache.get_scene_analysis(chat_id, context_hash)
+            if cached:
+                logger.info(f"SceneAnalysis cache HIT for chat {chat_id}")
+                return SceneAnalysis(**cached)
+
         formatted = "\n".join([
             f"{m['role'].upper()}: {m['content'][:200]}"
             for m in recent_messages
@@ -126,10 +133,10 @@ class SceneAnalyzer:
 
         prompt_key = "scene_analyzer_prompt" if allow_nsfw else "scene_analyzer_prompt_sfw"
         try:
-            prompt_template = get_prompt(prompt_key)
+            prompt_template = await get_prompt(prompt_key)
         except KeyError:
             logger.warning(f"Prompt '{prompt_key}' not found, falling back to default")
-            prompt_template = get_prompt("scene_analyzer_prompt")
+            prompt_template = await get_prompt("scene_analyzer_prompt")
 
         prompt = prompt_template.format(
             character_name=character_name,
@@ -153,6 +160,9 @@ class SceneAnalyzer:
 
             if not allow_nsfw:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
+
+            if cache and chat_id:
+                await cache.set_scene_analysis(chat_id, context_hash, scene.model_dump())
 
             return scene
 

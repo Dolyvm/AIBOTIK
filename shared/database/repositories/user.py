@@ -1,4 +1,3 @@
-"""Репозиторий для работы с пользователями."""
 from typing import Optional
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
@@ -6,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from shared.models import User, UserSettings
 from .base import BaseRepository
 from ..exceptions import EntityNotFoundError, InsufficientBalanceError
-
+from shared.services.cache import get_cache
 
 class UserRepository(BaseRepository[User]):
     model = User
@@ -35,7 +34,6 @@ class UserRepository(BaseRepository[User]):
 
             await self.session.commit()
 
-            # Refresh с загрузкой settings
             result = await self.session.execute(
                 select(User)
                 .options(selectinload(User.settings))
@@ -55,9 +53,8 @@ class UserRepository(BaseRepository[User]):
         return balance
 
     async def update_balance_atomic(self, telegram_id: int, amount: int) -> int:
-        """Атомарное обновление баланса с защитой от race condition."""
         if amount < 0:
-            # Атомарное списание с проверкой
+                                            
             result = await self.session.execute(
                 update(User)
                 .where(
@@ -73,7 +70,7 @@ class UserRepository(BaseRepository[User]):
                 current = await self.get_balance(telegram_id)
                 raise InsufficientBalanceError(current, abs(amount))
         else:
-            # Пополнение
+                        
             result = await self.session.execute(
                 update(User)
                 .where(User.telegram_id == telegram_id)
@@ -85,6 +82,11 @@ class UserRepository(BaseRepository[User]):
                 raise EntityNotFoundError("User", telegram_id)
 
         await self.session.commit()
+
+        cache = get_cache()
+        if cache:
+            await cache.invalidate_user(telegram_id)
+
         return new_balance
 
     async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None) -> bool:
@@ -101,4 +103,9 @@ class UserRepository(BaseRepository[User]):
             .values(**updates)
         )
         await self.session.commit()
+
+        cache = get_cache()
+        if cache:
+            await cache.invalidate_user(telegram_id)
+
         return True

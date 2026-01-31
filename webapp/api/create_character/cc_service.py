@@ -1,9 +1,5 @@
 from .cc_schemas import CreateCharacterRequest
 
-# ═══════════════════════════════════════════════════════════════════════════
-# КАРТОЧКИ ДЛЯ UI
-# ═══════════════════════════════════════════════════════════════════════════
-
 styleCards = [
     {
         "title": "Аниме",
@@ -116,7 +112,6 @@ eyeColorCards = [
     }
 ]
 
-
 hairColorCards = [
     {
         "title": "Черные",
@@ -149,7 +144,6 @@ hairColorCards = [
         "img": "/content/characters/aiko.png"
     }
 ]
-
 
 haircutCards = [
     {
@@ -460,7 +454,6 @@ stepsList = [
     }
 ]
 
-
 personality_to_prompt = {
     "Заботливый": "Тёплая, защищающая, ставит чужое благополучие выше своего.",
     "Мудрец": "Спокойная, рассудительная, направляет словами и опытом.",
@@ -506,7 +499,7 @@ personality_to_tags = {
 }
 
 preference_to_tags = {
-    # BDSM группа
+                 
     "Подчинение": "BDSM",
     "Доминирование": "BDSM",
     "Бондаж": "BDSM",
@@ -514,24 +507,24 @@ preference_to_tags = {
     "Ошейник и поводок": "BDSM",
     "Наручники": "BDSM",
     "С завязанными глазами": "Blindfold",
-    # Групповое
+               
     "Групповой секс": "Group",
     "Обмен Женами": "Swinger",
     "Двойное проникновение": "DP",
-    # Публичное
+               
     "На улице": "Public",
     "Вуайеризм": "Voyeur",
-    # Игрушки
+             
     "Игрушка": "Toys",
     "Анальная пробка": "Toys",
     "Дилдо": "Toys",
-    # Грубое
+            
     "Шлепки": "Spanking",
     "Унижение": "Humiliation",
     "Рванье Одежды": "Rough",
     "Дергать за волосы": "Rough",
     "Ругань": "Dirty Talk",
-    # Сексуальные акты
+                      
     "Анальный секс": "Anal",
     "Оральный секс": "Oral",
     "Глубокая глотка": "Deepthroat",
@@ -539,17 +532,16 @@ preference_to_tags = {
     "Вставление пальцев": "Fingering",
     "Фистинг": "Fisting",
     "Сзади (догги-стайл)": "Doggy",
-    # Финишы
+            
     "Внутреннее семяизвержение": "Creampie",
     "Эякуляция на лицо": "Facial",
-    # Другое
+            
     "Игра со свечами": "Waxplay",
     "Секс с едой": "Foodplay",
     "Запретная любовь": "Taboo",
     "Порнография": "Porn",
     "Форма": "Uniform"
 }
-
 
 def generate_tags(req: CreateCharacterRequest) -> list[str]:
     tags = set()
@@ -574,7 +566,6 @@ def generate_tags(req: CreateCharacterRequest) -> list[str]:
 
     return list(tags)
 
-
 def build_personality_with_preferences(req: CreateCharacterRequest) -> str:
     base = personality_to_prompt.get(req.personality, req.personality)
 
@@ -584,11 +575,10 @@ def build_personality_with_preferences(req: CreateCharacterRequest) -> str:
 
     return base
 
-
-def build_llm_prompt(req: CreateCharacterRequest) -> str:
+async def build_llm_prompt(req: CreateCharacterRequest) -> str:
     from shared.services.prompt_service import get_prompt
 
-    prompt_template = get_prompt("cc_scenario_prompt")
+    prompt_template = await get_prompt("cc_scenario_prompt")
     return prompt_template.format(
         name=req.name,
         job=req.job,
@@ -597,11 +587,10 @@ def build_llm_prompt(req: CreateCharacterRequest) -> str:
         nationality=req.nationality
     ).strip()
 
-
-def build_description_prompt(req: CreateCharacterRequest) -> str:
+async def build_description_prompt(req: CreateCharacterRequest) -> str:
     from shared.services.prompt_service import get_prompt
 
-    prompt_template = get_prompt("cc_description_prompt")
+    prompt_template = await get_prompt("cc_description_prompt")
     return prompt_template.format(
         name=req.name,
         age=req.age,
@@ -612,11 +601,10 @@ def build_description_prompt(req: CreateCharacterRequest) -> str:
         preferences=', '.join(req.preferences) if req.preferences else 'не указаны'
     ).strip()
 
-
-def build_first_mes_prompt(req: CreateCharacterRequest, scenario: str) -> str:
+async def build_first_mes_prompt(req: CreateCharacterRequest, scenario: str) -> str:
     from shared.services.prompt_service import get_prompt
 
-    prompt_template = get_prompt("cc_first_mes_prompt")
+    prompt_template = await get_prompt("cc_first_mes_prompt")
     return prompt_template.format(
         name=req.name,
         personality=req.personality,

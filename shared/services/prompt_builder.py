@@ -3,86 +3,57 @@ import logging
 from shared.constants import get_modifier_for_stage
 from shared.services.prompt_service import get_prompt
 
+async def _get_common_style_guide() -> str:
+    return await get_prompt("common_style_guide")
 
-def _get_common_style_guide() -> str:
-    return get_prompt("common_style_guide")
-
-
-def _get_meta_instruction(allow_nsfw: bool = True) -> str:
-    """Получить мета-инструкцию в зависимости от режима SFW."""
+async def _get_meta_instruction(allow_nsfw: bool = True) -> str:
     key = "meta_instruction" if allow_nsfw else "meta_instruction_sfw"
     try:
-        prompt = get_prompt(key)
+        prompt = await get_prompt(key)
         return prompt
     except KeyError:
         if not allow_nsfw:
             logging.warning(f"SFW prompt '{key}' not found, falling back to default")
-            return get_prompt("meta_instruction")
+            return await get_prompt("meta_instruction")
         raise
 
-
-def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True) -> str:
-    """
-    Получить инструкцию поведения на основе состояния персонажа.
-
-    Args:
-        affinity: Уровень симпатии (0-100)
-        arousal: Уровень возбуждения (0-100)
-        allow_nsfw: Флаг разрешения NSFW контента
-
-    Returns:
-        Строка с инструкцией поведения
-    """
+async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True) -> str:
     instruction = ""
 
     if affinity < 20:
-        instruction += get_prompt("behavior_affinity_cold")
+        instruction += await get_prompt("behavior_affinity_cold")
     elif affinity < 50:
-        instruction += get_prompt("behavior_affinity_neutral")
+        instruction += await get_prompt("behavior_affinity_neutral")
     elif affinity < 80:
-        instruction += get_prompt("behavior_affinity_warm")
+        instruction += await get_prompt("behavior_affinity_warm")
     else:
-        instruction += get_prompt("behavior_affinity_love")
+        instruction += await get_prompt("behavior_affinity_love")
 
     if arousal > 50:
         if allow_nsfw:
-            instruction += get_prompt("behavior_arousal_high")
+            instruction += await get_prompt("behavior_arousal_high")
         else:
-            # SFW версия для высокого arousal
+                                             
             try:
-                instruction += get_prompt("behavior_arousal_high_sfw")
+                instruction += await get_prompt("behavior_arousal_high_sfw")
             except KeyError:
                 logging.warning("SFW arousal prompt not found, using default")
-                instruction += get_prompt("behavior_arousal_high")
+                instruction += await get_prompt("behavior_arousal_high")
 
     return instruction
 
-
-def build_character_prompt(
+async def build_character_prompt(
         character: dict,
         chat,
         summary: str = "",
         user_name: str = "User",
         allow_nsfw: bool = True
 ) -> str:
-    """
-    Собрать системный промпт для персонажа.
-
-    Args:
-        character: Данные персонажа
-        chat: Объект чата с состоянием
-        summary: Краткое содержание истории
-        user_name: Имя пользователя
-        allow_nsfw: Флаг разрешения NSFW контента
-
-    Returns:
-        Готовый системный промпт
-    """
     affinity = chat.affinity
     arousal = chat.arousal
     mood = chat.current_mood
 
-    behavior_instruction = _get_character_behavior(affinity, arousal, allow_nsfw)
+    behavior_instruction = await _get_character_behavior(affinity, arousal, allow_nsfw)
 
     char_id = character.get("id", "")
     state_dict = {
@@ -91,7 +62,7 @@ def build_character_prompt(
         "mood": chat.current_mood,
         "location": chat.current_location
     }
-    modifier = get_modifier_for_stage(char_id, state_dict, allow_nsfw)
+    modifier = await get_modifier_for_stage(char_id, state_dict, allow_nsfw)
 
     modifier_text = ""
     if modifier:
@@ -104,7 +75,7 @@ def build_character_prompt(
     personality = character["personality"].replace("{{user}}", user_name).replace("{{char}}", char_name)
     scenario = character["scenario"].replace("{{user}}", user_name).replace("{{char}}", char_name)
 
-    template = get_prompt("character_prompt_template")
+    template = await get_prompt("character_prompt_template")
     prompt = template.format(
         char_name=char_name,
         description=description,
@@ -116,61 +87,45 @@ def build_character_prompt(
         mood=mood,
         behavior_instruction=behavior_instruction,
         modifier_text=modifier_text,
-        common_style_guide=_get_common_style_guide(),
-        meta_instruction=_get_meta_instruction(allow_nsfw),
+        common_style_guide=await _get_common_style_guide(),
+        meta_instruction=await _get_meta_instruction(allow_nsfw),
     )
 
-    # Добавить SFW ограничение в конец промпта
     if not allow_nsfw:
         try:
-            sfw_restriction = get_prompt("sfw_content_restriction")
+            sfw_restriction = await get_prompt("sfw_content_restriction")
             prompt += f"\n\n{sfw_restriction}"
         except KeyError:
             logging.warning("SFW content restriction prompt not found")
 
     return prompt
 
-
-def build_world_prompt(
+async def build_world_prompt(
         world: dict,
         summary: str = "",
         user_name: str = "Игрок",
         allow_nsfw: bool = True
 ) -> str:
-    """
-    Build system prompt for world/Game Master with literary style.
-
-    Args:
-        world: Данные мира
-        summary: Краткое содержание истории
-        user_name: Имя игрока
-        allow_nsfw: Флаг разрешения NSFW контента
-
-    Returns:
-        Готовый системный промпт
-    """
-    template = get_prompt("world_prompt_template")
+    template = await get_prompt("world_prompt_template")
     prompt = template.format(
         world_name=world['name'],
         user_name=user_name,
         world_description=world['description'],
         summary=summary if summary else "Приключение начинается.",
-        common_style_guide=_get_common_style_guide(),
-        meta_instruction=_get_meta_instruction(allow_nsfw),
+        common_style_guide=await _get_common_style_guide(),
+        meta_instruction=await _get_meta_instruction(allow_nsfw),
     )
 
-    # Добавить SFW ограничение в конец промпта
     if not allow_nsfw:
         try:
-            sfw_restriction = get_prompt("sfw_content_restriction")
+            sfw_restriction = await get_prompt("sfw_content_restriction")
             prompt += f"\n\n{sfw_restriction}"
         except KeyError:
             logging.warning("SFW content restriction prompt not found")
 
     return prompt
 
-
-def build_player_prompt(
+async def build_player_prompt(
     character_name: str,
     last_character_message: str,
     chat_history: list,
@@ -179,7 +134,7 @@ def build_player_prompt(
     user_messages = [msg for msg in chat_history if msg['role'] == 'user']
     style_examples = "\n".join([f"- {msg['content']}" for msg in user_messages[-3:]])
 
-    prompt_template = get_prompt("player_prompt")
+    prompt_template = await get_prompt("player_prompt")
     prompt = prompt_template.format(
         user_name=user_name,
         character_name=character_name,

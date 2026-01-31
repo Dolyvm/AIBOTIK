@@ -5,8 +5,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import sys
 from pathlib import Path
 import os
+import logging
 
-# Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -21,12 +21,14 @@ from shared.database.exceptions import (
     InsufficientBalanceError
 )
 from shared.services.prompt_service import init_prompt_cache
+from shared.services.redis_client import get_redis, close_redis
+from shared.services.cache import CacheService, set_cache
+from shared.services.rate_limiter import RateLimiter, set_rate_limiter, RateLimitExceeded
 
 app = FastAPI(title="AI RP Bot WebApp")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-
 
 @app.exception_handler(EntityNotFoundError)
 async def handle_not_found(request, exc: EntityNotFoundError):
@@ -39,7 +41,6 @@ async def handle_not_found(request, exc: EntityNotFoundError):
         }
     )
 
-
 @app.exception_handler(ValidationError)
 async def handle_validation(request, exc: ValidationError):
     return JSONResponse(
@@ -51,7 +52,6 @@ async def handle_validation(request, exc: ValidationError):
             "code": "VALIDATION_ERROR"
         }
     )
-
 
 @app.exception_handler(InsufficientBalanceError)
 async def handle_balance(request, exc: InsufficientBalanceError):
@@ -66,10 +66,33 @@ async def handle_balance(request, exc: InsufficientBalanceError):
         }
     )
 
+@app.exception_handler(RateLimitExceeded)
+async def handle_rate_limit(request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "rate_limit_exceeded",
+            "message": str(exc),
+            "retry_after": exc.retry_after,
+            "code": "RATE_LIMIT_EXCEEDED"
+        },
+        headers={"Retry-After": str(exc.retry_after)}
+    )
 
 @app.on_event("startup")
 async def startup_event():
-    import logging
+                      
+    try:
+        redis = await get_redis()
+        cache = CacheService(redis)
+        set_cache(cache)
+        rate_limiter = RateLimiter(redis)
+        set_rate_limiter(rate_limiter)
+        logging.info("Redis cache and rate limiter initialized")
+    except Exception as e:
+        logging.error(f"Failed to initialize Redis: {e}")
+        logging.warning("Application will run without caching")
+
     try:
         async with get_session() as db:
             await init_prompt_cache(db)
@@ -77,7 +100,15 @@ async def startup_event():
         logging.error(f"Failed to initialize prompt cache: {e}")
         logging.warning("Application will use default prompts")
 
-# Include API routers
+@app.on_event("shutdown")
+async def shutdown_event():
+                            
+    try:
+        await close_redis()
+        logging.info("Redis connection closed")
+    except Exception as e:
+        logging.error(f"Error closing Redis: {e}")
+
 app.include_router(characters.router)
 app.include_router(worlds.router)
 app.include_router(user.router)
@@ -86,16 +117,12 @@ app.include_router(image_router)
 app.include_router(create_character_router)
 app.include_router(admin_router)
 
-# Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/content", StaticFiles(directory="/app/content"), name="content")
 
-
 @app.get("/")
 async def root():
-    """Serve index.html"""
     return FileResponse("static/index.html")
-
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,12 +2,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict
 import logging
+import asyncio
 
 from shared.models import Prompt
+from shared.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
 
 _prompt_cache: Dict[str, str] = {}
+"""
+In-memory cache for prompts (secondary fallback).
+
+Cache hierarchy:
+1. Redis (primary, shared across instances)
+2. _prompt_cache (in-memory, local to process)
+3. DEFAULT_PROMPTS (hardcoded defaults)
+
+NOTE: In multi-instance deployment, in-memory cache
+may become stale. Redis is source of truth.
+"""
+_prompt_cache_initialized: bool = False
 
 DEFAULT_PROMPTS = {
     "common_style_guide": """
@@ -109,7 +123,6 @@ DEFAULT_PROMPTS = {
 }
 </meta>
 
-
 Игрок: "Давай сядем на скамейку?"
 <meta>
 {
@@ -122,8 +135,6 @@ DEFAULT_PROMPTS = {
   "send_photo": true
 }
 </meta>
-
-
 
 Игрок: "Вот, держи книгу"
 <meta>
@@ -140,7 +151,6 @@ DEFAULT_PROMPTS = {
 Твой литературный ответ пиши СТРОГО ПОСЛЕ закрывающего тега </meta>.
 """,
 
-    # Summary prompt
     "summary_prompt": """You are summarizing a conversation between a user and {context_name}.
 
 ### EXISTING SUMMARY ###
@@ -164,7 +174,6 @@ Create a concise narrative summary that:
 
 Write in Russian. Output ONLY the summary, no meta-commentary.""",
 
-    # Scene analyzer prompt
     "scene_analyzer_prompt": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
 Chat:
@@ -201,7 +210,6 @@ NSFW Level Guide (choose carefully based on conversation):
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact""",
 
-    # Character creation prompts
     "cc_scenario_prompt": """
 Ты — сценарист интерактивных диалогов для ИИ-персонажей.
 
@@ -299,7 +307,6 @@ NSFW Level Guide (choose carefully based on conversation):
 *Она подходит к вам, держа планшет.* \\"Нам нужно отсортировать эти материалы и решить, как расположить стенд. Это не должно занять слишком много времени... наверное.\\" *Её зелёные глаза встречаются с вашими, и в её взгляде есть что-то невысказанное.* \\"Я рада, что остались именно вы.\\""
 """,
 
-    # Player auto-message prompt
     "player_prompt": """### РОЛЬ ###
 Ты генерируешь следующее действие или реплику игрока ({user_name}) в интерактивном романе-диалоге.
 
@@ -333,7 +340,6 @@ NSFW Level Guide (choose carefully based on conversation):
 Пиши ТОЛЬКО текст действия/реплики. Никаких мета-тегов, пояснений или комментариев.
 """,
 
-    # Image generation NSFW levels
     "nsfw_level_0": "general",
     "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
     "nsfw_level_1": "sensual, teasing expression, fully clothed",
@@ -347,18 +353,15 @@ NSFW Level Guide (choose carefully based on conversation):
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
     "nsfw_level_5_neg": "general",
 
-    # Base image prompts
     "anime_base_positive": "masterpiece,best quality,amazing quality",
     "anime_base_negative": "badquality,lowres,low quality,worst detail",
 
-    # Behavior prompts (based on affinity/arousal)
     "behavior_affinity_cold": "- Ты не доверяешь Игроку. Держи дистанцию, отвечай холодно или с опаской.\n",
     "behavior_affinity_neutral": "- Вы знакомые. Отношение нейтральное. Шутки допустимы, но без интимности.\n",
     "behavior_affinity_warm": "- Вы близкие люди. Проявляй теплоту, касания, заботу.\n",
     "behavior_affinity_love": "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high": "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
 
-    # Character prompt template
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
 Твоя цель — писать глубокие, живые и эмоциональные посты от её/его лица НА РУССКОМ ЯЗЫКЕ.
@@ -391,7 +394,6 @@ NSFW Level Guide (choose carefully based on conversation):
 {meta_instruction}
 """,
 
-    # World prompt template
     "world_prompt_template": """### РОЛЬ ###
 Ты — Рассказчик (Game Master) в интерактивной книге.
 Сеттинг: {world_name}.
@@ -430,18 +432,15 @@ NSFW Level Guide (choose carefully based on conversation):
 {meta_instruction}
 """,
 
-    # Character modifiers (Emily)
     "character_modifiers_emily_stage_1": "Эмили ведёт себя сдержанно, с осторожностью. Она любопытна, но не доверяет полностью.|разговор, лёгкий флирт",
     "character_modifiers_emily_stage_2": "Эмили более открыта, проявляет интерес. Она становится дружелюбнее и игривее.|разговор, флирт, прикосновения",
     "character_modifiers_emily_stage_3": "Эмили доверяет, показывает привязанность. Она раскрывается эмоционально.|всё из stage_2, объятия, поцелуи",
     "character_modifiers_emily_stage_4": "Эмили полностью открыта и влюблена. Она не скрывает своих чувств.|без ограничений",
 
-    # Character modifiers (Aiko)
     "character_modifiers_aiko_stage_1": "Айко сдержанна и формальна. Культурные барьеры создают дистанцию.|вежливый разговор, формальное общение",
     "character_modifiers_aiko_stage_2": "Айко начинает проявлять теплоту. Культурные различия уходят на задний план.|дружеский разговор, улыбки, лёгкие прикосновения",
     "character_modifiers_aiko_stage_3": "Айко открывается эмоционально. Она доверяет и проявляет нежность.|всё из stage_2, объятия, романтические жесты",
     "character_modifiers_aiko_stage_4": "Айко влюблена без остатка. Традиции отступают перед чувствами.|без ограничений",
-
 
     "meta_instruction_sfw": """### СИСТЕМНЫЙ ПРОТОКОЛ (SFW РЕЖИМ) ###
 В САМОМ НАЧАЛЕ каждого ответа (перед художественным текстом) ты ОБЯЗАН вывести блок анализа в формате JSON внутри тега <meta>.
@@ -530,40 +529,69 @@ SFW Level Guide (ONLY use 0 or 1):
 1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
 }
 
-
 async def init_prompt_cache(db: AsyncSession):
-    global _prompt_cache
+    global _prompt_cache, _prompt_cache_initialized
 
     try:
         result = await db.execute(select(Prompt))
         prompts = result.scalars().all()
 
         _prompt_cache = {p.key: p.content for p in prompts}
+
+        cache = get_cache()
+        if cache:
+            for p in prompts:
+                await cache.set_prompt(p.key, p.content)
+            logger.info(f"Loaded {len(prompts)} prompts into Redis cache")
+
+        _prompt_cache_initialized = True
         logger.info(f"Loaded {len(_prompt_cache)} prompts from database into cache")
     except Exception as e:
         logger.warning(f"Failed to load prompts from database: {e}. Using defaults.")
         _prompt_cache = {}
+        _prompt_cache_initialized = True
 
+async def get_prompt(key: str) -> str:
+                           
+    cache = get_cache()
+    if cache:
+        cached = await cache.get_prompt(key)
+        if cached:
+            return cached
 
-def get_prompt(key: str) -> str:
     if key in _prompt_cache:
+                                                                     
+        if cache:
+            await cache.set_prompt(key, _prompt_cache[key])
         return _prompt_cache[key]
 
     if key in DEFAULT_PROMPTS:
         logger.warning(f"Prompt '{key}' not found in cache, using default")
-        return DEFAULT_PROMPTS[key]
+        content = DEFAULT_PROMPTS[key]
+                         
+        if cache:
+            await cache.set_prompt(key, content)
+        return content
 
     logger.error(f"Prompt '{key}' not found in cache or defaults!")
     raise KeyError(f"Prompt '{key}' not found")
 
-
-def clear_cache():
+async def clear_cache():
     global _prompt_cache
     _prompt_cache = {}
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_all_prompts()
+
     logger.info("Prompt cache cleared")
 
-
-def reload_cache_sync(key: str, content: str):
+async def reload_cache(key: str, content: str):
     global _prompt_cache
     _prompt_cache[key] = content
+
+    cache = get_cache()
+    if cache:
+        await cache.set_prompt(key, content)
+
     logger.info(f"Prompt '{key}' updated in cache")

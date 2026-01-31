@@ -1,6 +1,3 @@
-"""
-Context Manager - Handles memory management, state parsing, and summarization
-"""
 import json
 import logging
 import re
@@ -8,6 +5,7 @@ from typing import Optional
 
 from shared.services.llm import LLMClient
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
+from shared.services.cache import get_cache
 from shared.config import (
     SUMMARY_THRESHOLD,
     MAX_HISTORY_LENGTH,
@@ -18,7 +16,6 @@ from shared.database import get_session
 from shared.database.repositories import ChatRepository, MessageRepository, GeneratedImageRepository
 from shared.models import Chat
 
-
 class ContextManager:
 
     def __init__(self, llm_client: LLMClient, summary_threshold: int = None):
@@ -26,6 +23,37 @@ class ContextManager:
         self.summary_threshold = summary_threshold or SUMMARY_THRESHOLD
 
     async def process_turn(
+        self,
+        chat: Chat,
+        user_input: str,
+        character: Optional[dict] = None,
+        world: Optional[dict] = None,
+        user_name: str = "User",
+        allow_nsfw: bool = True
+    ) -> dict:
+        cache = get_cache()
+        lock_name = f"chat:{chat.id}:processing"
+        lock_acquired = False
+
+        if cache:
+            lock_acquired = await cache.acquire_lock(lock_name, ttl=120)
+            if not lock_acquired:
+                raise Exception("Chat is currently being processed. Please wait.")
+
+        try:
+            return await self._process_turn_internal(
+                chat=chat,
+                user_input=user_input,
+                character=character,
+                world=world,
+                user_name=user_name,
+                allow_nsfw=allow_nsfw
+            )
+        finally:
+            if cache and lock_acquired:
+                await cache.release_lock(lock_name)
+
+    async def _process_turn_internal(
         self,
         chat: Chat,
         user_input: str,
@@ -51,7 +79,7 @@ class ContextManager:
 
             if character:
                 max_tokens = LLM_MAX_TOKENS_CHARACTER
-                system_prompt = build_character_prompt(
+                system_prompt = await build_character_prompt(
                     character=character,
                     chat=chat,
                     summary=chat.summary,
@@ -60,7 +88,7 @@ class ContextManager:
                 )
             elif world:
                 max_tokens = LLM_MAX_TOKENS_WORLD
-                system_prompt = build_world_prompt(world, chat.summary, user_name, allow_nsfw)
+                system_prompt = await build_world_prompt(world, chat.summary, user_name, allow_nsfw)
             else:
                 raise ValueError("Either character or world must be provided")
 
@@ -107,6 +135,10 @@ class ContextManager:
                     for key, value in updates.items():
                         setattr(chat, key, value)
 
+                    cache = get_cache()
+                    if cache:
+                        await cache.invalidate_chat_state(chat.id)
+
             await message_repo.add(chat.id, "assistant", clean_text)
 
             image_url = None
@@ -148,7 +180,7 @@ class ContextManager:
 
         context_name = character["name"] if character else world["name"]
 
-        summary_prompt_template = get_prompt("summary_prompt")
+        summary_prompt_template = await get_prompt("summary_prompt")
         summary_prompt = summary_prompt_template.format(
             context_name=context_name,
             existing_summary=chat.summary if chat.summary else "This is the start of the conversation.",
@@ -188,7 +220,6 @@ class ContextManager:
         chat.msgs_since_summary = 0
 
     def _format_messages_for_summary(self, messages: list) -> str:
-        """Format messages for summarization prompt."""
         formatted = []
         for msg in messages:
             role = "Пользователь" if msg["role"] == "user" else "Персонаж"
@@ -208,7 +239,6 @@ class ContextManager:
             import sys
             from pathlib import Path
 
-            # Add webapp to path if not already there
             webapp_path = Path(__file__).parent.parent.parent / "webapp" / "api"
             if str(webapp_path) not in sys.path:
                 sys.path.insert(0, str(webapp_path))
@@ -247,7 +277,8 @@ class ContextManager:
                         history=history,
                         character_name=content["name"],
                         available_outfits=available_outfits,
-                        allow_nsfw=allow_nsfw
+                        allow_nsfw=allow_nsfw,
+                        chat_id=chat.id
                     )
 
                     nsfw_level = scene.nsfw_level
@@ -284,7 +315,7 @@ class ContextManager:
             )
 
             prompt.action = state_meta.get("action") or pose
-            pos, neg = prompt.build_prompt(content.get("model_type"))
+            pos, neg = await prompt.build_prompt(content.get("model_type"))
 
             logging.info(f"Auto-photo generation: {pos=}")
 
@@ -296,7 +327,7 @@ class ContextManager:
 
             if image_url:
                 try:
-                    # Add webapp to path for image_storage
+                                                          
                     webapp_services_path = Path(__file__).parent.parent.parent / "webapp"
                     if str(webapp_services_path) not in sys.path:
                         sys.path.insert(0, str(webapp_services_path))
@@ -318,7 +349,6 @@ class ContextManager:
                     except ImageStorageError as e:
                         logging.warning(f"Failed to save auto-photo locally, using provider URL: {e}")
 
-                    # Save image to database
                     if session:
                         image_repo = GeneratedImageRepository(session)
                         await image_repo.save(
@@ -358,16 +388,7 @@ class ContextManager:
             return None
 
     def _parse_meta(self, response_text: str) -> tuple[str, dict]:
-        """
-        Parse metadata tags from LLM response.
-
-        Args:
-            response_text: Raw LLM response
-
-        Returns:
-            Tuple of (clean_text, state_updates_dict)
-        """
-        # Regex to find <meta>...</meta> tags
+                                             
         meta_pattern = r'<meta>(.*?)</meta>'
         matches = re.findall(meta_pattern, response_text, re.DOTALL)
 
@@ -380,10 +401,9 @@ class ContextManager:
                     state_updates.update(updates)
                 except json.JSONDecodeError:
                     logging.info("malformed json: ", match.strip().replace("\n", ""))
-                    # Ignore malformed JSON
+                                           
                     pass
 
-        # Remove meta tags from response
         clean_text = re.sub(meta_pattern, '', response_text, flags=re.DOTALL).strip()
 
         return clean_text, state_updates
@@ -396,7 +416,35 @@ class ContextManager:
         user_name: str = "User",
         allow_nsfw: bool = True
     ) -> dict:
+        cache = get_cache()
+        lock_name = f"chat:{chat.id}:auto_reply"
+        lock_acquired = False
 
+        if cache:
+            lock_acquired = await cache.acquire_lock(lock_name, ttl=180)
+            if not lock_acquired:
+                raise Exception("Auto-reply already in progress for this chat.")
+
+        try:
+            return await self._auto_reply_cycle_internal(
+                chat=chat,
+                character=character,
+                world=world,
+                user_name=user_name,
+                allow_nsfw=allow_nsfw
+            )
+        finally:
+            if cache and lock_acquired:
+                await cache.release_lock(lock_name)
+
+    async def _auto_reply_cycle_internal(
+        self,
+        chat: Chat,
+        character: Optional[dict] = None,
+        world: Optional[dict] = None,
+        user_name: str = "User",
+        allow_nsfw: bool = True
+    ) -> dict:
         async with get_session() as session:
             message_repo = MessageRepository(session)
             messages = await message_repo.get_history(chat.id, limit=MAX_HISTORY_LENGTH)
@@ -417,7 +465,7 @@ class ContextManager:
             last_msg_content = last_assistant_msg.content
 
         char_name = character["name"] if character else world["name"]
-        player_prompt = build_player_prompt(
+        player_prompt = await build_player_prompt(
             character_name=char_name,
             last_character_message=last_msg_content,
             chat_history=history,

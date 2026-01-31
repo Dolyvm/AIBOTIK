@@ -18,6 +18,7 @@ from shared.database.repositories import MessageRepository, GeneratedImageReposi
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
+from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
 from ..services.generate import submit_anime, submit_real
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
@@ -33,11 +34,9 @@ logging.basicConfig(
 
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
 
-
 @router.post("/build_prompt")
 async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None):
-    return data.build_prompt(model_type)
-
+    return await data.build_prompt(model_type)
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
@@ -59,13 +58,20 @@ async def generate_image(data: GenerateRequest):
         )
     return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
-
 @router.post("/{chat_id}/generate")
 async def gen(
     chat_id: int,
     outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)"),
     user: User = Depends(get_current_user)
 ):
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["images"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
     chat = await verify_chat_ownership(chat_id, user)
 
     try:
@@ -113,7 +119,8 @@ async def gen(
             scene = await analyzer.analyze(
                 history=history,
                 character_name=content["name"],
-                available_outfits=available_outfits
+                available_outfits=available_outfits,
+                chat_id=chat_id
             )
 
             nsfw_level = scene.nsfw_level
@@ -146,7 +153,7 @@ async def gen(
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
     prompt.scene_details = scene_description
-    pos, neg = prompt.build_prompt(content.get("model_type"))
+    pos, neg = await prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
     result = None
@@ -215,9 +222,16 @@ async def gen(
     logging.info(f"Returning response: {response}")
     return response
 
-
 @router.post("/generate_preview")
 async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["images"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
     visual = data.build_visual()
     appearance = visual.get("appearance", "")
     body = visual.get("body", "")
@@ -230,7 +244,7 @@ async def generate_char_preview(data: CreateCharacterRequest, user: User = Depen
         style=visual.get("style_tags", "")
     )
 
-    pos, neg = prompt.build_prompt(data.style)
+    pos, neg = await prompt.build_prompt(data.style)
     logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
 
     image_url = None
