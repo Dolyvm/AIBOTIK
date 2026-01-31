@@ -10,8 +10,9 @@ import re
 
 from shared.models import Prompt, User, Character, World, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
-from shared.services.prompt_service import reload_cache_sync, DEFAULT_PROMPTS
+from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS
 from shared.constants import invalidate_character_modifiers_cache
+from shared.services.cache import get_cache
 from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
 from api.image_gen.services.generate import submit_anime, submit_real
 from services.image_storage import save_avatar, save_world_cover, get_public_url
@@ -21,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="admin/templates")
-
 
 PROMPT_CATEGORIES = {
     "character": "Character Prompts",
@@ -33,10 +33,8 @@ PROMPT_CATEGORIES = {
     "modifiers": "Character Modifiers",
 }
 
-
 async def get_current_user(request: Request) -> Optional[dict]:
     return request.session.get("user")
-
 
 async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_session)) -> dict:
     user = await get_current_user(request)
@@ -55,7 +53,6 @@ async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_
         )
 
     return user
-
 
 @router.post("/auth")
 async def admin_auth(
@@ -102,7 +99,6 @@ async def admin_auth(
     logger.info(f"Admin {telegram_id} authenticated")
     return {"success": True}
 
-
 @router.post("/logout")
 async def admin_logout(request: Request):
     user = request.session.get("user")
@@ -110,7 +106,6 @@ async def admin_logout(request: Request):
         logger.info(f"Admin {user.get('telegram_id')} logged out")
     request.session.clear()
     return {"success": True, "message": "Logged out"}
-
 
 @router.get("/", response_class=HTMLResponse)
 async def admin_index(
@@ -153,7 +148,6 @@ async def admin_index(
         }
     )
 
-
 @router.get("/prompts/{key}", response_class=HTMLResponse)
 async def edit_prompt_form(
     key: str,
@@ -176,7 +170,6 @@ async def edit_prompt_form(
         }
     )
 
-
 @router.post("/prompts/{key}")
 async def update_prompt(
     key: str,
@@ -198,14 +191,13 @@ async def update_prompt(
     )
     await db.commit()
 
-    reload_cache_sync(key, content)
-    invalidate_character_modifiers_cache()
-    invalidate_nsfw_levels_cache()
+    await reload_cache(key, content)
+    await invalidate_character_modifiers_cache()
+    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} updated prompt '{key}'")
 
     return RedirectResponse(url="/admin/", status_code=303)
-
 
 @router.post("/prompts/{key}/reset")
 async def reset_prompt(
@@ -232,15 +224,13 @@ async def reset_prompt(
     )
     await db.commit()
 
-    reload_cache_sync(key, default_content)
-    invalidate_character_modifiers_cache()
-    invalidate_nsfw_levels_cache()
+    await reload_cache(key, default_content)
+    await invalidate_character_modifiers_cache()
+    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} reset prompt '{key}' to default")
 
     return RedirectResponse(url=f"/admin/prompts/{key}", status_code=303)
-
-
 
 @router.get("/characters", response_class=HTMLResponse)
 async def list_characters(
@@ -274,18 +264,15 @@ async def list_characters(
         }
     )
 
-
 @router.get("/api/check-character-id/{character_id}")
 async def check_character_id(
     character_id: str,
     db: AsyncSession = Depends(get_async_session),
     admin: dict = Depends(get_admin_user)
 ):
-    """Check if a character ID already exists"""
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
     return {"exists": character is not None}
-
 
 @router.get("/api/check-world-id/{world_id}")
 async def check_world_id(
@@ -297,13 +284,11 @@ async def check_world_id(
     world = result.scalar_one_or_none()
     return {"exists": world is not None}
 
-
 @router.post("/api/generate-avatar")
 async def generate_avatar(
     request: Request,
     admin: dict = Depends(get_admin_user)
 ):
-    """Generate preview avatar from visual data"""
     data = await request.json()
 
     model_type = data.get("model_type", "anime")
@@ -321,7 +306,7 @@ async def generate_avatar(
         nsfw_level=0
     )
 
-    pos, neg = prompt.build_prompt(model_type)
+    pos, neg = await prompt.build_prompt(model_type)
 
     try:
         if model_type == "real":
@@ -337,7 +322,6 @@ async def generate_avatar(
         logger.error(f"Avatar generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
-
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
     request: Request,
@@ -350,7 +334,6 @@ async def add_character_form(
             "admin": admin
         }
     )
-
 
 @router.post("/characters/new")
 async def create_character(
@@ -450,10 +433,13 @@ async def create_character(
     db.add(new_character)
     await db.commit()
 
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
     logger.info(f"Admin {admin.get('telegram_id')} created character '{character_id}'")
 
     return RedirectResponse(url="/admin/characters", status_code=303)
-
 
 @router.get("/characters/{character_id}", response_class=HTMLResponse)
 async def edit_character_form(
@@ -494,7 +480,6 @@ async def edit_character_form(
             "admin": admin
         }
     )
-
 
 @router.post("/characters/{character_id}")
 async def update_character(
@@ -570,10 +555,13 @@ async def update_character(
     )
     await db.commit()
 
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
     logger.info(f"Admin {admin.get('telegram_id')} updated character '{character_id}'")
 
     return RedirectResponse(url="/admin/characters", status_code=303)
-
 
 @router.get("/worlds", response_class=HTMLResponse)
 async def list_worlds(
@@ -607,7 +595,6 @@ async def list_worlds(
         }
     )
 
-
 @router.get("/worlds/new", response_class=HTMLResponse)
 async def add_world_form(
     request: Request,
@@ -620,7 +607,6 @@ async def add_world_form(
             "admin": admin
         }
     )
-
 
 @router.post("/worlds/new")
 async def create_world(
@@ -676,7 +662,6 @@ async def create_world(
                 "gm_instructions": gm_instr
             })
 
-    # Скачивание и сохранение обложки
     saved_cover_image = None
     if cover_image:
         try:
@@ -700,10 +685,13 @@ async def create_world(
     db.add(new_world)
     await db.commit()
 
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_world(world_id)
+
     logger.info(f"Admin {admin.get('telegram_id')} created world '{world_id}'")
 
     return RedirectResponse(url="/admin/worlds", status_code=303)
-
 
 @router.get("/worlds/{world_id}", response_class=HTMLResponse)
 async def edit_world_form(
@@ -746,7 +734,6 @@ async def edit_world_form(
             "admin": admin
         }
     )
-
 
 @router.post("/worlds/{world_id}")
 async def update_world(
@@ -812,6 +799,10 @@ async def update_world(
         )
     )
     await db.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_world(world_id)
 
     logger.info(f"Admin {admin.get('telegram_id')} updated world '{world_id}'")
 

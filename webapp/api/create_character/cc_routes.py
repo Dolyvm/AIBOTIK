@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Body, Depends
 
 from shared.config import SCENE_ANALYZER_MODEL
 from shared.services.llm import LLMClient
+from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from .cc_schemas import CreateCharacterRequest
 from .cc_service import (
     stepsList,
@@ -25,12 +26,27 @@ from auth.authorization import verify_chat_ownership
 
 router = APIRouter(prefix="/api/create_character", tags=["create_character"])
 
-
 @router.post("")
 async def create_character_endpoint(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        limits = RATE_LIMITS["character_creation"]
+        allowed = await rate_limiter.is_allowed(
+            key=f"character_creation:user:{user.telegram_id}",
+            limit=limits["limit"],
+            window=limits["window"]
+        )
+        if not allowed:
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"]
+            )
+
     try:
         character_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
@@ -75,21 +91,31 @@ async def create_character_endpoint(
             "code": "CHARACTER_CREATION_FAILED"
         })
 
-
 @router.get("")
 async def get_create_character_data(user: User = Depends(get_current_user)):
     return stepsList
-
 
 @router.post("/scenario")
 async def generate_character_scenario(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
+                                    
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["llm"]
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"]
+            )
+
     try:
         llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
 
-        scenario_prompt = build_llm_prompt(payload)
+        scenario_prompt = await build_llm_prompt(payload)
         scenario = await llm_client.generate(
             system_prompt=scenario_prompt,
             messages=[],
@@ -97,7 +123,7 @@ async def generate_character_scenario(
             temperature=0.75
         )
 
-        first_mes_prompt = build_first_mes_prompt(payload, scenario)
+        first_mes_prompt = await build_first_mes_prompt(payload, scenario)
         first_mes = await llm_client.generate(
             system_prompt=first_mes_prompt,
             messages=[],
@@ -105,7 +131,7 @@ async def generate_character_scenario(
             temperature=0.75
         )
 
-        description_prompt = build_description_prompt(payload)
+        description_prompt = await build_description_prompt(payload)
         description = await llm_client.generate(
             system_prompt=description_prompt,
             messages=[],

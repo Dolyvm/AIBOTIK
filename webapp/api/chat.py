@@ -20,26 +20,23 @@ from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
+from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 llm_client = LLMClient()
 context_manager = ContextManager(llm_client)
 
-
 class MessageRequest(BaseModel):
     text: str
-
 
 class CreateChatRequest(BaseModel):
     chat_type: str
     target_id: str
     scenario_index: int = 0
 
-
 @router.get("/{chat_id}/history")
 async def get_history(chat_id: int, user: User = Depends(get_current_user)):
-    """Получить историю чата (merged: сообщения + картинки)"""
     chat = await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
@@ -72,10 +69,16 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "location": chat.current_location
         }
 
-
 @router.post("/{chat_id}/send")
 async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: User = Depends(get_current_user)):
-    """Отправить сообщение и получить ответ"""
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["llm"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
     chat = await verify_chat_ownership(chat_id, user)
 
     try:
@@ -112,10 +115,8 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/create")
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
-    """Создать новый чат с персонажем/миром"""
     async with get_session() as session:
         try:
             user_name = user.username if user.username else "Путешественник"
@@ -146,10 +147,8 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
             logging.error(f"Error creating chat: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
-    """Сбросить историю чата"""
     chat = await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
@@ -165,6 +164,17 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
 @router.post("/{chat_id}/auto-continue")
 async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_user)):
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_api_rate_limit(
+            endpoint="chat_auto_continue",
+            telegram_id=user.telegram_id
+        )
+        if not allowed:
+            limits = RATE_LIMITS["chat_auto_continue"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
     chat = await verify_chat_ownership(chat_id, user)
 
     try:

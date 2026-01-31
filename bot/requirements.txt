@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 tenacity==8.2.3
 fal-client==0.2.1
 alembic==1.13.1
+redis>=5.0.0

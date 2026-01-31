@@ -4,9 +4,9 @@ from typing import Optional
 from shared.models import Character, World
 from shared.database import get_session
 from shared.database.repositories import CharacterRepository, WorldRepository
+from shared.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
-
 
 def character_to_dict(char: Character) -> dict:
     visual_data = char.visual_data or {}
@@ -51,7 +51,6 @@ def character_to_dict(char: Character) -> dict:
         "author": author_info
     }
 
-
 def world_to_dict(world: World) -> dict:
     scenarios = world.scenarios or []
     locations = world.locations or []
@@ -86,8 +85,14 @@ def world_to_dict(world: World) -> dict:
         "is_nsfw": world.is_nsfw
     }
 
-
 async def get_character(character_id: str) -> Optional[dict]:
+    cache = get_cache()
+    if cache:
+        cached = await cache.get_character(character_id)
+        if cached:
+            logger.debug(f"Character {character_id} loaded from cache")
+            return cached
+
     async with get_session() as session:
         try:
             repo = CharacterRepository(session)
@@ -95,13 +100,24 @@ async def get_character(character_id: str) -> Optional[dict]:
             if not char:
                 logger.warning(f"Character not found: {character_id}")
                 return None
-            return character_to_dict(char)
+            result = character_to_dict(char)
+
+            if cache:
+                await cache.set_character(character_id, result)
+
+            return result
         except Exception as e:
             logger.error(f"Failed to load character {character_id}: {e}")
             return None
 
-
 async def get_world(world_id: str) -> Optional[dict]:
+    cache = get_cache()
+    if cache:
+        cached = await cache.get_world(world_id)
+        if cached:
+            logger.debug(f"World {world_id} loaded from cache")
+            return cached
+
     async with get_session() as session:
         try:
             repo = WorldRepository(session)
@@ -109,33 +125,59 @@ async def get_world(world_id: str) -> Optional[dict]:
             if not world:
                 logger.warning(f"World not found: {world_id}")
                 return None
-            return world_to_dict(world)
+            result = world_to_dict(world)
+
+            if cache:
+                await cache.set_world(world_id, result)
+
+            return result
         except Exception as e:
             logger.error(f"Failed to load world {world_id}: {e}")
             return None
 
-
 async def get_all_characters(tag: Optional[str] = None) -> dict[str, dict]:
+    cache = get_cache()
+    if cache and tag is None:
+        cached = await cache.get_all_characters()
+        if cached:
+            logger.debug("All characters loaded from cache")
+            return {char["id"]: char for char in cached}
+
     async with get_session() as session:
         try:
             repo = CharacterRepository(session)
             characters = await repo.get_all_with_filter(tag)
-            return {char.id: character_to_dict(char) for char in characters}
+            result = {char.id: character_to_dict(char) for char in characters}
+
+            if cache and tag is None:
+                await cache.set_all_characters(list(result.values()))
+
+            return result
         except Exception as e:
             logger.error(f"Failed to load characters: {e}")
             return {}
 
-
 async def get_all_worlds(tag: Optional[str] = None) -> dict[str, dict]:
+    cache = get_cache()
+    if cache and tag is None:
+        cached = await cache.get_all_worlds()
+        if cached:
+            logger.debug("All worlds loaded from cache")
+            return {world["id"]: world for world in cached}
+
     async with get_session() as session:
         try:
             repo = WorldRepository(session)
             worlds = await repo.get_all_with_filter(tag)
-            return {world.id: world_to_dict(world) for world in worlds}
+            result = {world.id: world_to_dict(world) for world in worlds}
+
+            if cache and tag is None:
+                await cache.set_all_worlds(list(result.values()))
+
+            return result
         except Exception as e:
             logger.error(f"Failed to load worlds: {e}")
             return {}
-
 
 async def get_first_message(
     chat_type: str,
