@@ -1,14 +1,17 @@
+import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from ...create_character.cc_schemas import CreateCharacterRequest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, HTTPException, Body, Query, Depends
+from fastapi import APIRouter, HTTPException, Body, Query, Depends, Request
 
 from shared.models import Chat, User
 from auth.telegram_auth import get_current_user
@@ -17,6 +20,7 @@ from shared.database import get_session
 from shared.database.repositories import MessageRepository, GeneratedImageRepository, ChatRepository
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
+from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
@@ -156,69 +160,55 @@ async def gen(
     pos, neg = await prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
-    result = None
     logging.info(f"{content=}")
 
-    if content.get("model_type") == "anime":
-        image_url = await submit_anime(pos, neg)
+    model_type = content.get("model_type")
+    if model_type not in ("anime", "real"):
+        raise HTTPException(status_code=400, detail="Unsupported model type")
 
-    elif content.get("model_type") == "real":
-        image_url = await submit_real(
-            prompt=pos,
-            allow_nsfw=True,
-            nsfw_level=nsfw_level
-        )
-    else:
-        image_url = None
-    if image_url:
-        try:
-            from services.image_storage import download_and_save_image, get_public_url, ImageStorageError
+    task_id = str(uuid4())
 
-            local_path = None
-            file_size = None
-            content_type = None
-            public_url = image_url
+    task_params = {
+        "chat_id": chat.id,
+        "user_id": chat.user_id,
+        "model_type": model_type,
+        "positive_prompt": pos,
+        "negative_prompt": neg,
+        "allow_nsfw": True,
+        "nsfw_level": nsfw_level,
+        "pose": pose,
+    }
 
-            try:
-                local_path, file_size, content_type = await download_and_save_image(
-                    provider_url=image_url,
-                    user_id=chat.user_id
-                )
-                public_url = get_public_url(local_path)
-                logging.info(f"Image saved locally: {local_path}")
-            except ImageStorageError as e:
-                logging.warning(f"Failed to save image locally, using provider URL: {e}")
+    redis = await get_redis()
+    await redis.set(
+        f"task:{task_id}",
+        json.dumps({
+            "status": "pending",
+            "chat_id": chat.id,
+            "created_at": datetime.utcnow().isoformat()
+        }),
+        ex=3600
+    )
 
-            async with get_session() as session:
-                image_repo = GeneratedImageRepository(session)
-                await image_repo.save(
-                    user_id=chat.user_id,
-                    chat_id=chat.id,
-                    prompt=pos,
-                    provider_url=image_url,
-                    local_path=local_path,
-                    file_size=file_size,
-                    content_type=content_type,
-                    nsfw_level=nsfw_level
-                )
+    try:
+        from webapp.main import app
+        arq_pool = getattr(app.state, "arq_pool", None)
+        if arq_pool:
+            await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
+            logging.info(f"Task {task_id} enqueued for chat {chat.id}")
+        else:
+            logging.warning("arq pool not configured, executing synchronously")
+            from shared.queue.tasks import generate_image_task
+            ctx = {"redis": redis, "get_session": get_session}
+            result = await generate_image_task(ctx, task_id, task_params)
+            if result.get("status") == "completed":
+                return result.get("result", {})
+            raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
+    except Exception as e:
+        logging.error(f"Failed to enqueue task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start generation: {e}")
 
-                if pose:
-                    chat_repo = ChatRepository(session)
-                    current_meta = chat.state_meta or {}
-                    await chat_repo.update_metrics(
-                        chat.id,
-                        {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
-                    )
-
-            response = {"url": public_url, "nsfw_level": nsfw_level}
-            logging.info(f"Returning response: {response}")
-            return response
-
-        except Exception as e:
-            logging.error(f"Failed to save image or update state: {e}")
-            return {"url": image_url}
-
-    response = {"error": "Failed to generate image"}
+    response = {"task_id": task_id, "status": "pending"}
     logging.info(f"Returning response: {response}")
     return response
 

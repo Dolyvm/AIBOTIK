@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from api import characters, worlds, user, chat
 from api.image_gen.routes.generate import router as image_router
 from api.create_character.cc_routes import router as create_character_router
+from api.tasks import router as tasks_router
 from admin.router import router as admin_router
 from shared.database import get_session
 from shared.database.exceptions import (
@@ -24,6 +25,9 @@ from shared.services.prompt_service import init_prompt_cache
 from shared.services.redis_client import get_redis, close_redis
 from shared.services.cache import CacheService, set_cache
 from shared.services.rate_limiter import RateLimiter, set_rate_limiter, RateLimitExceeded
+from shared.services.llm import LLMClient
+from arq import create_pool
+from arq.connections import RedisSettings
 
 app = FastAPI(title="AI RP Bot WebApp")
 
@@ -81,7 +85,6 @@ async def handle_rate_limit(request, exc: RateLimitExceeded):
 
 @app.on_event("startup")
 async def startup_event():
-                      
     try:
         redis = await get_redis()
         cache = CacheService(redis)
@@ -94,6 +97,15 @@ async def startup_event():
         logging.warning("Application will run without caching")
 
     try:
+        redis_url = os.getenv("REDIS_URL")
+        app.state.arq_pool = await create_pool(RedisSettings.from_dsn(redis_url))
+        logging.info("arq pool initialized for background tasks")
+    except Exception as e:
+        logging.error(f"Failed to initialize arq pool: {e}")
+        logging.warning("Image generation will run synchronously")
+        app.state.arq_pool = None
+
+    try:
         async with get_session() as db:
             await init_prompt_cache(db)
     except Exception as e:
@@ -102,7 +114,18 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-                            
+    try:
+        if hasattr(app.state, "arq_pool") and app.state.arq_pool:
+            await app.state.arq_pool.close()
+            logging.info("arq pool closed")
+    except Exception as e:
+        logging.error(f"Error closing arq pool: {e}")
+
+    try:
+        await LLMClient.close_http_client()
+    except Exception as e:
+        logging.error(f"Error closing LLM http client: {e}")
+
     try:
         await close_redis()
         logging.info("Redis connection closed")
@@ -115,6 +138,7 @@ app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(image_router)
 app.include_router(create_character_router)
+app.include_router(tasks_router)
 app.include_router(admin_router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

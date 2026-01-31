@@ -1,11 +1,14 @@
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 
 from shared.services.llm import LLMClient
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
 from shared.services.cache import get_cache
+from shared.services.redis_client import get_redis
 from shared.config import (
     SUMMARY_THRESHOLD,
     MAX_HISTORY_LENGTH,
@@ -143,6 +146,7 @@ class ContextManager:
 
             image_url = None
             nsfw_level = None
+            image_task_id = None
             if state_updates.get("send_photo", False):
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
                 if msgs_since_photo >= 4:
@@ -152,8 +156,11 @@ class ContextManager:
                     )
                     if photo_result:
                         if isinstance(photo_result, dict):
-                            image_url = photo_result.get("url")
-                            nsfw_level = photo_result.get("nsfw_level")
+                            if "image_task_id" in photo_result:
+                                image_task_id = photo_result.get("image_task_id")
+                            else:
+                                image_url = photo_result.get("url")
+                                nsfw_level = photo_result.get("nsfw_level")
                         else:
                             image_url = photo_result
                         await chat_repo.update_metrics(
@@ -164,7 +171,12 @@ class ContextManager:
                 else:
                     logging.info(f"Auto-photo skipped due to cooldown (msgs_since_photo={msgs_since_photo})")
 
-        return {"text": clean_text, "image_url": image_url, "nsfw_level": nsfw_level}
+        return {
+            "text": clean_text,
+            "image_url": image_url,
+            "nsfw_level": nsfw_level,
+            "image_task_id": image_task_id
+        }
 
     async def _summarize_history(
         self,
@@ -319,69 +331,66 @@ class ContextManager:
 
             logging.info(f"Auto-photo generation: {pos=}")
 
-            image_url = None
-            if content.get("model_type") == "anime":
-                image_url = await submit_anime(pos, neg)
-            elif content.get("model_type") == "real":
-                image_url = await submit_real(prompt=pos, allow_nsfw=True, nsfw_level=nsfw_level)
+            model_type = content.get("model_type")
+            if model_type not in ("anime", "real"):
+                logging.warning(f"Unsupported model type for auto-photo: {model_type}")
+                return None
 
-            if image_url:
+            # Create task and enqueue for background processing
+            task_id = str(uuid4())
+
+            task_params = {
+                "chat_id": chat.id,
+                "user_id": chat.user_id,
+                "model_type": model_type,
+                "positive_prompt": pos,
+                "negative_prompt": neg,
+                "allow_nsfw": allow_nsfw,
+                "nsfw_level": nsfw_level,
+                "pose": pose,
+            }
+
+            # Store initial task status in Redis
+            redis = await get_redis()
+            await redis.set(
+                f"task:{task_id}",
+                json.dumps({
+                    "status": "pending",
+                    "chat_id": chat.id,
+                    "created_at": datetime.utcnow().isoformat()
+                }),
+                ex=3600
+            )
+
+            # Try to enqueue task via arq
+            try:
+                from webapp.main import app
+                arq_pool = getattr(app.state, "arq_pool", None)
+                if arq_pool:
+                    await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
+                    logging.info(f"Auto-photo task {task_id} enqueued for chat {chat.id}")
+                    return {"image_task_id": task_id}
+                else:
+                    # Fallback: execute synchronously if arq not configured
+                    logging.warning("arq pool not configured for auto-photo, executing synchronously")
+                    from shared.queue.tasks import generate_image_task
+                    ctx = {"redis": redis, "get_session": get_session}
+                    result = await generate_image_task(ctx, task_id, task_params)
+                    if result.get("status") == "completed":
+                        return result.get("result", {})
+                    return None
+            except Exception as e:
+                logging.error(f"Failed to enqueue auto-photo task: {e}")
+                # Fallback to synchronous execution
                 try:
-                                                          
-                    webapp_services_path = Path(__file__).parent.parent.parent / "webapp"
-                    if str(webapp_services_path) not in sys.path:
-                        sys.path.insert(0, str(webapp_services_path))
-
-                    from services.image_storage import download_and_save_image, get_public_url, ImageStorageError
-
-                    local_path = None
-                    file_size = None
-                    content_type = None
-                    public_url = image_url
-
-                    try:
-                        local_path, file_size, content_type = await download_and_save_image(
-                            provider_url=image_url,
-                            user_id=chat.user_id
-                        )
-                        public_url = get_public_url(local_path)
-                        logging.info(f"Auto-photo saved locally: {local_path}")
-                    except ImageStorageError as e:
-                        logging.warning(f"Failed to save auto-photo locally, using provider URL: {e}")
-
-                    if session:
-                        image_repo = GeneratedImageRepository(session)
-                        await image_repo.save(
-                            user_id=chat.user_id,
-                            chat_id=chat.id,
-                            prompt=pos,
-                            provider_url=image_url,
-                            local_path=local_path,
-                            file_size=file_size,
-                            content_type=content_type,
-                            nsfw_level=nsfw_level
-                        )
-                    else:
-                        async with get_session() as new_session:
-                            image_repo = GeneratedImageRepository(new_session)
-                            await image_repo.save(
-                                user_id=chat.user_id,
-                                chat_id=chat.id,
-                                prompt=pos,
-                                provider_url=image_url,
-                                local_path=local_path,
-                                file_size=file_size,
-                                content_type=content_type,
-                                nsfw_level=nsfw_level
-                            )
-
-                    return {"url": public_url, "nsfw_level": nsfw_level}
-
-                except Exception as e:
-                    logging.error(f"Failed to save auto-generated image: {e}")
-                    return image_url
-
-            return None
+                    from shared.queue.tasks import generate_image_task
+                    ctx = {"redis": redis, "get_session": get_session}
+                    result = await generate_image_task(ctx, task_id, task_params)
+                    if result.get("status") == "completed":
+                        return result.get("result", {})
+                except Exception as inner_e:
+                    logging.error(f"Fallback auto-photo generation also failed: {inner_e}")
+                return None
 
         except Exception as e:
             logging.error(f"Auto-photo generation failed: {e}")
@@ -493,6 +502,7 @@ class ContextManager:
             "character_response": result["text"],
             "image_url": result.get("image_url"),
             "nsfw_level": result.get("nsfw_level"),
+            "image_task_id": result.get("image_task_id"),
             "affinity": chat.affinity,
             "arousal": chat.arousal
         }
