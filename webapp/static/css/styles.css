@@ -818,6 +818,11 @@ body {
     filter: none;
 }
 
+.card .nsfw-blur {
+    border-radius: 8px;
+    clip-path: inset(0 round 8px);
+}
+
 /* Badge 18+ */
 .nsfw-badge {
     position: absolute;
@@ -841,6 +846,8 @@ body {
     justify-content: center;
     background: rgba(0, 0, 0, 0.3);
     z-index: 2;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .card.revealed .nsfw-blur-overlay {
@@ -870,4 +877,11 @@ body {
 
 .photo-container .click-hint {
     white-space: nowrap;
+}
+
+.card .click-hint {
+    position: static;
+    transform: none;
+    max-width: 80%;
+    text-align: center;
 }

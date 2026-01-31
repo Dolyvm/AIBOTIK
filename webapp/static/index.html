@@ -613,7 +613,7 @@
                         console.warn('No User ID found');
                     }
 
-                    await Promise.all([loadStepsList(), loadCharacters(), loadWorlds(), loadFilterOptions()]);
+                    await Promise.all([loadStepsList(), loadCharacters(), loadWorlds(), loadFilterOptions(), loadUserSettings()]);
                 });
 
                 // --- LOADERS ---
@@ -669,6 +669,20 @@
                 // Флаг для игнорирования watch при загрузке из API
                 let isLoadingSettings = false;
 
+                const loadUserSettings = async () => {
+                    if (!userId.value) return;
+                    try {
+                        isLoadingSettings = true;
+                        const res = await axios.get(`/api/user/${userId.value}`);
+                        profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                        await nextTick();
+                        isLoadingSettings = false;
+                    } catch (e) {
+                        isLoadingSettings = false;
+                        console.error('Failed to load user settings:', e);
+                    }
+                };
+
                 const loadProfile = async () => {
                     tab.value = 'profile';
 
@@ -701,6 +715,7 @@
                     if (isLoadingSettings) return;
                     if (oldVal !== undefined) {
                         saveNsfwBlur(val);
+                        revealedImages.value.clear();
                     }
                 });
 
