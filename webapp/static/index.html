@@ -412,7 +412,7 @@
                         <div class="modal-character-info">
                             <h2>{{ selectedCharacter.name }}</h2>
                             <!-- Author Info -->
-                            <p>Made by {{selectedCharacter.author.display_name}}</p>
+                           <p v-if="selectedCharacter.author">Made by {{selectedCharacter.author.display_name}}</p>
                             <p class="modal-character-description">{{ selectedCharacter.description }}</p>
                         </div>
                     </div>
