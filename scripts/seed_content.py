@@ -1,6 +1,7 @@
 
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -23,12 +24,7 @@ async def load_characters(session, content_dir: Path):
             data = json.load(f)
         
         char_id = data.get("id") or json_file.stem
-        
-        existing = await session.execute(
-            select(Character).where(Character.id == char_id)
-        )
-        if existing.scalar_one_or_none():
-            continue
+
         scenarios = []
         if data.get("first_mes"):
             scenarios.append({
@@ -42,6 +38,7 @@ async def load_characters(session, content_dir: Path):
                 "intro": greeting,
                 "scenario": data.get("scenario", "")
             })
+        logging.info(f"{data.get('visual', {})=}")
         visual_data = {
             "model_type": data.get("model_type", "real"),
             "appearance": data.get("appearance", ""),
@@ -59,7 +56,9 @@ async def load_characters(session, content_dir: Path):
             tags=data.get("tags", []),
             is_nsfw="NSFW" in data.get("tags", [])
         )
-        session.add(character)
+        merged = await session.merge(character)
+        merged.llm_settings = data.get("llm_settings", dict())
+        logging.info(merged.llm_settings)
     await session.commit()
 
 

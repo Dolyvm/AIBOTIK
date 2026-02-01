@@ -47,8 +47,8 @@ async def create_character_endpoint(
         personality = build_personality_with_preferences(payload)
 
         description = payload.description or (
-            f"{payload.name} — {payload.age}-летняя {payload.nationality} "
-            f"по профессии {payload.job}. Характер: {payload.personality}."
+            f"{payload.name} — {payload.age}-летняя {payload.nationality}. "
+            f"Характер: {payload.personality}."
         )
 
         async with get_session() as session:
@@ -61,8 +61,8 @@ async def create_character_endpoint(
                 scenarios=scenarios,
                 tags=tags,
                 is_nsfw=True,
-                created_by_username_id = user.telegram_id,
-                created_by_username = user.username,
+                created_by_username_id=user.telegram_id,
+                created_by_username=user.username,
             )
             session.add(character)
             await session.commit()

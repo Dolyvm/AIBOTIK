@@ -806,3 +806,8 @@ body {
 .transaction-amount.negative {
     color: #e74c3c;
 }
+
+.scenario-textarea {
+    width: 100%;
+    resize: vertical;
+}

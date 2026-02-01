@@ -349,7 +349,7 @@ class ContextManager:
         if matches:
             for match in matches:
                 try:
-                    updates = json.loads(match.strip().replace("*", ""))
+                    updates = json.loads(match.strip().replace("*", "").replace("+", ""))
                     state_updates.update(updates)
                 except json.JSONDecodeError:
                     logging.info("malformed json: ", match.strip().replace("\n", ""))

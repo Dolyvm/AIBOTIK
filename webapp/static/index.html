@@ -350,7 +350,14 @@
                 <div>
                     <p>Сценарий:</p>
                     <p v-if="isGeneratingScenario">Генерация сценария...</p>
-                    <p v-else>{{newCharacterScenario}}</p>
+<!--                    <p v-else>{{newCharacterScenario}}</p>-->
+                    <div v-else>
+                        <textarea
+                            type="text"
+                            v-model="newCharacterScenario"
+                            class="scenario-textarea"
+                        ></textarea>
+                    </div>
                     <button @click="generateNewCharacterScenario" :disabled="isGeneratingScenario">
                         {{ isGeneratingScenario ? 'Генерация...' : 'Сгенерировать новый сценарий' }}
                     </button>

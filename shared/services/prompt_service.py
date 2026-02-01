@@ -181,12 +181,13 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short visual description of the scene based on the last 1-2 messages in the chat.
 - Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
 - Extract specific visual details from the dialogue (e.g., "lips parted", "flushed cheeks", "arched back", "kneeling on floor")
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Be explicit and detailed if nsfw_level is high (3-5)
-- Maximum 50 words
+- Be as laconic AS POSSIBLE.
+- 
 - This will be used directly in the image generation prompt
 
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
@@ -220,7 +221,6 @@ NSFW Level Guide (choose carefully based on conversation):
 
 Данные персонажа:
 Имя: {name}
-Профессия: {job}
 Характер: {personality}
 Тип отношений с пользователем: {relationship}
 Национальность: {nationality}
@@ -248,7 +248,6 @@ NSFW Level Guide (choose carefully based on conversation):
 - Имя: {name}
 - Возраст: {age} лет
 - Национальность: {nationality}
-- Профессия: {job}
 - Характер: {personality}
 - Тип отношений с игроком: {relationship}
 - Предпочтения: {preferences}
@@ -275,7 +274,6 @@ NSFW Level Guide (choose carefully based on conversation):
 Данные персонажа:
 - Имя: {name}
 - Характер: {personality}
-- Профессия: {job}
 - Тип отношений: {relationship}
 - Предпочтения: {preferences}
 
@@ -348,8 +346,8 @@ NSFW Level Guide (choose carefully based on conversation):
     "nsfw_level_5_neg": "general",
 
     # Base image prompts
-    "anime_base_positive": "masterpiece,best quality,amazing quality",
-    "anime_base_negative": "badquality,lowres,low quality,worst detail",
+    "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
+    "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
 
     # Behavior prompts (based on affinity/arousal)
     "behavior_affinity_cold": "- Ты не доверяешь Игроку. Держи дистанцию, отвечай холодно или с опаской.\n",
@@ -377,6 +375,8 @@ NSFW Level Guide (choose carefully based on conversation):
 Симпатия (Affinity): {affinity}/100
 Возбуждение (Arousal): {arousal}/100
 Настроение: {mood}
+Твоя роль по отношению к игроку - {relationship_role}. Учитывай это при ответе!
+
 
 **Инструкция по поведению:**
 {behavior_instruction}{modifier_text}
@@ -385,7 +385,8 @@ NSFW Level Guide (choose carefully based on conversation):
 
 ### СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ###
 - Никогда не пиши и не думай за пользователя (Игрока).
-- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела.
+- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела. 
+- У тебя есть сексуальные предпочтения: {preferences}. Если разговор идет на эротические темы, проявляй инициативу по этим перечисленным предпочтениям.  
 - Помни: ТОЛЬКО РУССКИЙ ЯЗЫК.
 
 {meta_instruction}
@@ -441,6 +442,28 @@ NSFW Level Guide (choose carefully based on conversation):
     "character_modifiers_aiko_stage_2": "Айко начинает проявлять теплоту. Культурные различия уходят на задний план.|дружеский разговор, улыбки, лёгкие прикосновения",
     "character_modifiers_aiko_stage_3": "Айко открывается эмоционально. Она доверяет и проявляет нежность.|всё из stage_2, объятия, романтические жесты",
     "character_modifiers_aiko_stage_4": "Айко влюблена без остатка. Традиции отступают перед чувствами.|без ограничений",
+
+    "z_image_template": """A captivating, natural film snapshot of an attractive {nationality} woman ({age}) with {skin}.
+
+She has {hair_color} hair with {haircut}, beautiful {eye_color} eyes.
+
+She is wearing a {outfit}{nsfw_modificator}. Her expression is {face_expression}. 
+The scene is a candid, {shot_distance} lifestyle shot of the model in a {location}, {position}.
+Her pose perfectly showcasing her {body_type} with {boobs} and {ass}.
+
+Aesthetics and Technique:
+
+Photography: Natural film photography, captured using 35mm film (Kodak Portra 400).
+
+Lighting: Soft natural illumination.
+
+Realism: Authentic skin texture, visible pores, minor imperfections, unretouched (no Photoshop).
+
+Style: Anti-AI style, snapshot aesthetic, high-fidelity detail.""",
+
+    "illustrious_template": "1girl, anime girl, {age_interval}, {outfit}, {eye_color}, {hair_color}, {haircut}, "
+                            "{body_type}, {boobs}, {ass}, {face_expression}, {position}, {location}, "
+                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting"
 }
 
 

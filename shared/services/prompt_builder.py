@@ -58,6 +58,11 @@ def build_character_prompt(
     description = character["description"].replace("{{user}}", user_name).replace("{{char}}", char_name)
     personality = character["personality"].replace("{{user}}", user_name).replace("{{char}}", char_name)
     scenario = character["scenario"].replace("{{user}}", user_name).replace("{{char}}", char_name)
+    preferences = character["visual"].get("llm_settings", {}).get("preferences")
+    if not preferences:
+        preferences = "Не указано."
+    else:
+        preferences = ", ".join(preferences)
 
     template = get_prompt("character_prompt_template")
     prompt = template.format(
@@ -73,6 +78,8 @@ def build_character_prompt(
         modifier_text=modifier_text,
         common_style_guide=_get_common_style_guide(),
         meta_instruction=_get_meta_instruction(),
+        relationship_role=character["visual"].get("llm_settings", {}).get("relationship_role", "Не указано"),
+        preferences=preferences
     )
     return prompt
 
