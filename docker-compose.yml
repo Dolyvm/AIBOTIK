@@ -106,6 +106,8 @@ services:
 
   bot:
     build: ./bot
+    ports:
+      - "${WEBHOOK_PORT:-8443}:${WEBHOOK_PORT}"
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
       - REDIS_URL=redis://redis:6379/0
@@ -113,6 +115,10 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - WEBAPP_URL=${WEBAPP_URL}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_PATH=${WEBHOOK_PATH}
+      - WEBHOOK_HOST=${WEBHOOK_HOST}
+      - WEBHOOK_PORT=${WEBHOOK_PORT}
     volumes:
       - ./bot/handlers:/app/handlers
       - ./bot/main.py:/app/main.py

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AI Ролевая игра</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -10,14 +10,15 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 
-    <link rel="stylesheet" href="/static/css/styles.css?v=4">
+    <link rel="stylesheet" href="/static/css/styles.css?v=7">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
         /* Toast Notification Styles */
         .toast {
             position: fixed;
-            bottom: 20px;
+            /* CRITICAL: Position above tabs + safe area, with 20px margin */
+            bottom: calc(20px + var(--bottom-total-spacing));
             left: 50%;
             transform: translateX(-50%);
             padding: 12px 24px;
@@ -110,13 +111,6 @@
         
         <!-- View: Selection (Characters/Worlds) -->
         <div v-if="currentView === 'selection'" class="selection-view">
-            <div class="tabs">
-                <button :class="{active: tab === 'characters'}" @click="tab = 'characters'">Персонажи</button>
-                <button :class="{active: tab === 'worlds'}" @click="tab = 'worlds'">Миры</button>
-                <button :class="{active: tab === 'chats'}" @click="loadChats">Мои чаты</button>
-                <button :class="{active: tab === 'profile'}" @click="loadProfile">Профиль</button>
-            </div>
-
             <div class="grid-container">
                 <!-- Filters Characters -->
                 <div v-if="tab === 'characters'" class="filters">
@@ -248,6 +242,13 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="tabs">
+                <button :class="{active: tab === 'characters'}" @click="tab = 'characters'">Персонажи</button>
+                <button :class="{active: tab === 'worlds'}" @click="tab = 'worlds'">Миры</button>
+                <button :class="{active: tab === 'chats'}" @click="loadChats">Мои чаты</button>
+                <button :class="{active: tab === 'profile'}" @click="loadProfile">Профиль</button>
             </div>
         </div>
 
@@ -641,9 +642,118 @@
                     }
                 };
 
+                // Function to synchronize Telegram viewport with CSS variables
+                const updateViewportVariables = () => {
+                    const root = document.documentElement;
+
+                    // Viewport dimensions
+                    if (tg.viewportHeight) {
+                        root.style.setProperty('--tg-viewport-height', `${tg.viewportHeight}px`);
+                    }
+                    if (tg.viewportStableHeight) {
+                        root.style.setProperty('--tg-viewport-stable-height', `${tg.viewportStableHeight}px`);
+                    }
+
+                    // Safe areas from device (notches, home indicator)
+                    if (tg.safeAreaInset) {
+                        root.style.setProperty('--tg-safe-area-inset-top', `${tg.safeAreaInset.top}px`);
+                        root.style.setProperty('--tg-safe-area-inset-bottom', `${tg.safeAreaInset.bottom}px`);
+                        root.style.setProperty('--tg-safe-area-inset-left', `${tg.safeAreaInset.left}px`);
+                        root.style.setProperty('--tg-safe-area-inset-right', `${tg.safeAreaInset.right}px`);
+                    }
+
+                    // Content safe areas from Telegram UI
+                    if (tg.contentSafeAreaInset) {
+                        root.style.setProperty('--tg-content-safe-area-inset-top', `${tg.contentSafeAreaInset.top}px`);
+                        root.style.setProperty('--tg-content-safe-area-inset-bottom', `${tg.contentSafeAreaInset.bottom}px`);
+                    }
+
+                    console.log('Viewport variables updated:', {
+                        viewportHeight: tg.viewportHeight,
+                        viewportStableHeight: tg.viewportStableHeight,
+                        isFullscreen: tg.isFullscreen
+                    });
+                };
+
                 onMounted(async () => {
-                    tg.ready();
+                    // CRITICAL: Expand to full height immediately
                     tg.expand();
+
+                    // Request fullscreen mode (removes Telegram bars)
+                    if (typeof tg.requestFullscreen === 'function') {
+                        try {
+                            tg.requestFullscreen();
+                        } catch (e) {
+                            console.warn('Fullscreen request failed:', e);
+                        }
+                    }
+
+                    // Prevent accidental app closure when scrolling (Bot API 7.7+)
+                    if (typeof tg.disableVerticalSwipes === 'function') {
+                        tg.disableVerticalSwipes();
+                    }
+
+                    // Signal app is ready
+                    tg.ready();
+
+                    // Initial viewport sync
+                    updateViewportVariables();
+
+                    // Listen for fullscreen state changes
+                    tg.onEvent('fullscreenChanged', () => {
+                        console.log('Fullscreen state changed:', tg.isFullscreen);
+                        updateViewportVariables();
+                    });
+
+                    // Listen for stable viewport changes only
+                    tg.onEvent('viewportChanged', (event) => {
+                        if (event.isStateStable) {
+                            // Safe to update layout - viewport is stable after drag
+                            console.log('Viewport stable at:', tg.viewportStableHeight);
+                            updateViewportVariables();
+                        }
+                    });
+
+                    // Handle fullscreen request failures
+                    tg.onEvent('fullscreenFailed', (error) => {
+                        console.error('Fullscreen failed:', error);
+                        // Fallback: continue with expanded mode
+                    });
+
+                    // DEBUG: Check if Telegram variables are loaded
+                    setTimeout(() => {
+                        const root = getComputedStyle(document.documentElement);
+                        console.log('=== TELEGRAM CSS VARIABLES DEBUG ===');
+                        console.log('Viewport stable height:', root.getPropertyValue('--tg-viewport-stable-height'));
+                        console.log('Safe area bottom:', root.getPropertyValue('--tg-safe-area-inset-bottom'));
+                        console.log('Content safe area top:', root.getPropertyValue('--tg-content-safe-area-inset-top'));
+                        console.log('Bottom total spacing:', root.getPropertyValue('--bottom-total-spacing'));
+                        console.log('Telegram version:', tg.version);
+                        console.log('Viewport height:', tg.viewportHeight);
+                        console.log('Viewport stable height:', tg.viewportStableHeight);
+                        console.log('Is fullscreen:', tg.isFullscreen);
+                        console.log('====================================');
+                    }, 1000);
+
+                    // Handle keyboard appearance with visualViewport API
+                    if (window.visualViewport) {
+                        window.visualViewport.addEventListener('resize', () => {
+                            const keyboardHeight = window.innerHeight - window.visualViewport.height;
+                            document.documentElement.style.setProperty(
+                                '--keyboard-height',
+                                `${keyboardHeight}px`
+                            );
+                        });
+                    }
+
+                    // Scroll focused inputs into view (keyboard handling)
+                    document.querySelectorAll('input, textarea').forEach(input => {
+                        input.addEventListener('focus', () => {
+                            setTimeout(() => {
+                                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 300);
+                        });
+                    });
 
                     updateDeviceClass();
                     window.addEventListener('resize', updateDeviceClass);
