@@ -81,6 +81,28 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        .generating-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-radius: 12px;
+            color: var(--tg-theme-hint-color, #999);
+            min-height: 150px;
+        }
+
+        .generating-placeholder i {
+            font-size: 32px;
+            margin-bottom: 12px;
+            color: var(--tg-theme-button-color, #667eea);
+        }
+
+        .generating-placeholder span {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -251,7 +273,13 @@
                      :class="msg.role === 'user' ? 'own' : 'foreign'">
                     <div class="message-bubble">
                         <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
-                        <div v-if="msg.avatar" class="photo-container">
+                        <div v-if="msg.isGenerating" class="photo-container generating">
+                            <div class="generating-placeholder">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>Генерирую изображение...</span>
+                            </div>
+                        </div>
+                        <div v-else-if="msg.avatar" class="photo-container">
                             <img class="message-photo"
                                  :src="msg.avatar"
                                  :class="{'nsfw-blur': shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)}"
@@ -839,6 +867,44 @@
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
                         await typeWriter(res.data.response);
+
+                        // Handle auto-photo task if present
+                        if (res.data.image_task_id) {
+                            // Add placeholder for generating image
+                            const placeholderIndex = chatHistory.value.push({
+                                role: 'assistant',
+                                avatar: null,
+                                isGenerating: true,
+                                nsfw_level: 0
+                            }) - 1;
+                            scrollToBottom();
+
+                            // Poll for image completion in background
+                            pollImageTask(
+                                res.data.image_task_id,
+                                (result) => {
+                                    chatHistory.value[placeholderIndex] = {
+                                        role: 'assistant',
+                                        avatar: result.url,
+                                        nsfw_level: result.nsfw_level || 0
+                                    };
+                                    scrollToBottom();
+                                },
+                                (error) => {
+                                    // Remove placeholder on error
+                                    chatHistory.value.splice(placeholderIndex, 1);
+                                    console.error('Auto-photo failed:', error);
+                                }
+                            );
+                        } else if (res.data.image_url) {
+                            // Sync fallback - got URL directly
+                            chatHistory.value.push({
+                                role: 'assistant',
+                                avatar: res.data.image_url,
+                                nsfw_level: res.data.nsfw_level || 0
+                            });
+                            scrollToBottom();
+                        }
                     } catch (e) {
                         chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
                     } finally {
@@ -847,19 +913,88 @@
                     }
                 };
 
+                // Poll for image task completion
+                const pollImageTask = async (taskId, onComplete, onError) => {
+                    const maxAttempts = 60; // 3 minutes max (60 * 3s)
+                    let attempts = 0;
+
+                    while (attempts < maxAttempts) {
+                        try {
+                            const statusRes = await axios.get(`/api/tasks/${taskId}`);
+                            const status = statusRes.data.status;
+
+                            if (status === 'completed') {
+                                onComplete(statusRes.data.result);
+                                return;
+                            } else if (status === 'failed') {
+                                onError(statusRes.data.error || 'Generation failed');
+                                return;
+                            } else if (status === 'not_found') {
+                                onError('Task not found');
+                                return;
+                            }
+                        } catch (e) {
+                            console.error('Poll error:', e);
+                        }
+
+                        await new Promise(r => setTimeout(r, 3000)); // 3 sec interval
+                        attempts++;
+                    }
+
+                    onError('Generation timed out');
+                };
+
                 const requestPhoto = async () => {
                     isWaitingResponse.value = true;
                     try {
-                        const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`)
-                        chatHistory.value.push({
-                            role: 'assistant',
-                            avatar: res.data.url,
-                            nsfw_level: res.data.nsfw_level || 0
-                        });
-                        scrollToBottom();
+                        const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`);
+
+                        // Check if we got task_id (async) or url (sync fallback)
+                        if (res.data.task_id) {
+                            // Add placeholder message
+                            const placeholderIndex = chatHistory.value.push({
+                                role: 'assistant',
+                                avatar: null,
+                                isGenerating: true,
+                                nsfw_level: 0
+                            }) - 1;
+                            scrollToBottom();
+
+                            // Start polling in background
+                            pollImageTask(
+                                res.data.task_id,
+                                (result) => {
+                                    // Update placeholder with actual image
+                                    chatHistory.value[placeholderIndex] = {
+                                        role: 'assistant',
+                                        avatar: result.url,
+                                        nsfw_level: result.nsfw_level || 0
+                                    };
+                                    scrollToBottom();
+                                    isWaitingResponse.value = false;
+                                },
+                                (error) => {
+                                    // Remove placeholder and show error
+                                    chatHistory.value.splice(placeholderIndex, 1);
+                                    showToast('Не удалось создать фото: ' + error);
+                                    isWaitingResponse.value = false;
+                                }
+                            );
+                        } else if (res.data.url) {
+                            // Sync fallback - got URL directly
+                            chatHistory.value.push({
+                                role: 'assistant',
+                                avatar: res.data.url,
+                                nsfw_level: res.data.nsfw_level || 0
+                            });
+                            scrollToBottom();
+                            isWaitingResponse.value = false;
+                        } else {
+                            showToast('Не удалось создать фото');
+                            isWaitingResponse.value = false;
+                        }
                     } catch (e) {
                         showToast('Не удалось создать фото');
-                    } finally {
                         isWaitingResponse.value = false;
                     }
                 };

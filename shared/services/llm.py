@@ -1,6 +1,6 @@
 import httpx
 import logging
-from typing import Optional
+from typing import Optional, ClassVar
 
 from shared.config import (
     OPENROUTER_API_KEY,
@@ -29,6 +29,28 @@ class LLMTimeoutError(LLMError):
 class LLMClient:
     MAX_RETRIES = 5
     RETRY_DELAY = 2.0
+
+    _http_client: ClassVar[Optional[httpx.AsyncClient]] = None
+
+    @classmethod
+    def get_http_client(cls) -> httpx.AsyncClient:
+        if cls._http_client is None:
+            cls._http_client = httpx.AsyncClient(
+                timeout=60,
+                limits=httpx.Limits(
+                    max_connections=50,
+                    max_keepalive_connections=20
+                )
+            )
+            logger.info("Created httpx client with connection pooling")
+        return cls._http_client
+
+    @classmethod
+    async def close_http_client(cls) -> None:
+        if cls._http_client is not None:
+            await cls._http_client.aclose()
+            cls._http_client = None
+            logger.info("Closed httpx client")
 
     def __init__(self, api_key: str = None, model: str = None):
         self.api_key = api_key or OPENROUTER_API_KEY
@@ -65,16 +87,17 @@ class LLMClient:
 
         last_error = None
         
+        client = self.get_http_client()
+
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 logger.debug(f"LLM запрос (попытка {attempt}/{self.MAX_RETRIES}): model={self.model}")
-                
-                async with httpx.AsyncClient(timeout=60) as client:
-                    response = await client.post(
-                        self.base_url,
-                        json=payload,
-                        headers=headers,
-                    )
+
+                response = await client.post(
+                    self.base_url,
+                    json=payload,
+                    headers=headers,
+                )
                 
                 if response.status_code == 429:
                     logger.warning(f"Rate limit (429), попытка {attempt}/{self.MAX_RETRIES}")

@@ -108,7 +108,8 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         return {
             "response": result["text"],
             "image_url": result.get("image_url"),
-            "nsfw_level": result.get("nsfw_level")
+            "nsfw_level": result.get("nsfw_level"),
+            "image_task_id": result.get("image_task_id")
         }
 
     except Exception as e:
@@ -205,6 +206,7 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
             "character_response": result["character_response"],
             "image_url": result.get("image_url"),
             "nsfw_level": result.get("nsfw_level"),
+            "image_task_id": result.get("image_task_id"),
             "affinity": result["affinity"],
             "arousal": result["arousal"],
             "mood": chat.current_mood,

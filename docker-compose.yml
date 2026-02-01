@@ -81,6 +81,29 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build: ./webapp
+    command: arq shared.queue.worker.WorkerSettings
+    environment:
+      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - REDIS_URL=redis://redis:6379/0
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - FAL_KEY=${FAL_KEY}
+      - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
+      - IMAGES_STORAGE_PATH=/app/generated_images
+    volumes:
+      - ./webapp/api:/app/api
+      - ./webapp/services:/app/services
+      - ./shared:/app/shared:ro
+      - ./content:/app/content:ro
+      - generated_images:/app/generated_images
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   bot:
     build: ./bot
     environment:
