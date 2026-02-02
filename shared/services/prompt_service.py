@@ -618,3 +618,65 @@ async def reload_cache(key: str, content: str):
         await cache.set_prompt(key, content)
 
     logger.info(f"Prompt '{key}' updated in cache")
+
+
+def get_default_modifier(name: str, stage: int, is_nsfw: bool) -> str:
+    """Дефолтные модификаторы в зависимости от стадии и типа"""
+    if is_nsfw:
+        defaults = {
+            1: f"{name} ведёт себя сдержанно, с осторожностью.|разговор, лёгкий флирт",
+            2: f"{name} более открыт(а), проявляет интерес.|разговор, флирт, прикосновения",
+            3: f"{name} доверяет, показывает привязанность.|всё из stage_2, объятия, поцелуи",
+            4: f"{name} полностью открыт(а) и влюблён(а).|без ограничений",
+        }
+    else:
+        defaults = {
+            1: f"{name} ведёт себя сдержанно, соблюдает дистанцию.|вежливый разговор",
+            2: f"{name} становится дружелюбнее, проявляет интерес.|дружеский разговор, улыбки",
+            3: f"{name} доверяет и показывает привязанность.|всё из stage_2, объятия",
+            4: f"{name} полностью открыт(а), глубоко привязан(а).|глубокая близость",
+        }
+    return defaults[stage]
+
+
+async def create_or_update_character_modifiers(
+    character_id: str,
+    character_name: str,
+    is_nsfw: bool,
+    modifiers: dict,
+    db: AsyncSession
+):
+    """Создать или обновить модификаторы стадий для персонажа"""
+    for stage_num in range(1, 5):
+        prompt_key = f"character_modifiers_{character_id}_stage_{stage_num}"
+        value = modifiers.get(stage_num) or get_default_modifier(character_name, stage_num, is_nsfw)
+
+        result = await db.execute(select(Prompt).where(Prompt.key == prompt_key))
+        prompt = result.scalar_one_or_none()
+
+        if prompt:
+            prompt.content = value
+            prompt.name = f"Модификатор стадии {stage_num} для {character_name}"
+        else:
+            prompt = Prompt(
+                key=prompt_key,
+                category="character_modifiers",
+                name=f"Модификатор стадии {stage_num} для {character_name}",
+                content=value
+            )
+            db.add(prompt)
+
+        await reload_cache(prompt_key, value)
+
+    logger.info(f"Character modifiers for '{character_id}' created/updated")
+
+
+async def get_character_modifiers_from_db(character_id: str, db: AsyncSession) -> dict:
+    """Получить модификаторы для персонажа из БД"""
+    modifiers = {}
+    for stage_num in range(1, 5):
+        prompt_key = f"character_modifiers_{character_id}_stage_{stage_num}"
+        result = await db.execute(select(Prompt).where(Prompt.key == prompt_key))
+        prompt = result.scalar_one_or_none()
+        modifiers[stage_num] = prompt.content if prompt else ""
+    return modifiers

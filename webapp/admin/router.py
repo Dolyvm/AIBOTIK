@@ -10,7 +10,7 @@ import re
 
 from shared.models import Prompt, User, Character, World, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
-from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS
+from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
 from shared.services.cache import get_cache
 from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
@@ -433,6 +433,22 @@ async def create_character(
     db.add(new_character)
     await db.commit()
 
+    modifiers = {
+        1: form_data.get("modifier_stage_1", "").strip(),
+        2: form_data.get("modifier_stage_2", "").strip(),
+        3: form_data.get("modifier_stage_3", "").strip(),
+        4: form_data.get("modifier_stage_4", "").strip(),
+    }
+    await create_or_update_character_modifiers(
+        character_id=character_id,
+        character_name=name,
+        is_nsfw=is_nsfw,
+        modifiers=modifiers,
+        db=db
+    )
+    await db.commit()
+    await invalidate_character_modifiers_cache()
+
     cache = get_cache()
     if cache:
         await cache.invalidate_character(character_id)
@@ -468,6 +484,8 @@ async def edit_character_form(
 
     visual_data_json = json.dumps(character.visual_data, indent=2, ensure_ascii=False)
 
+    modifiers = await get_character_modifiers_from_db(character_id, db)
+
     return templates.TemplateResponse(
         "edit_character.html",
         {
@@ -477,6 +495,7 @@ async def edit_character_form(
             "first_message": first_message,
             "alternate_greetings": alternate_greetings,
             "visual_data_json": visual_data_json,
+            "modifiers": modifiers,
             "admin": admin
         }
     )
@@ -554,6 +573,23 @@ async def update_character(
         )
     )
     await db.commit()
+
+    # Обновить модификаторы стадий
+    modifiers = {
+        1: form_data.get("modifier_stage_1", "").strip(),
+        2: form_data.get("modifier_stage_2", "").strip(),
+        3: form_data.get("modifier_stage_3", "").strip(),
+        4: form_data.get("modifier_stage_4", "").strip(),
+    }
+    await create_or_update_character_modifiers(
+        character_id=character_id,
+        character_name=name,
+        is_nsfw=is_nsfw,
+        modifiers=modifiers,
+        db=db
+    )
+    await db.commit()
+    await invalidate_character_modifiers_cache()
 
     cache = get_cache()
     if cache:
