@@ -159,7 +159,7 @@ clothes_to_prompt = {
     "Голый": "naked, nude, no clothing",
     "Длинное платье": "long simple black evening dress with deep neckline",
     "Школьная форма": "japanese school uniform, serafuku, sailor collar, pleated skirt",
-    "Свободная рубашка": "loose oversized white button-down shirt with loose jeans",
+    "Свободная рубашка": "loose oversized white button-down shirt with professional jeans",
     "Костюм ведьмы": "witch costume, black witch hat, dark dress, mystical"
 }
 
