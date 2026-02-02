@@ -150,14 +150,30 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
 
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
-    chat = await verify_chat_ownership(chat_id, user)
+    await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
         try:
+            user_name = user.username if user.username else "Путешественник"
+
             chat_repo = ChatRepository(session)
+            message_repo = MessageRepository(session)
+
             await chat_repo.reset_history(chat_id)
 
-            return {"success": True, "message": "Chat history reset"}
+            chat = await chat_repo.get_by_id(chat_id)
+
+            first_message = await get_first_message(
+                chat_type=chat.chat_type,
+                target_id=chat.target_id,
+                scenario_index=chat.scenario_index,
+                user_name=user_name,
+            )
+
+            if first_message:
+                await message_repo.add(chat.id, "assistant", first_message)
+
+            return {"success": True, "message": "Chat reset", "first_message": first_message}
 
         except Exception as e:
             logging.error(f"Error resetting chat: {e}")

@@ -1226,8 +1226,12 @@
                 const resetChat = async () => {
                     if (!confirm('Начать сценарий заново? Память будет очищена.')) return;
                     try {
-                        await axios.post(`/api/chat/${currentChatId.value}/reset`);
-                        chatHistory.value = [];
+                        const response = await axios.post(`/api/chat/${currentChatId.value}/reset`);
+                        chatHistory.value = response.data.first_message
+                            ? [{ role: 'assistant', content: response.data.first_message }]
+                            : [];
+                        await nextTick();
+                        scrollToBottom();
                         showToast('Сценарий сброшен', 'success');
                     } catch (e) { showToast('Ошибка сброса'); }
                 };
