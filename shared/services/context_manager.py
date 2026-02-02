@@ -147,7 +147,7 @@ class ContextManager:
             image_url = None
             nsfw_level = None
             image_task_id = None
-            if state_updates.get("send_photo", False):
+            if state_updates.get("send_photo", False) and character is not None:
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
                 if msgs_since_photo >= 4:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")

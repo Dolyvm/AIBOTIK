@@ -298,7 +298,7 @@
                 <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
                     <i class="fas fa-paper-plane"></i>
                 </button>
-                <button @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
+                <button v-if="currentChat?.chat_type === 'character'" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
                     <i class="fas fa-camera"></i>
                 </button>
             </div>
