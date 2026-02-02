@@ -115,7 +115,8 @@ async def build_prompt_from_character(
     logging.info(f"{character=}")
     logging.info(f"{outfit_key=}")
     pos, neg = "", ""
-    outfit = character["visual"]["wardrobe"].get(outfit_key)
+    default_outfit = character["visual"].get("default_outfit") or character["visual"].get('wardrobe', {}).get("casual")
+    outfit = character["visual"]["wardrobe"].get(outfit_key) or default_outfit
     if character["model_type"] == "real":
         logging.info(f"{outfit=}")
         if nsfw_level and outfit_key != "nude":

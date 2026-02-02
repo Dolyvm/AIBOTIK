@@ -109,6 +109,7 @@ async def gen(
     scene_reasoning = ""
     pose = ""
     scene_description = ""
+    emotion = "neutral"
     if SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
@@ -132,6 +133,7 @@ async def gen(
             pose = scene.pose
             environment = scene.location
             scene_reasoning = scene.reasoning
+            emotion = scene.emotion
 
             logging.info(f"Scene analysis: {scene_reasoning}")
 
@@ -156,7 +158,15 @@ async def gen(
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
     prompt.scene_details = scene_description
-    pos, neg = await prompt.build_prompt(content.get("model_type"))
+    pos, neg = await build_prompt_from_character(
+        character,
+        face_expression=emotion,
+        location=environment,
+        position=state_meta.get("action") or pose,
+        nsfw_level=nsfw_level,
+        outfit_key=outfit_key,
+        close_up=False
+    )
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
     logging.info(f"{content=}")
@@ -164,7 +174,6 @@ async def gen(
     model_type = content.get("model_type")
     if model_type not in ("anime", "real"):
         raise HTTPException(status_code=400, detail="Unsupported model type")
-
     task_id = str(uuid4())
 
     task_params = {
