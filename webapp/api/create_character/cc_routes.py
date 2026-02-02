@@ -6,9 +6,11 @@ from fastapi import APIRouter, HTTPException, Body, Depends
 
 from shared.config import SCENE_ANALYZER_MODEL
 from shared.services.llm import LLMClient
+from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.cache import get_cache
 from .cc_schemas import CreateCharacterRequest
 from .cc_service import (
-    stepsList,
+    stepsGroups,
     build_llm_prompt,
     build_description_prompt,
     build_first_mes_prompt,
@@ -19,18 +21,32 @@ from .cc_service import (
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.models import User, Character
-from shared.repository import get_session
+from shared.database import get_session
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
 
 router = APIRouter(prefix="/api/create_character", tags=["create_character"])
-
 
 @router.post("")
 async def create_character_endpoint(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        limits = RATE_LIMITS["character_creation"]
+        allowed = await rate_limiter.is_allowed(
+            key=f"character_creation:user:{user.telegram_id}",
+            limit=limits["limit"],
+            window=limits["window"]
+        )
+        if not allowed:
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"]
+            )
+
     try:
         character_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
@@ -47,8 +63,8 @@ async def create_character_endpoint(
         personality = build_personality_with_preferences(payload)
 
         description = payload.description or (
-            f"{payload.name} — {payload.age}-летняя {payload.nationality} "
-            f"по профессии {payload.job}. Характер: {payload.personality}."
+            f"{payload.name} — {payload.age}-летняя девушка. "
+            f"Характер: {payload.personality}."
         )
 
         async with get_session() as session:
@@ -61,13 +77,18 @@ async def create_character_endpoint(
                 scenarios=scenarios,
                 tags=tags,
                 is_nsfw=True,
-                created_by_username_id = user.telegram_id,
-                created_by_username = user.username,
+                created_by_username_id=user.telegram_id,
+                created_by_username=user.username,
             )
             session.add(character)
             await session.commit()
+
+        cache = get_cache()
+        if cache:
+            await cache.invalidate_character(character_id)
+
         return {"character_id": character_id, "status": "created"}
-    except Exception as e: 
+    except Exception as e:
         logging.error(f"[CREATE_CHARACTER] Error: {e}")
         raise HTTPException(status_code=500, detail={
             "error": "creation_failed",
@@ -75,21 +96,30 @@ async def create_character_endpoint(
             "code": "CHARACTER_CREATION_FAILED"
         })
 
-
 @router.get("")
 async def get_create_character_data(user: User = Depends(get_current_user)):
-    return stepsList
-
+    return {"groups": stepsGroups}
 
 @router.post("/scenario")
 async def generate_character_scenario(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["llm"]
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"]
+            )
+
     try:
         llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
 
-        scenario_prompt = build_llm_prompt(payload)
+        scenario_prompt = await build_llm_prompt(payload)
         scenario = await llm_client.generate(
             system_prompt=scenario_prompt,
             messages=[],
@@ -97,7 +127,7 @@ async def generate_character_scenario(
             temperature=0.75
         )
 
-        first_mes_prompt = build_first_mes_prompt(payload, scenario)
+        first_mes_prompt = await build_first_mes_prompt(payload, scenario)
         first_mes = await llm_client.generate(
             system_prompt=first_mes_prompt,
             messages=[],
@@ -105,7 +135,7 @@ async def generate_character_scenario(
             temperature=0.75
         )
 
-        description_prompt = build_description_prompt(payload)
+        description_prompt = await build_description_prompt(payload)
         description = await llm_client.generate(
             system_prompt=description_prompt,
             messages=[],

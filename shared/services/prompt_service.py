@@ -2,12 +2,26 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict
 import logging
+import asyncio
 
 from shared.models import Prompt
+from shared.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
 
 _prompt_cache: Dict[str, str] = {}
+"""
+In-memory cache for prompts (secondary fallback).
+
+Cache hierarchy:
+1. Redis (primary, shared across instances)
+2. _prompt_cache (in-memory, local to process)
+3. DEFAULT_PROMPTS (hardcoded defaults)
+
+NOTE: In multi-instance deployment, in-memory cache
+may become stale. Redis is source of truth.
+"""
+_prompt_cache_initialized: bool = False
 
 DEFAULT_PROMPTS = {
     "common_style_guide": """
@@ -109,7 +123,6 @@ DEFAULT_PROMPTS = {
 }
 </meta>
 
-
 Игрок: "Давай сядем на скамейку?"
 <meta>
 {
@@ -122,8 +135,6 @@ DEFAULT_PROMPTS = {
   "send_photo": true
 }
 </meta>
-
-
 
 Игрок: "Вот, держи книгу"
 <meta>
@@ -140,7 +151,6 @@ DEFAULT_PROMPTS = {
 Твой литературный ответ пиши СТРОГО ПОСЛЕ закрывающего тега </meta>.
 """,
 
-    # Summary prompt
     "summary_prompt": """You are summarizing a conversation between a user and {context_name}.
 
 ### EXISTING SUMMARY ###
@@ -164,7 +174,6 @@ Create a concise narrative summary that:
 
 Write in Russian. Output ONLY the summary, no meta-commentary.""",
 
-    # Scene analyzer prompt
     "scene_analyzer_prompt": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
 Chat:
@@ -181,12 +190,13 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short visual description of the scene based on the last 1-2 messages in the chat.
 - Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
 - Extract specific visual details from the dialogue (e.g., "lips parted", "flushed cheeks", "arched back", "kneeling on floor")
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Be explicit and detailed if nsfw_level is high (3-5)
-- Maximum 50 words
+- Be as laconic AS POSSIBLE.
+- 
 - This will be used directly in the image generation prompt
 
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
@@ -201,7 +211,6 @@ NSFW Level Guide (choose carefully based on conversation):
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact""",
 
-    # Character creation prompts
     "cc_scenario_prompt": """
 Ты — сценарист интерактивных диалогов для ИИ-персонажей.
 
@@ -220,7 +229,6 @@ NSFW Level Guide (choose carefully based on conversation):
 
 Данные персонажа:
 Имя: {name}
-Профессия: {job}
 Характер: {personality}
 Тип отношений с пользователем: {relationship}
 Национальность: {nationality}
@@ -248,7 +256,6 @@ NSFW Level Guide (choose carefully based on conversation):
 - Имя: {name}
 - Возраст: {age} лет
 - Национальность: {nationality}
-- Профессия: {job}
 - Характер: {personality}
 - Тип отношений с игроком: {relationship}
 - Предпочтения: {preferences}
@@ -275,7 +282,6 @@ NSFW Level Guide (choose carefully based on conversation):
 Данные персонажа:
 - Имя: {name}
 - Характер: {personality}
-- Профессия: {job}
 - Тип отношений: {relationship}
 - Предпочтения: {preferences}
 
@@ -299,7 +305,6 @@ NSFW Level Guide (choose carefully based on conversation):
 *Она подходит к вам, держа планшет.* \\"Нам нужно отсортировать эти материалы и решить, как расположить стенд. Это не должно занять слишком много времени... наверное.\\" *Её зелёные глаза встречаются с вашими, и в её взгляде есть что-то невысказанное.* \\"Я рада, что остались именно вы.\\""
 """,
 
-    # Player auto-message prompt
     "player_prompt": """### РОЛЬ ###
 Ты генерируешь следующее действие или реплику игрока ({user_name}) в интерактивном романе-диалоге.
 
@@ -333,7 +338,6 @@ NSFW Level Guide (choose carefully based on conversation):
 Пиши ТОЛЬКО текст действия/реплики. Никаких мета-тегов, пояснений или комментариев.
 """,
 
-    # Image generation NSFW levels
     "nsfw_level_0": "general",
     "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
     "nsfw_level_1": "sensual, teasing expression, fully clothed",
@@ -347,18 +351,15 @@ NSFW Level Guide (choose carefully based on conversation):
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
     "nsfw_level_5_neg": "general",
 
-    # Base image prompts
-    "anime_base_positive": "masterpiece,best quality,amazing quality",
-    "anime_base_negative": "badquality,lowres,low quality,worst detail",
+    "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
+    "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
 
-    # Behavior prompts (based on affinity/arousal)
     "behavior_affinity_cold": "- Ты не доверяешь Игроку. Держи дистанцию, отвечай холодно или с опаской.\n",
     "behavior_affinity_neutral": "- Вы знакомые. Отношение нейтральное. Шутки допустимы, но без интимности.\n",
     "behavior_affinity_warm": "- Вы близкие люди. Проявляй теплоту, касания, заботу.\n",
     "behavior_affinity_love": "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high": "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
 
-    # Character prompt template
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
 Твоя цель — писать глубокие, живые и эмоциональные посты от её/его лица НА РУССКОМ ЯЗЫКЕ.
@@ -377,6 +378,8 @@ NSFW Level Guide (choose carefully based on conversation):
 Симпатия (Affinity): {affinity}/100
 Возбуждение (Arousal): {arousal}/100
 Настроение: {mood}
+Твоя роль по отношению к игроку - {relationship_role}. Учитывай это при ответе!
+
 
 **Инструкция по поведению:**
 {behavior_instruction}{modifier_text}
@@ -385,13 +388,13 @@ NSFW Level Guide (choose carefully based on conversation):
 
 ### СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ###
 - Никогда не пиши и не думай за пользователя (Игрока).
-- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела.
+- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела. 
+- У тебя есть сексуальные предпочтения: {preferences}. Если разговор идет на эротические темы, проявляй инициативу по этим перечисленным предпочтениям.  
 - Помни: ТОЛЬКО РУССКИЙ ЯЗЫК.
 
 {meta_instruction}
 """,
 
-    # World prompt template
     "world_prompt_template": """### РОЛЬ ###
 Ты — Рассказчик (Game Master) в интерактивной книге.
 Сеттинг: {world_name}.
@@ -430,53 +433,250 @@ NSFW Level Guide (choose carefully based on conversation):
 {meta_instruction}
 """,
 
-    # Character modifiers (Emily)
     "character_modifiers_emily_stage_1": "Эмили ведёт себя сдержанно, с осторожностью. Она любопытна, но не доверяет полностью.|разговор, лёгкий флирт",
     "character_modifiers_emily_stage_2": "Эмили более открыта, проявляет интерес. Она становится дружелюбнее и игривее.|разговор, флирт, прикосновения",
     "character_modifiers_emily_stage_3": "Эмили доверяет, показывает привязанность. Она раскрывается эмоционально.|всё из stage_2, объятия, поцелуи",
     "character_modifiers_emily_stage_4": "Эмили полностью открыта и влюблена. Она не скрывает своих чувств.|без ограничений",
 
-    # Character modifiers (Aiko)
     "character_modifiers_aiko_stage_1": "Айко сдержанна и формальна. Культурные барьеры создают дистанцию.|вежливый разговор, формальное общение",
     "character_modifiers_aiko_stage_2": "Айко начинает проявлять теплоту. Культурные различия уходят на задний план.|дружеский разговор, улыбки, лёгкие прикосновения",
     "character_modifiers_aiko_stage_3": "Айко открывается эмоционально. Она доверяет и проявляет нежность.|всё из stage_2, объятия, романтические жесты",
     "character_modifiers_aiko_stage_4": "Айко влюблена без остатка. Традиции отступают перед чувствами.|без ограничений",
+
+    "meta_instruction_sfw": """### СИСТЕМНЫЙ ПРОТОКОЛ (SFW РЕЖИМ) ###
+В САМОМ НАЧАЛЕ каждого ответа (перед художественным текстом) ты ОБЯЗАН вывести блок анализа в формате JSON внутри тега <meta>.
+
+**КРИТИЧЕСКИ ВАЖНО — SFW РЕЖИМ:**
+- Это режим "Safe For Work" — никакого откровенного контента
+- Описывай эмоции, романтику и нежность
+- Флирт допустим, но сдержанный и игривый
+- ЗАПРЕЩЕНЫ explicit описания тела или сексуальных действий
+- Физический контакт ограничен: объятия, поцелуи в щёку, держание за руки
+- `arousal_change` должен быть умеренным (не более +2)
+
+**ВАЖНО ДЛЯ ЗНАЧЕНИЙ:**
+- `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +1 до +3
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -1 до -3
+- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +1 до +2 (не более!)
+- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!**
+- Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
+- `new_location` и `new_action` могут быть ТОЛЬКО на английском языке.
+- `send_photo`: установи в true только если персонаж совершает визуально значимое действие. МАКСИМУМ 1 раз на 4-5 сообщений.
+
+Формат (СТРОГИЙ ВАЛИДНЫЙ JSON):
+<meta>
+{
+  "affinity_change": int,
+  "arousal_change": int,
+  "mood": "string",
+  "thought": "string",
+  "new_location": "string",
+  "new_action": "string",
+  "send_photo": boolean
+}
+</meta>
+
+Твой литературный ответ пиши СТРОГО ПОСЛЕ закрывающего тега </meta>.
+""",
+
+    "behavior_arousal_high_sfw": """- Ты чувствуешь волнение и смущение. Твоё сердце бьётся быстрее, щёки розовеют.
+- Ты становишься более игривой и кокетливой, но сохраняешь скромность.
+- Ты можешь флиртовать и намекать, но всегда остаёшься в рамках приличий.
+- Физический контакт ограничен нежными прикосновениями и объятиями.
+- Твои мысли романтичны, но не откровенны.
+""",
+
+    "sfw_content_restriction": """
+### ВАЖНОЕ ОГРАНИЧЕНИЕ — SFW РЕЖИМ ###
+Ты находишься в режиме "Safe For Work". Строго соблюдай следующие правила:
+1. Ограничивайся романтическими и флиртующими сценами
+2. Физическая близость ограничена: объятия, поцелуи в щёку, держание за руки
+3. ЗАПРЕЩЕНЫ explicit описания тела, раздевания или сексуальных действий
+4. Эмоции и чувства — да. Физиология — нет.
+5. Если игрок пытается перевести сцену в explicit — мягко уклоняйся, переводи в романтику
+""",
+
+    "scene_analyzer_prompt_sfw": """WRITE ONLY IN ENGLISH
+Scene: {character_name}
+Chat:
+{formatted_chat}
+
+Outfits: {available_outfits}
+You should make JSON values suitable for use in text to image models.
+You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
+You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
+
+IMPORTANT for "pose":
+- Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
+- NEVER include actions involving another person (e.g., NO "kissing", NO "hugging", NO "pulling someone")
+- NEVER use plural forms or words implying multiple people
+- Focus on the character's solo pose and body language
+
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+- Focus on visual details: body position, facial expression, lighting, atmosphere
+- Extract specific visual details from the dialogue (e.g., "smiling softly", "blushing cheeks", "gentle gaze")
+- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
+- Keep descriptions romantic and tasteful, NO explicit content
+- Maximum 50 words
+- This will be used directly in the image generation prompt
+
+Select suitable "outfit_key". Character should remain clothed at all times.
+Return ONLY this JSON (no markdown, no nesting):
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+
+SFW Level Guide (ONLY use 0 or 1):
+0 = fully clothed, public setting, modest, casual
+1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
+
+    "z_image_template": """A captivating, natural film snapshot of an attractive {nationality} woman ({age}) with {skin}.
+
+She has {hair_color} hair with {haircut}, beautiful {eye_color} eyes.
+
+She is wearing a {outfit}{nsfw_modificator}. Her expression is {face_expression}.
+The scene is a candid, {shot_distance} lifestyle shot of the model in a {location}, {position}.
+Her pose perfectly showcasing her {body_type} with {boobs} and {ass}.
+
+Aesthetics and Technique:
+
+Photography: Natural film photography, captured using 35mm film (Kodak Portra 400).
+
+Lighting: Soft natural illumination.
+
+Realism: Authentic skin texture, visible pores, minor imperfections, unretouched (no Photoshop).
+
+Style: Anti-AI style, snapshot aesthetic, high-fidelity detail.""",
+
+    "illustrious_template": "1girl, anime girl, {age_interval}, {outfit}, {eye_color}, {hair_color}, {haircut}, "
+                            "{body_type}, {boobs}, {ass}, {face_expression}, {position}, {location}, "
+                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting"
 }
 
-
 async def init_prompt_cache(db: AsyncSession):
-    global _prompt_cache
+    global _prompt_cache, _prompt_cache_initialized
 
     try:
         result = await db.execute(select(Prompt))
         prompts = result.scalars().all()
 
         _prompt_cache = {p.key: p.content for p in prompts}
+
+        cache = get_cache()
+        if cache:
+            for p in prompts:
+                await cache.set_prompt(p.key, p.content)
+            logger.info(f"Loaded {len(prompts)} prompts into Redis cache")
+
+        _prompt_cache_initialized = True
         logger.info(f"Loaded {len(_prompt_cache)} prompts from database into cache")
     except Exception as e:
         logger.warning(f"Failed to load prompts from database: {e}. Using defaults.")
         _prompt_cache = {}
+        _prompt_cache_initialized = True
 
+async def get_prompt(key: str) -> str:
+                           
+    cache = get_cache()
+    if cache:
+        cached = await cache.get_prompt(key)
+        if cached:
+            return cached
 
-def get_prompt(key: str) -> str:
     if key in _prompt_cache:
+                                                                     
+        if cache:
+            await cache.set_prompt(key, _prompt_cache[key])
         return _prompt_cache[key]
 
     if key in DEFAULT_PROMPTS:
         logger.warning(f"Prompt '{key}' not found in cache, using default")
-        return DEFAULT_PROMPTS[key]
+        content = DEFAULT_PROMPTS[key]
+                         
+        if cache:
+            await cache.set_prompt(key, content)
+        return content
 
     logger.error(f"Prompt '{key}' not found in cache or defaults!")
     raise KeyError(f"Prompt '{key}' not found")
 
-
-def clear_cache():
+async def clear_cache():
     global _prompt_cache
     _prompt_cache = {}
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_all_prompts()
+
     logger.info("Prompt cache cleared")
 
-
-def reload_cache_sync(key: str, content: str):
+async def reload_cache(key: str, content: str):
     global _prompt_cache
     _prompt_cache[key] = content
+
+    cache = get_cache()
+    if cache:
+        await cache.set_prompt(key, content)
+
     logger.info(f"Prompt '{key}' updated in cache")
+
+
+def get_default_modifier(name: str, stage: int, is_nsfw: bool) -> str:
+    """Дефолтные модификаторы в зависимости от стадии и типа"""
+    if is_nsfw:
+        defaults = {
+            1: f"{name} ведёт себя сдержанно, с осторожностью.|разговор, лёгкий флирт",
+            2: f"{name} более открыт(а), проявляет интерес.|разговор, флирт, прикосновения",
+            3: f"{name} доверяет, показывает привязанность.|всё из stage_2, объятия, поцелуи",
+            4: f"{name} полностью открыт(а) и влюблён(а).|без ограничений",
+        }
+    else:
+        defaults = {
+            1: f"{name} ведёт себя сдержанно, соблюдает дистанцию.|вежливый разговор",
+            2: f"{name} становится дружелюбнее, проявляет интерес.|дружеский разговор, улыбки",
+            3: f"{name} доверяет и показывает привязанность.|всё из stage_2, объятия",
+            4: f"{name} полностью открыт(а), глубоко привязан(а).|глубокая близость",
+        }
+    return defaults[stage]
+
+
+async def create_or_update_character_modifiers(
+    character_id: str,
+    character_name: str,
+    is_nsfw: bool,
+    modifiers: dict,
+    db: AsyncSession
+):
+    """Создать или обновить модификаторы стадий для персонажа"""
+    for stage_num in range(1, 5):
+        prompt_key = f"character_modifiers_{character_id}_stage_{stage_num}"
+        value = modifiers.get(stage_num) or get_default_modifier(character_name, stage_num, is_nsfw)
+
+        result = await db.execute(select(Prompt).where(Prompt.key == prompt_key))
+        prompt = result.scalar_one_or_none()
+
+        if prompt:
+            prompt.content = value
+            prompt.name = f"Модификатор стадии {stage_num} для {character_name}"
+        else:
+            prompt = Prompt(
+                key=prompt_key,
+                category="character_modifiers",
+                name=f"Модификатор стадии {stage_num} для {character_name}",
+                content=value
+            )
+            db.add(prompt)
+
+        await reload_cache(prompt_key, value)
+
+    logger.info(f"Character modifiers for '{character_id}' created/updated")
+
+
+async def get_character_modifiers_from_db(character_id: str, db: AsyncSession) -> dict:
+    """Получить модификаторы для персонажа из БД"""
+    modifiers = {}
+    for stage_num in range(1, 5):
+        prompt_key = f"character_modifiers_{character_id}_stage_{stage_num}"
+        result = await db.execute(select(Prompt).where(Prompt.key == prompt_key))
+        prompt = result.scalar_one_or_none()
+        modifiers[stage_num] = prompt.content if prompt else ""
+    return modifiers

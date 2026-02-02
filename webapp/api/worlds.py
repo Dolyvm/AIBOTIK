@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pathlib import Path
 import sys
 
@@ -32,7 +32,8 @@ async def list_worlds(
             "name": world["name"],
             "cover_image": world.get("cover_image", ""),
             "tags": world_tags,
-            "description_short": description_short
+            "description_short": description_short,
+            "is_nsfw": world.get("is_nsfw", False)
         })
 
     return {"worlds": result}
@@ -43,7 +44,7 @@ async def get_world_detail(world_id: str):
     """World details with scenarios"""
     world = await get_world(world_id)
     if not world:
-        return {"error": "Not found"}, 404
+        raise HTTPException(status_code=404, detail={"error": "not_found", "code": "WORLD_NOT_FOUND"})
 
     scenarios = [{
         "index": 0,

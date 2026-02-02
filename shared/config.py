@@ -5,10 +5,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 CONTENT_BASE_PATH = Path(os.getenv("CONTENT_PATH", "/app/content"))
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://rpbot:popa@localhost:5432/rpbot"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 

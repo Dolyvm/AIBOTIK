@@ -7,7 +7,8 @@ import os
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from shared.repository import get_or_create_user
+from shared.database import get_session
+from shared.database.repositories import UserRepository
 from shared.config import ADMIN_TELEGRAM_IDS
 
 router = Router()
@@ -15,13 +16,15 @@ router = Router()
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
-    user = await get_or_create_user(
-        telegram_id=message.from_user.id,
-        username=message.from_user.username
-    )
+    async with get_session() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.get_or_create(
+            telegram_id=message.from_user.id,
+            username=message.from_user.username
+        )
 
     await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋\n\n"
+        f"Привет, {message.from_user.first_name}!\n\n"
         f"Твой баланс: {user.balance} токенов\n\n"
         "Нажми кнопку меню внизу, чтобы выбрать персонажа или вселенную."
     )
@@ -39,7 +42,7 @@ async def cmd_admin(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="🔧 Открыть Админ-панель",
+                text="Открыть Админ-панель",
                 web_app=WebAppInfo(url=admin_url)
             )
         ]

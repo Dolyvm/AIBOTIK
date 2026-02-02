@@ -6,19 +6,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 import logging
 import json
+import re
 
 from shared.models import Prompt, User, Character, World, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
-from shared.services.prompt_service import reload_cache_sync, DEFAULT_PROMPTS
+from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
-from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache
+from shared.services.cache import get_cache
+from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
+from api.image_gen.services.generate import submit_anime, submit_real
+from services.image_storage import save_avatar, save_world_cover, get_public_url
 from telegram_init_data import validate, parse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="admin/templates")
-
 
 PROMPT_CATEGORIES = {
     "character": "Character Prompts",
@@ -30,10 +33,8 @@ PROMPT_CATEGORIES = {
     "modifiers": "Character Modifiers",
 }
 
-
 async def get_current_user(request: Request) -> Optional[dict]:
     return request.session.get("user")
-
 
 async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_session)) -> dict:
     user = await get_current_user(request)
@@ -52,7 +53,6 @@ async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_
         )
 
     return user
-
 
 @router.post("/auth")
 async def admin_auth(
@@ -99,7 +99,6 @@ async def admin_auth(
     logger.info(f"Admin {telegram_id} authenticated")
     return {"success": True}
 
-
 @router.post("/logout")
 async def admin_logout(request: Request):
     user = request.session.get("user")
@@ -107,7 +106,6 @@ async def admin_logout(request: Request):
         logger.info(f"Admin {user.get('telegram_id')} logged out")
     request.session.clear()
     return {"success": True, "message": "Logged out"}
-
 
 @router.get("/", response_class=HTMLResponse)
 async def admin_index(
@@ -150,7 +148,6 @@ async def admin_index(
         }
     )
 
-
 @router.get("/prompts/{key}", response_class=HTMLResponse)
 async def edit_prompt_form(
     key: str,
@@ -173,7 +170,6 @@ async def edit_prompt_form(
         }
     )
 
-
 @router.post("/prompts/{key}")
 async def update_prompt(
     key: str,
@@ -195,14 +191,13 @@ async def update_prompt(
     )
     await db.commit()
 
-    reload_cache_sync(key, content)
-    invalidate_character_modifiers_cache()
-    invalidate_nsfw_levels_cache()
+    await reload_cache(key, content)
+    await invalidate_character_modifiers_cache()
+    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} updated prompt '{key}'")
 
     return RedirectResponse(url="/admin/", status_code=303)
-
 
 @router.post("/prompts/{key}/reset")
 async def reset_prompt(
@@ -229,15 +224,13 @@ async def reset_prompt(
     )
     await db.commit()
 
-    reload_cache_sync(key, default_content)
-    invalidate_character_modifiers_cache()
-    invalidate_nsfw_levels_cache()
+    await reload_cache(key, default_content)
+    await invalidate_character_modifiers_cache()
+    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} reset prompt '{key}' to default")
 
     return RedirectResponse(url=f"/admin/prompts/{key}", status_code=303)
-
-
 
 @router.get("/characters", response_class=HTMLResponse)
 async def list_characters(
@@ -271,6 +264,198 @@ async def list_characters(
         }
     )
 
+@router.get("/api/check-character-id/{character_id}")
+async def check_character_id(
+    character_id: str,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+    return {"exists": character is not None}
+
+@router.get("/api/check-world-id/{world_id}")
+async def check_world_id(
+    world_id: str,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    result = await db.execute(select(World).where(World.id == world_id))
+    world = result.scalar_one_or_none()
+    return {"exists": world is not None}
+
+@router.post("/api/generate-avatar")
+async def generate_avatar(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    data = await request.json()
+
+    model_type = data.get("model_type", "anime")
+    appearance = data.get("appearance", "")
+    body = data.get("body", "")
+    face = data.get("face", "")
+    default_outfit = data.get("default_outfit", "")
+    style_tags = data.get("style_tags", "")
+
+    prompt = ImagePrompt(
+        character_base=", ".join(filter(None, [appearance, body])),
+        facial_expression=face,
+        clothing=default_outfit,
+        style=style_tags,
+        nsfw_level=0
+    )
+
+    pos, neg = await prompt.build_prompt(model_type)
+
+    try:
+        if model_type == "real":
+            image_url = await submit_real(prompt=pos, allow_nsfw=False, nsfw_level=0)
+        else:
+            image_url = await submit_anime(pos, neg)
+
+        if not image_url:
+            raise HTTPException(status_code=500, detail="Image generation failed")
+
+        return {"url": image_url, "prompt": pos}
+    except Exception as e:
+        logger.error(f"Avatar generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+@router.get("/characters/new", response_class=HTMLResponse)
+async def add_character_form(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    return templates.TemplateResponse(
+        "add_character.html",
+        {
+            "request": request,
+            "admin": admin
+        }
+    )
+
+@router.post("/characters/new")
+async def create_character(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    form_data = await request.form()
+
+    character_id = form_data.get("id", "").strip()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+    personality = form_data.get("personality", "").strip()
+    scenario = form_data.get("scenario", "").strip()
+    first_message = form_data.get("first_message", "").strip()
+    tags_str = form_data.get("tags", "").strip()
+    is_nsfw = form_data.get("is_nsfw") == "on"
+
+    if not character_id or not name or not description or not personality or not scenario or not first_message:
+        raise HTTPException(status_code=400, detail="All main fields are required")
+
+    if not re.match(r'^[a-z0-9_-]+$', character_id):
+        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Character with ID '{character_id}' already exists")
+
+    wardrobe_keys = form_data.getlist("wardrobe_key")
+    wardrobe_values = form_data.getlist("wardrobe_value")
+    wardrobe = {
+        k.strip(): v.strip()
+        for k, v in zip(wardrobe_keys, wardrobe_values)
+        if k.strip()
+    }
+
+    visual_data = {
+        "model_type": form_data.get("model_type", "anime"),
+        "appearance": form_data.get("appearance", "").strip(),
+        "body": form_data.get("visual_body", "").strip(),
+        "face": form_data.get("visual_face", "").strip(),
+        "default_outfit": form_data.get("visual_default_outfit", "").strip(),
+        "style_tags": form_data.get("visual_style_tags", "").strip(),
+        "wardrobe": wardrobe
+    }
+
+    avatar_url = form_data.get("avatar_url", "").strip()
+    if avatar_url:
+        try:
+            avatar_path = await save_avatar(avatar_url, character_id)
+            visual_data["avatar"] = f"/images/{avatar_path}"
+        except Exception as e:
+            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+            visual_data["avatar"] = avatar_url
+
+    tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
+
+    alternate_greetings = []
+    if "alternate_greeting" in form_data:
+        alt_values = form_data.getlist("alternate_greeting")
+        alternate_greetings = [v.strip() for v in alt_values if v.strip()]
+
+    scenarios = [
+        {
+            "index": 0,
+            "scenario": scenario,
+            "intro": first_message
+        }
+    ]
+
+    for idx, alt_greeting in enumerate(alternate_greetings, start=1):
+        scenarios.append({
+            "index": idx,
+            "scenario": scenario,
+            "intro": alt_greeting
+        })
+
+    author_type = form_data.get("author_type", "aikai")
+    if author_type == "custom":
+        created_by_username = form_data.get("created_by_username", "").strip() or None
+    else:
+        created_by_username = "AiKai Team"
+
+    new_character = Character(
+        id=character_id,
+        name=name,
+        description=description,
+        personality=personality,
+        visual_data=visual_data,
+        scenarios=scenarios,
+        tags=tags,
+        is_nsfw=is_nsfw,
+        created_by_username=created_by_username
+    )
+
+    db.add(new_character)
+    await db.commit()
+
+    modifiers = {
+        1: form_data.get("modifier_stage_1", "").strip(),
+        2: form_data.get("modifier_stage_2", "").strip(),
+        3: form_data.get("modifier_stage_3", "").strip(),
+        4: form_data.get("modifier_stage_4", "").strip(),
+    }
+    await create_or_update_character_modifiers(
+        character_id=character_id,
+        character_name=name,
+        is_nsfw=is_nsfw,
+        modifiers=modifiers,
+        db=db
+    )
+    await db.commit()
+    await invalidate_character_modifiers_cache()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    logger.info(f"Admin {admin.get('telegram_id')} created character '{character_id}'")
+
+    return RedirectResponse(url="/admin/characters", status_code=303)
 
 @router.get("/characters/{character_id}", response_class=HTMLResponse)
 async def edit_character_form(
@@ -299,6 +484,8 @@ async def edit_character_form(
 
     visual_data_json = json.dumps(character.visual_data, indent=2, ensure_ascii=False)
 
+    modifiers = await get_character_modifiers_from_db(character_id, db)
+
     return templates.TemplateResponse(
         "edit_character.html",
         {
@@ -308,10 +495,10 @@ async def edit_character_form(
             "first_message": first_message,
             "alternate_greetings": alternate_greetings,
             "visual_data_json": visual_data_json,
+            "modifiers": modifiers,
             "admin": admin
         }
     )
-
 
 @router.post("/characters/{character_id}")
 async def update_character(
@@ -336,6 +523,13 @@ async def update_character(
     visual_data_str = form_data.get("visual_data", "").strip()
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
+
+    # Process author
+    author_type = form_data.get("author_type", "aikai")
+    if author_type == "custom":
+        created_by_username = form_data.get("created_by_username", "").strip() or None
+    else:
+        created_by_username = "AiKai Team"
 
     if not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
@@ -382,15 +576,36 @@ async def update_character(
             visual_data=visual_data,
             scenarios=scenarios,
             tags=tags,
-            is_nsfw=is_nsfw
+            is_nsfw=is_nsfw,
+            created_by_username=created_by_username
         )
     )
     await db.commit()
 
+    # Обновить модификаторы стадий
+    modifiers = {
+        1: form_data.get("modifier_stage_1", "").strip(),
+        2: form_data.get("modifier_stage_2", "").strip(),
+        3: form_data.get("modifier_stage_3", "").strip(),
+        4: form_data.get("modifier_stage_4", "").strip(),
+    }
+    await create_or_update_character_modifiers(
+        character_id=character_id,
+        character_name=name,
+        is_nsfw=is_nsfw,
+        modifiers=modifiers,
+        db=db
+    )
+    await db.commit()
+    await invalidate_character_modifiers_cache()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
     logger.info(f"Admin {admin.get('telegram_id')} updated character '{character_id}'")
 
     return RedirectResponse(url="/admin/characters", status_code=303)
-
 
 @router.get("/worlds", response_class=HTMLResponse)
 async def list_worlds(
@@ -424,6 +639,103 @@ async def list_worlds(
         }
     )
 
+@router.get("/worlds/new", response_class=HTMLResponse)
+async def add_world_form(
+    request: Request,
+    admin: dict = Depends(get_admin_user)
+):
+    return templates.TemplateResponse(
+        "add_world.html",
+        {
+            "request": request,
+            "admin": admin
+        }
+    )
+
+@router.post("/worlds/new")
+async def create_world(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    form_data = await request.form()
+
+    world_id = form_data.get("id", "").strip()
+    name = form_data.get("name", "").strip()
+    description = form_data.get("description", "").strip()
+    gm_instructions = form_data.get("gm_instructions", "").strip()
+    intro_message = form_data.get("intro_message", "").strip()
+    cover_image = form_data.get("cover_image", "").strip() or None
+    tags_str = form_data.get("tags", "").strip()
+
+    if not world_id or not name or not description or not intro_message:
+        raise HTTPException(status_code=400, detail="ID, name, description, and intro message are required")
+
+    if not re.match(r'^[a-z0-9_-]+$', world_id):
+        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+
+    result = await db.execute(select(World).where(World.id == world_id))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"World with ID '{world_id}' already exists")
+
+    tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
+
+    alt_titles = form_data.getlist("alt_scenario_title")
+    alt_intros = form_data.getlist("alt_scenario_intro")
+    alt_gm_instructions = form_data.getlist("alt_scenario_gm_instructions")
+
+    scenarios = [
+        {
+            "index": 0,
+            "intro": intro_message,
+            "gm_instructions": gm_instructions
+        }
+    ]
+
+    for idx in range(len(alt_titles)):
+        title = alt_titles[idx].strip() if idx < len(alt_titles) else ""
+        intro = alt_intros[idx].strip() if idx < len(alt_intros) else ""
+        gm_instr = alt_gm_instructions[idx].strip() if idx < len(alt_gm_instructions) else ""
+
+        if title or intro:
+            scenarios.append({
+                "index": idx + 1,
+                "title": title,
+                "intro": intro,
+                "gm_instructions": gm_instr
+            })
+
+    saved_cover_image = None
+    if cover_image:
+        try:
+            cover_path = await save_world_cover(cover_image, world_id)
+            saved_cover_image = get_public_url(cover_path)
+        except Exception as e:
+            logger.warning(f"Failed to save world cover, using original URL: {e}")
+            saved_cover_image = cover_image
+
+    new_world = World(
+        id=world_id,
+        name=name,
+        description=description,
+        cover_image=saved_cover_image,
+        scenarios=scenarios,
+        locations=[],
+        tags=tags,
+        is_nsfw=False
+    )
+
+    db.add(new_world)
+    await db.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_world(world_id)
+
+    logger.info(f"Admin {admin.get('telegram_id')} created world '{world_id}'")
+
+    return RedirectResponse(url="/admin/worlds", status_code=303)
 
 @router.get("/worlds/{world_id}", response_class=HTMLResponse)
 async def edit_world_form(
@@ -466,7 +778,6 @@ async def edit_world_form(
             "admin": admin
         }
     )
-
 
 @router.post("/worlds/{world_id}")
 async def update_world(
@@ -532,6 +843,10 @@ async def update_world(
         )
     )
     await db.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_world(world_id)
 
     logger.info(f"Admin {admin.get('telegram_id')} updated world '{world_id}'")
 

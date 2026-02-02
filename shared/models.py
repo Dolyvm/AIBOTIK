@@ -12,11 +12,9 @@ import enum
 
 Base = declarative_base()
 
-
 async def get_async_session():
-    from shared.repository import async_session
-
-    async with async_session() as session:
+    from shared.database import get_db
+    async for session in get_db():
         yield session
 
 
@@ -171,6 +169,7 @@ class GeneratedImage(Base):
 
     file_size = Column(Integer, nullable=True)  
     content_type = Column(String(50), nullable=True)  
+    nsfw_level = Column(Integer, default=0, nullable=True)  
 
     created_at = Column(DateTime, server_default=func.now())
 

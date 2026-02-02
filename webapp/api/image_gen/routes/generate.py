@@ -1,25 +1,30 @@
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
-from ...create_character.cc_schemas import CreateCharacterRequest
+from ...create_character.cc_schemas import CreateCharacterRequest, clothes_to_prompt
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, HTTPException, Body, Query, Depends
+from fastapi import APIRouter, HTTPException, Body, Query, Depends, Request
 
 from shared.models import Chat, User
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
-from shared.repository import get_session, get_user, save_generated_image, get_chat_history, update_chat_metrics
+from shared.database import get_session
+from shared.database.repositories import MessageRepository, GeneratedImageRepository, ChatRepository
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
+from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
+from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.generate import submit_anime, submit_real
+from ..services.generate import submit_anime, submit_real, build_prompt_from_character
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
@@ -33,11 +38,9 @@ logging.basicConfig(
 
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
 
-
 @router.post("/build_prompt")
 async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None):
-    return data.build_prompt(model_type)
-
+    return await data.build_prompt(model_type)
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
@@ -59,32 +62,41 @@ async def generate_image(data: GenerateRequest):
         )
     return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
-
 @router.post("/{chat_id}/generate")
 async def gen(
     chat_id: int,
     outfit: str = Query(default="default_outfit", description="Ключ из wardrobe (casual, formal, gym, swimwear, sleepwear, underwear, nude)"),
     user: User = Depends(get_current_user)
 ):
+                         
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["images"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
     chat = await verify_chat_ownership(chat_id, user)
 
+    try:
+        if chat.chat_type == "character":
+            content = await get_character(chat.target_id)
+            character, world = content, None
+        else:
+            content = await get_world(chat.target_id)
+            character, world = None, content
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+    except Exception as e:
+        logging.error(f"Error loading content: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     async with get_session() as session:
-        try:
-            if chat.chat_type == "character":
-                content = await get_character(chat.target_id)
-                character, world = content, None
-            else:
-                content = await get_world(chat.target_id)
-                character, world = None, content
+        message_repo = MessageRepository(session)
+        messages = await message_repo.get_history(chat_id)
 
-            if not content:
-                raise HTTPException(status_code=404, detail="Content not found")
-
-        except Exception as e:
-            print(f"Error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    messages = await get_chat_history(chat_id)
     history = [
         {"role": msg.role.value, "content": msg.content}
         for msg in messages
@@ -97,6 +109,7 @@ async def gen(
     scene_reasoning = ""
     pose = ""
     scene_description = ""
+    emotion = "neutral"
     if SCENE_ANALYZER_ENABLED and history:
         try:
             llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
@@ -111,7 +124,8 @@ async def gen(
             scene = await analyzer.analyze(
                 history=history,
                 character_name=content["name"],
-                available_outfits=available_outfits
+                available_outfits=available_outfits,
+                chat_id=chat_id
             )
 
             nsfw_level = scene.nsfw_level
@@ -119,12 +133,12 @@ async def gen(
             pose = scene.pose
             environment = scene.location
             scene_reasoning = scene.reasoning
-            scene_description = scene.scene_description
+            emotion = scene.emotion
 
             logging.info(f"Scene analysis: {scene_reasoning}")
-            logging.info(f"Scene description: {scene_description}")
 
         except Exception as e:
+
             logging.warning(f"Scene analysis failed, using fallback: {e}")
             nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
             outfit_key = outfit
@@ -144,94 +158,124 @@ async def gen(
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
     prompt.scene_details = scene_description
-    pos, neg = prompt.build_prompt(content.get("model_type"))
+    pos, neg = await build_prompt_from_character(
+        character,
+        face_expression=emotion,
+        location=environment,
+        position=state_meta.get("action") or pose,
+        nsfw_level=nsfw_level,
+        outfit_key=outfit_key,
+        close_up=False
+    )
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
-    result = None
     logging.info(f"{content=}")
 
-    if content.get("model_type") == "anime":
-        image_url = await submit_anime(pos, neg)
+    model_type = content.get("model_type")
+    if model_type not in ("anime", "real"):
+        raise HTTPException(status_code=400, detail="Unsupported model type")
+    task_id = str(uuid4())
 
-    elif content.get("model_type") == "real":
-        image_url = await submit_real(
-            prompt=pos,
-            allow_nsfw=True,
-            nsfw_level=nsfw_level
-        )
-    else:
-        image_url = None
-    if image_url:
-        try:
-            from services.image_storage import download_and_save_image, get_public_url, ImageStorageError
+    task_params = {
+        "chat_id": chat.id,
+        "user_id": chat.user_id,
+        "model_type": model_type,
+        "positive_prompt": pos,
+        "negative_prompt": neg,
+        "allow_nsfw": True,
+        "nsfw_level": nsfw_level,
+        "pose": pose,
+    }
 
-            local_path = None
-            file_size = None
-            content_type = None
-            public_url = image_url 
+    redis = await get_redis()
+    await redis.set(
+        f"task:{task_id}",
+        json.dumps({
+            "status": "pending",
+            "chat_id": chat.id,
+            "created_at": datetime.utcnow().isoformat()
+        }),
+        ex=3600
+    )
 
-            try:
-                local_path, file_size, content_type = await download_and_save_image(
-                    provider_url=image_url,
-                    user_id=chat.user_id
-                )
-                public_url = get_public_url(local_path)
-                logging.info(f"Image saved locally: {local_path}")
-            except ImageStorageError as e:
-                logging.warning(f"Failed to save image locally, using provider URL: {e}")
+    try:
+        from main import app
+        arq_pool = getattr(app.state, "arq_pool", None)
+        if arq_pool:
+            await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
+            logging.info(f"Task {task_id} enqueued for chat {chat.id}")
+        else:
+            logging.warning("arq pool not configured, executing synchronously")
+            from shared.queue.tasks import generate_image_task
+            ctx = {"redis": redis, "get_session": get_session}
+            result = await generate_image_task(ctx, task_id, task_params)
+            if result.get("status") == "completed":
+                return result.get("result", {})
+            raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
+    except Exception as e:
+        logging.error(f"Failed to enqueue task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start generation: {e}")
 
-            await save_generated_image(
-                user_id=chat.user_id,
-                chat_id=chat.id,
-                prompt=pos,
-                provider_url=image_url,
-                local_path=local_path,
-                file_size=file_size,
-                content_type=content_type
-            )
-
-            if pose:
-                current_meta = chat.state_meta or {}
-                await update_chat_metrics(
-                    chat.id,
-                    {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
-                )
-
-            response = {"url": public_url}
-            logging.info(f"Returning response: {response}")
-            return response
-
-        except Exception as e:
-            logging.error(f"Failed to save image or update state: {e}")
-            return {"url": image_url}
-
-    response = {"error": "Failed to generate image"}
+    response = {"task_id": task_id, "status": "pending"}
     logging.info(f"Returning response: {response}")
     return response
 
-
 @router.post("/generate_preview")
 async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-    visual = data.build_visual()
-    appearance = visual.get("appearance", "")
-    body = visual.get("body", "")
-    character_base = f"{appearance}, {body}" if appearance else body
-
-    prompt = Prompt(
-        character_base=character_base,
-        facial_expression=visual["face"],
-        clothing=visual["default_outfit"],
-        style=visual.get("style_tags", "")
-    )
-
-    pos, neg = prompt.build_prompt(data.style)
-    logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["images"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
     image_url = None
-    if data.style == "anime":
+    char_temp = {
+        "model_type": data.style,
+        "visual": {
+            "wardrobe": {
+                "casual": clothes_to_prompt[data.clothing],
+                "underwear": "black lingerie set",
+                "nude": "nothing, showing her naked body"
+            },
+            "body_type": data.body_type,
+            "model_type": data.style,
+            "nationality": data.nationality,
+            "age": data.age,
+            "ass": data.ass_size,
+            "boobs": data.boobs_size,
+            "hair_color": data.hair_color,
+            "haircut": data.haircut,
+            "eye_color": data.eyes_color,
+        }
+    }
+    if data.style == "real":
+        pos, neg = await build_prompt_from_character(
+            character=char_temp,
+            face_expression="confident and dominant with piercing gaze",
+            location="in modern and sophisticated office lobby",
+            position="standing seductively",
+            nsfw_level=0,
+            outfit_key="casual",
+            close_up=True
+        )
+        image_url = await submit_real(
+            prompt=pos,
+            allow_nsfw=True,
+            nsfw_level=0
+        )
+    elif data.style == "anime":
+        pos, neg = await build_prompt_from_character(
+            character=char_temp,
+            face_expression="confident and dominant with piercing gaze",
+            location="in modern and sophisticated office lobby",
+            position="standing seductively, intimate pose",
+            nsfw_level=0,
+            outfit_key="casual",
+            close_up=True
+        )
+        logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
         image_url = await submit_anime(pos, neg)
-    elif data.style == "real":
-        image_url = await submit_real(prompt=pos, allow_nsfw=True)
 
     if image_url:
         return {"url": image_url}

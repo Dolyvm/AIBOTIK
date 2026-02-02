@@ -1,4 +1,5 @@
 from shared.services.prompt_service import get_prompt
+from shared.services.cache import get_cache
 
 def _parse_modifier(prompt_value: str) -> dict:
     parts = prompt_value.split("|")
@@ -12,41 +13,40 @@ def _parse_modifier(prompt_value: str) -> dict:
         }
     return {"instruction": prompt_value, "allowed_actions": []}
 
+async def _load_character_modifiers(character_id: str) -> dict:
+    stages = {}
+    for stage_num in range(1, 5):
+        stage_key = f"stage_{stage_num}"
+        prompt_key = f"character_modifiers_{character_id}_{stage_key}"
+        try:
+            prompt_value = await get_prompt(prompt_key)
+            stages[stage_key] = _parse_modifier(prompt_value)
+        except KeyError:
+            return {}
+    return stages
 
-def _load_character_modifiers() -> dict:
-    return {
-        "emily": {
-            "stage_1": _parse_modifier(get_prompt("character_modifiers_emily_stage_1")),
-            "stage_2": _parse_modifier(get_prompt("character_modifiers_emily_stage_2")),
-            "stage_3": _parse_modifier(get_prompt("character_modifiers_emily_stage_3")),
-            "stage_4": _parse_modifier(get_prompt("character_modifiers_emily_stage_4")),
-        },
-        "aiko": {
-            "stage_1": _parse_modifier(get_prompt("character_modifiers_aiko_stage_1")),
-            "stage_2": _parse_modifier(get_prompt("character_modifiers_aiko_stage_2")),
-            "stage_3": _parse_modifier(get_prompt("character_modifiers_aiko_stage_3")),
-            "stage_4": _parse_modifier(get_prompt("character_modifiers_aiko_stage_4")),
-        }
-    }
+async def _get_character_modifiers(character_id: str) -> dict:
+    cache = get_cache()
 
+    if cache:
+        cached = await cache.get_character_modifiers(character_id)
+        if cached:
+            return cached
 
-_CHARACTER_MODIFIERS = None
+    modifiers = await _load_character_modifiers(character_id)
 
+    if cache and modifiers:
+        await cache.set_character_modifiers(character_id, modifiers)
 
-def _get_character_modifiers() -> dict:
-    global _CHARACTER_MODIFIERS
-    if _CHARACTER_MODIFIERS is None:
-        _CHARACTER_MODIFIERS = _load_character_modifiers()
-    return _CHARACTER_MODIFIERS
+    return modifiers
 
+async def invalidate_character_modifiers_cache():
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character_modifiers()
 
-def invalidate_character_modifiers_cache():
-    global _CHARACTER_MODIFIERS
-    _CHARACTER_MODIFIERS = None
-
-
-def get_modifier_for_stage(character_id: str, state: dict) -> dict:
-    modifiers = _get_character_modifiers().get(character_id)
+async def get_modifier_for_stage(character_id: str, state: dict, allow_nsfw: bool = True) -> dict:
+    modifiers = await _get_character_modifiers(character_id)
 
     if not modifiers:
         return None

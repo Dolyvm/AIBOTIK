@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from typing import Optional
 import sys
 from pathlib import Path
 
@@ -6,11 +8,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.repository import get_user, get_user_chats
+from shared.database import get_session
+from shared.database.repositories import ChatRepository, UserRepository
 from shared.services.content_loader import get_character, get_world
 from shared.models import User
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_user_id_match
+
+
+class UpdateSettingsRequest(BaseModel):
+    nsfw_blur: Optional[bool] = None
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -34,7 +41,9 @@ async def get_user_active_chats(user_id: int, user: User = Depends(get_current_u
     """User's active chats with resolved names"""
     await verify_user_id_match(user_id, user)
 
-    chats = await get_user_chats(user.telegram_id)
+    async with get_session() as session:
+        chat_repo = ChatRepository(session)
+        chats = await chat_repo.get_user_chats(user.telegram_id)
 
     result = []
 
@@ -62,3 +71,21 @@ async def get_user_active_chats(user_id: int, user: User = Depends(get_current_u
         result.append(chat_data)
 
     return {"chats": result}
+
+
+@router.patch("/{user_id}/settings")
+async def update_user_settings(
+    user_id: int,
+    payload: UpdateSettingsRequest,
+    user: User = Depends(get_current_user)
+):
+    await verify_user_id_match(user_id, user)
+
+    async with get_session() as session:
+        user_repo = UserRepository(session)
+        await user_repo.update_settings(
+            telegram_id=user.telegram_id,
+            nsfw_blur=payload.nsfw_blur
+        )
+
+    return {"success": True}

@@ -1,4 +1,3 @@
-"""Telegram WebApp authentication using telegram-init-data library."""
 
 import sys
 from pathlib import Path
@@ -11,11 +10,53 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi import Header, HTTPException, status
 from telegram_init_data import validate, parse
 
-from shared.models import User
-from shared.repository import get_session
+from datetime import datetime
+from shared.models import User, UserSettings
+from shared.database import get_session
+from shared.database.repositories import UserRepository
 from shared.config import BOT_TOKEN
-from sqlalchemy import select
+from shared.services.cache import get_cache
 
+def user_to_dict(user: User) -> dict:
+    return {
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "balance": user.balance,
+        "is_subscribed": user.is_subscribed,
+        "subscription_end_date": user.subscription_end_date.isoformat() if user.subscription_end_date else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_active_at": user.last_active_at.isoformat() if user.last_active_at else None,
+        "settings": {
+            "nsfw_blur": user.settings.nsfw_blur if user.settings else True,
+            "language": user.settings.language if user.settings else "ru"
+        } if user.settings else None
+    }
+
+def dict_to_user(data: dict) -> User:
+    user = User(
+        telegram_id=data["telegram_id"],
+        username=data.get("username"),
+        avatar_url=data.get("avatar_url"),
+        balance=data.get("balance", 1000),
+        is_subscribed=data.get("is_subscribed", False),
+    )
+
+    if data.get("subscription_end_date"):
+        user.subscription_end_date = datetime.fromisoformat(data["subscription_end_date"])
+    if data.get("created_at"):
+        user.created_at = datetime.fromisoformat(data["created_at"])
+    if data.get("last_active_at"):
+        user.last_active_at = datetime.fromisoformat(data["last_active_at"])
+
+    if data.get("settings"):
+        user.settings = UserSettings(
+            user_id=data["telegram_id"],
+            nsfw_blur=data["settings"].get("nsfw_blur", True),
+            language=data["settings"].get("language", "ru")
+        )
+
+    return user
 
 async def get_current_user(
     authorization: Optional[str] = Header(None)
@@ -97,11 +138,16 @@ async def get_current_user(
             }
         )
 
+    cache = get_cache()
+    if cache:
+        cached_user = await cache.get_user(telegram_id)
+        if cached_user:
+            logging.debug(f"[AUTH] User {telegram_id} found in cache")
+            return dict_to_user(cached_user)
+
     async with get_session() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
-        user = result.scalar_one_or_none()
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(telegram_id)
 
     if not user:
         logging.error(f"[AUTH] User {telegram_id} not found in database")
@@ -114,5 +160,7 @@ async def get_current_user(
             }
         )
 
+    if cache:
+        await cache.set_user(telegram_id, user_to_dict(user))
     logging.info(f"[AUTH] Successfully authenticated user {telegram_id}")
     return user

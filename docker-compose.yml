@@ -36,12 +36,27 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   webapp:
     build: ./webapp
     expose:
       - "8080"
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
@@ -65,15 +80,47 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./webapp
+    command: arq shared.queue.worker.WorkerSettings
+    environment:
+      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - REDIS_URL=redis://redis:6379/0
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - FAL_KEY=${FAL_KEY}
+      - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
+      - IMAGES_STORAGE_PATH=/app/generated_images
+    volumes:
+      - ./webapp/api:/app/api
+      - ./webapp/services:/app/services
+      - ./shared:/app/shared:ro
+      - ./content:/app/content:ro
+      - generated_images:/app/generated_images
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   bot:
     build: ./bot
+    ports:
+      - "${WEBHOOK_PORT:-8443}:${WEBHOOK_PORT}"
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+      - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - WEBAPP_URL=${WEBAPP_URL}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_PATH=${WEBHOOK_PATH}
+      - WEBHOOK_HOST=${WEBHOOK_HOST}
+      - WEBHOOK_PORT=${WEBHOOK_PORT}
     volumes:
       - ./bot/handlers:/app/handlers
       - ./bot/main.py:/app/main.py
@@ -85,6 +132,8 @@ services:
       - ./alembic.ini:/app/alembic.ini
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       webapp:
         condition: service_started
@@ -121,4 +170,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   generated_images:
