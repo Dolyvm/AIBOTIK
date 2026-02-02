@@ -298,7 +298,7 @@
                 <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
                     <i class="fas fa-paper-plane"></i>
                 </button>
-                <button v-if="currentChat?.chat_type === 'character'" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
+                <button v-if="currentChatType === 'character'" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
                     <i class="fas fa-camera"></i>
                 </button>
             </div>
@@ -590,6 +590,7 @@
                 const currentChatId = ref(null);
                 const currentChatName = ref('');
                 const currentChatAvatar = ref('');
+                const currentChatType = ref('character');
                 const chatHistory = ref([]);
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
@@ -1020,11 +1021,13 @@
                     if (metaOverride) {
                         currentChatName.value = metaOverride.name;
                         currentChatAvatar.value = metaOverride.avatar;
+                        currentChatType.value = metaOverride.chat_type || 'character';
                     } else {
                         const chatMeta = activeChats.value.find(c => c.id === chatId);
                         if (chatMeta) {
                             currentChatName.value = chatMeta.name;
                             currentChatAvatar.value = chatMeta.avatar;
+                            currentChatType.value = chatMeta.type || 'character';
                         }
                     }
 
@@ -1056,7 +1059,8 @@
                         // 1. Сначала сохраняем данные во временную переменную
                         const meta = {
                             name: selectedCharacter.value.name,
-                            avatar: selectedCharacter.value.avatar || selectedCharacter.value.cover_image
+                            avatar: selectedCharacter.value.avatar || selectedCharacter.value.cover_image,
+                            chat_type: chatType
                         };
 
                         // 2. Теперь можно закрывать модалку (это обнулит selectedCharacter)
@@ -1532,7 +1536,7 @@
                     currentView, tab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
-                    currentChatName, currentChatAvatar, currentChatId,
+                    currentChatName, currentChatAvatar, currentChatId, currentChatType,
                     isWaitingResponse, isStreaming, messagesContainer, inputField,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,

@@ -71,14 +71,18 @@ class ContextManager:
 
             await message_repo.add(chat.id, "user", user_input)
 
-            messages = await message_repo.get_history(chat.id, limit=MAX_HISTORY_LENGTH)
+            history_limit = min(chat.msgs_since_summary, MAX_HISTORY_LENGTH) if chat.summary else MAX_HISTORY_LENGTH
+            messages = await message_repo.get_history(chat.id, limit=history_limit)
             history = [
                 {"role": msg.role.value, "content": msg.content}
                 for msg in messages
             ]
 
-            if chat.msgs_since_summary >= self.summary_threshold and len(history) > MAX_HISTORY_LENGTH:
-                await self._summarize_history(chat, history, character, world, chat_repo)
+            if chat.msgs_since_summary >= self.summary_threshold:
+                all_messages = await message_repo.get_history(chat.id, limit=chat.msgs_since_summary)
+                full_history = [{"role": msg.role.value, "content": msg.content} for msg in all_messages]
+                await self._summarize_history(chat, full_history, character, world, chat_repo)
+                history = full_history[-5:] if len(full_history) > 5 else full_history
 
             if character:
                 max_tokens = LLM_MAX_TOKENS_CHARACTER
@@ -186,7 +190,7 @@ class ContextManager:
         world: Optional[dict] = None,
         chat_repo: Optional[ChatRepository] = None
     ):
-        messages_to_summarize = history[:len(history) // 2]
+        messages_to_summarize = history[:-5] if len(history) > 5 else history
 
         from shared.services.prompt_service import get_prompt
 
@@ -214,7 +218,8 @@ class ContextManager:
                 chat.id,
                 {
                     "summary": summary.strip(),
-                    "msgs_since_summary": 0
+                    "msgs_since_summary": 0,
+                    "last_auto_photo_at": 0
                 }
             )
         else:
@@ -224,12 +229,14 @@ class ContextManager:
                     chat.id,
                     {
                         "summary": summary.strip(),
-                        "msgs_since_summary": 0
+                        "msgs_since_summary": 0,
+                        "last_auto_photo_at": 0
                     }
                 )
 
         chat.summary = summary.strip()
         chat.msgs_since_summary = 0
+        chat.last_auto_photo_at = 0
 
     def _format_messages_for_summary(self, messages: list) -> str:
         formatted = []

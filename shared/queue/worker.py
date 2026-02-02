@@ -2,6 +2,7 @@ import os
 import logging
 from arq.connections import RedisSettings
 from shared.database import get_session
+from shared.services.redis_client import get_redis
 from shared.queue.tasks import generate_image_task
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 async def startup(ctx):
     logger.info("Worker starting up...")
     ctx["get_session"] = get_session
+    ctx["redis"] = await get_redis()
     logger.info("Worker startup complete")
 
 
