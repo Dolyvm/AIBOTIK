@@ -2,7 +2,7 @@
   "name": "Эмили",
   "appearance": "slim athletic build, long blonde hair, blue eyes, defined cheekbones, clear natural skin",
   "visual": {
-      "llm_settings": {
+    "llm_settings": {
       "preferences": null,
       "relationship_role": "Коллега"
     },

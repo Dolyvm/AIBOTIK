@@ -91,6 +91,10 @@ haircut_to_prompt = {
     "two ponytails hair": {
         "anime": "twin tails, double ponytails",
         "real": "pigtails, playful double ponytails"
+    },
+    "bob haircut": {
+        "anime": "bob haircut",
+        "real": "bob haircut"
     }
 }
 
@@ -110,6 +114,10 @@ eyes_to_prompt = {
     "grey": {
         "anime": "steel grey eyes",
         "real": "smoky grey eyes"
+    },
+    "purple": {
+        "anime": "purple violet eyes",
+        "real": "purple violet eyes"
     }
 }
 
@@ -119,7 +127,8 @@ hair_color_to_prompt = {
     "blond": "golden blonde hair",
     "red": "red hair",
     "grey": "silver grey hair",
-    "white": "white hair"
+    "white": "white hair",
+    "dark blue": "dark blue hair"
 }
 
 face_expression_by_personality = {
