@@ -26,9 +26,10 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 15%;">ID</th>
-                <th style="width: 25%;">Имя</th>
-                <th style="width: 40%;">Теги</th>
+                <th style="width: 12%;">ID</th>
+                <th style="width: 20%;">Имя</th>
+                <th style="width: 15%;">Создатель</th>
+                <th style="width: 33%;">Теги</th>
                 <th style="width: 10%;">NSFW</th>
                 <th style="width: 10%;">Действия</th>
             </tr>
@@ -43,6 +44,9 @@
                 </td>
                 <td>
                     <strong>{{ character.name }}</strong>
+                </td>
+                <td>
+                    <span style="color: #2c3e50;">{{ character.created_by_username or 'AiKai Team' }}</span>
                 </td>
                 <td>
                     {% if character.tags %}

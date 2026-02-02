@@ -524,6 +524,13 @@ async def update_character(
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
 
+    # Process author
+    author_type = form_data.get("author_type", "aikai")
+    if author_type == "custom":
+        created_by_username = form_data.get("created_by_username", "").strip() or None
+    else:
+        created_by_username = "AiKai Team"
+
     if not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
 
@@ -569,7 +576,8 @@ async def update_character(
             visual_data=visual_data,
             scenarios=scenarios,
             tags=tags,
-            is_nsfw=is_nsfw
+            is_nsfw=is_nsfw,
+            created_by_username=created_by_username
         )
     )
     await db.commit()
