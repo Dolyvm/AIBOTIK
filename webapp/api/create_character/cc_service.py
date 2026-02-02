@@ -260,79 +260,23 @@ assSizeCards = [
 clothesItems = [
     "Бикини",
     "Голый",
-    "Форма медсестры",
     "Длинное платье",
-    "Баскетбольная форма",
-    "Футбольная форма",
-    "Свадебное платье",
-    "Форма бортпроводника",
-    "Платье принцессы",
-    "Одежда для йоги",
     "Школьная форма",
-    "Форма секретаря",
-    "Костюм ведьмы",
-    "Наряд горничной",
-    "Женские средневековые доспехи",
-    "Полицейская форма",
-    "Форма учителя",
-    "Костюм ангела",
-    "Балетная юбка",
-    "Свободная рубашка"
+    "Свободная рубашка",
+    "Костюм ведьмы"
 ]
 
 preferencesItems = [
-    "Подчинение",
+    "Покорность",
     "Доминирование",
-    "Игрушка",
-    "Бондаж",
-    "На улице",
-    "Вуайеризм",
-    "Ругань",
-    "Шлепки",
-    "Групповой секс",
-    "Обмен Женами",
-    "Унижение",
-    "Рванье Одежды",
-    "Связывание (БДСМ)",
-    "Порнография",
-    "Форма",
-    "Анальный секс",
-    "С завязанными глазами",
-    "Оральный секс",
-    "Анальная пробка",
-    "Игра со свечами",
-    "Ошейник и поводок",
-    "Внутреннее семяизвержение",
-    "Эякуляция на лицо",
-    "Глубокая глотка",
-    "Дилдо",
-    "Сзади (догги-стайл)",
-    "Двойное проникновение",
-    "Куни (оральный секс женщинам)",
-    "Вставление пальцев",
-    "Фистинг",
-    "Секс с едой",
-    "Запретная любовь",
-    "Дергать за волосы",
-    "Наручники"
-]
-
-jobItems = [
-    "Профессор",
-    "Массажист",
-    "Фитнес-тренер",
-    "Секретарь",
-    "Повар",
-    "Инструктор по йоге",
-    "Бортпроводник",
-    "Медсестра",
-    "Учитель",
-    "Полицейский",
-    "Танцовщица",
-    "Актриса",
-    "Студентка колледжа",
-    "Модель",
-    "Официантка"
+    "Связывание",
+    "Оральные ласки",
+    "Анальные ласки",
+    "Поза сзади",
+    "Грубый секс",
+    "Кончить внутрь",
+    "Секс на публике",
+    "Ролевые игры"
 ]
 
 personalityItems = [
@@ -361,96 +305,50 @@ relationshipItems = [
     "Друг"
 ]
 
-stepsList = [
+stepsGroups = [
     {
-        "type": "nameInput",
-        "id": "nameInput",
-        "title": "Введите имя нового персонажа"
+        "group": "basic",
+        "title": "Основное",
+        "steps": [
+            {"type": "nameInput", "id": "nameInput", "title": "Введите имя"},
+            {"type": "imgSelect", "id": "style", "title": "Выбрать стиль", "items": styleCards}
+        ]
     },
     {
-        "type": "imgSelect",
-        "id": "style",
-        "title": "Выбрать стиль",
-        "items": styleCards
+        "group": "face",
+        "title": "Лицо и волосы",
+        "steps": [
+            {"type": "imgSelect", "id": "age", "title": "Возраст", "items": ageCards},
+            {"type": "imgSelect", "id": "nationality", "title": "Национальность", "items": nationalityCards},
+            {"type": "imgSelect", "id": "eyes_color", "title": "Цвет глаз", "items": eyeColorCards},
+            {"type": "imgSelect", "id": "hair_color", "title": "Цвет волос", "items": hairColorCards},
+            {"type": "imgSelect", "id": "haircut", "title": "Прическа", "items": haircutCards}
+        ]
     },
     {
-        "type": "imgSelect",
-        "id": "age",
-        "title": "Выбрать возраст",
-        "items": ageCards
+        "group": "body",
+        "title": "Фигура",
+        "steps": [
+            {"type": "imgSelect", "id": "body_type", "title": "Телосложение", "items": bodyTypeCards},
+            {"type": "imgSelect", "id": "boobs_size", "title": "Размер груди", "items": boobSizeCards},
+            {"type": "imgSelect", "id": "ass_size", "title": "Размер попы", "items": assSizeCards}
+        ]
     },
     {
-        "type": "imgSelect",
-        "id": "nationality",
-        "title": "Выбрать национальность",
-        "items": nationalityCards
+        "group": "style",
+        "title": "Одежда",
+        "steps": [
+            {"type": "textSelect", "id": "clothing", "title": "Выберите одежду", "items": clothesItems}
+        ]
     },
     {
-        "type": "imgSelect",
-        "id": "eyes_color",
-        "title": "Выбрать цвет глаз",
-        "items": eyeColorCards
-    },
-    {
-        "type": "imgSelect",
-        "id": "hair_color",
-        "title": "Выбрать цвет волос",
-        "items": hairColorCards
-    },
-    {
-        "type": "imgSelect",
-        "id": "haircut",
-        "title": "Выбрать прическу",
-        "items": haircutCards
-    },
-    {
-        "type": "imgSelect",
-        "id": "body_type",
-        "title": "Выбрать телосложение",
-        "items": bodyTypeCards
-    },
-    {
-        "type": "imgSelect",
-        "id": "boobs_size",
-        "title": "Выбрать размер груди",
-        "items": boobSizeCards
-    },
-    {
-        "type": "imgSelect",
-        "id": "ass_size",
-        "title": "Выбрать размер жопы",
-        "items": assSizeCards
-    },
-
-    {
-        "type": "textSelect",
-        "id": "clothing",
-        "title": "Выберите одежду",
-        "items": clothesItems
-    },
-    {
-        "type": "textMultiSelect",
-        "id": "preferences",
-        "title": "Выберите предпочтения",
-        "items": preferencesItems
-    },
-    {
-        "type": "textSelect",
-        "id": "job",
-        "title": "Выберите профессию",
-        "items": jobItems
-    },
-    {
-        "type": "textSelect",
-        "id": "personality",
-        "title": "Выберите характер",
-        "items": personalityItems
-    },
-    {
-        "type": "textSelect",
-        "id": "relationship",
-        "title": "Выберите ваши взаимоотношения",
-        "items": relationshipItems
+        "group": "personality",
+        "title": "Личность",
+        "steps": [
+            {"type": "textSelect", "id": "personality", "title": "Характер", "items": personalityItems},
+            {"type": "textSelect", "id": "relationship", "title": "Взаимоотношения", "items": relationshipItems},
+            {"type": "textMultiSelect", "id": "preferences", "title": "Предпочтения", "items": preferencesItems}
+        ]
     }
 ]
 
@@ -467,24 +365,6 @@ personality_to_prompt = {
     "Доверенное лицо": "Надёжная, скрытная, говорит честно и хранит тайны."
 }
 
-job_to_tags = {
-    "Профессор": ["Teacher", "Academic"],
-    "Массажист": ["Massage", "Relaxation"],
-    "Фитнес-тренер": ["Fitness", "Athletic"],
-    "Секретарь": ["Office", "Professional"],
-    "Повар": ["Chef", "Kitchen"],
-    "Инструктор по йоге": ["Yoga", "Fitness"],
-    "Бортпроводник": ["Flight", "Travel"],
-    "Медсестра": ["Nurse", "Medical"],
-    "Учитель": ["Teacher", "School"],
-    "Полицейский": ["Police", "Uniform"],
-    "Танцовщица": ["Dancer", "Performance"],
-    "Актриса": ["Actress", "Celebrity"],
-    "Студентка колледжа": ["Student", "School"],
-    "Модель": ["Model", "Fashion"],
-    "Официантка": ["Waitress", "Service"]
-}
-
 personality_to_tags = {
     "Заботливый": ["Caring", "Sweet"],
     "Мудрец": ["Wise", "Calm"],
@@ -499,48 +379,16 @@ personality_to_tags = {
 }
 
 preference_to_tags = {
-                 
-    "Подчинение": "BDSM",
+    "Покорность": "BDSM",
     "Доминирование": "BDSM",
-    "Бондаж": "BDSM",
-    "Связывание (БДСМ)": "BDSM",
-    "Ошейник и поводок": "BDSM",
-    "Наручники": "BDSM",
-    "С завязанными глазами": "Blindfold",
-               
-    "Групповой секс": "Group",
-    "Обмен Женами": "Swinger",
-    "Двойное проникновение": "DP",
-               
-    "На улице": "Public",
-    "Вуайеризм": "Voyeur",
-             
-    "Игрушка": "Toys",
-    "Анальная пробка": "Toys",
-    "Дилдо": "Toys",
-            
-    "Шлепки": "Spanking",
-    "Унижение": "Humiliation",
-    "Рванье Одежды": "Rough",
-    "Дергать за волосы": "Rough",
-    "Ругань": "Dirty Talk",
-                      
-    "Анальный секс": "Anal",
-    "Оральный секс": "Oral",
-    "Глубокая глотка": "Deepthroat",
-    "Куни (оральный секс женщинам)": "Oral",
-    "Вставление пальцев": "Fingering",
-    "Фистинг": "Fisting",
-    "Сзади (догги-стайл)": "Doggy",
-            
-    "Внутреннее семяизвержение": "Creampie",
-    "Эякуляция на лицо": "Facial",
-            
-    "Игра со свечами": "Waxplay",
-    "Секс с едой": "Foodplay",
-    "Запретная любовь": "Taboo",
-    "Порнография": "Porn",
-    "Форма": "Uniform"
+    "Связывание": "BDSM",
+    "Оральные ласки": "Oral",
+    "Анальные ласки": "Anal",
+    "Поза сзади": "Doggy",
+    "Грубый секс": "Rough",
+    "Кончить внутрь": "Creampie",
+    "Секс на публике": "Public",
+    "Ролевые игры": "Roleplay"
 }
 
 def generate_tags(req: CreateCharacterRequest) -> list[str]:
@@ -550,9 +398,6 @@ def generate_tags(req: CreateCharacterRequest) -> list[str]:
         tags.add("Anime")
     else:
         tags.add("Realistic")
-
-    job_tags = job_to_tags.get(req.job, [])
-    tags.update(job_tags)
 
     pers_tags = personality_to_tags.get(req.personality, [])
     tags.update(pers_tags)
@@ -581,10 +426,9 @@ async def build_llm_prompt(req: CreateCharacterRequest) -> str:
     prompt_template = await get_prompt("cc_scenario_prompt")
     return prompt_template.format(
         name=req.name,
-        job=req.job,
         personality=req.personality,
         relationship=req.relationship,
-        nationality=req.nationality
+        nationality=req.nationality or "не указана"
     ).strip()
 
 async def build_description_prompt(req: CreateCharacterRequest) -> str:
@@ -594,8 +438,7 @@ async def build_description_prompt(req: CreateCharacterRequest) -> str:
     return prompt_template.format(
         name=req.name,
         age=req.age,
-        nationality=req.nationality,
-        job=req.job,
+        nationality=req.nationality or "не указана",
         personality=req.personality,
         relationship=req.relationship,
         preferences=', '.join(req.preferences) if req.preferences else 'не указаны'
@@ -608,7 +451,6 @@ async def build_first_mes_prompt(req: CreateCharacterRequest, scenario: str) -> 
     return prompt_template.format(
         name=req.name,
         personality=req.personality,
-        job=req.job,
         relationship=req.relationship,
         preferences=', '.join(req.preferences) if req.preferences else 'не указаны',
         scenario=scenario

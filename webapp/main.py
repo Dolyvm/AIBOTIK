@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.sessions import SessionMiddleware
 import sys
 from pathlib import Path
@@ -81,6 +82,18 @@ async def handle_rate_limit(request, exc: RateLimitExceeded):
             "code": "RATE_LIMIT_EXCEEDED"
         },
         headers={"Retry-After": str(exc.retry_after)}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation(request, exc: RequestValidationError):
+    logging.error(f"Validation error on {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "validation_error",
+            "detail": exc.errors(),
+            "code": "REQUEST_VALIDATION_ERROR"
+        }
     )
 
 @app.on_event("startup")

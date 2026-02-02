@@ -7,9 +7,10 @@ from fastapi import APIRouter, HTTPException, Body, Depends
 from shared.config import SCENE_ANALYZER_MODEL
 from shared.services.llm import LLMClient
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.cache import get_cache
 from .cc_schemas import CreateCharacterRequest
 from .cc_service import (
-    stepsList,
+    stepsGroups,
     build_llm_prompt,
     build_description_prompt,
     build_first_mes_prompt,
@@ -31,7 +32,6 @@ async def create_character_endpoint(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         limits = RATE_LIMITS["character_creation"]
@@ -63,8 +63,8 @@ async def create_character_endpoint(
         personality = build_personality_with_preferences(payload)
 
         description = payload.description or (
-            f"{payload.name} — {payload.age}-летняя {payload.nationality} "
-            f"по профессии {payload.job}. Характер: {payload.personality}."
+            f"{payload.name} — {payload.age}-летняя девушка. "
+            f"Характер: {payload.personality}."
         )
 
         async with get_session() as session:
@@ -77,13 +77,18 @@ async def create_character_endpoint(
                 scenarios=scenarios,
                 tags=tags,
                 is_nsfw=True,
-                created_by_username_id = user.telegram_id,
-                created_by_username = user.username,
+                created_by_username_id=user.telegram_id,
+                created_by_username=user.username,
             )
             session.add(character)
             await session.commit()
+
+        cache = get_cache()
+        if cache:
+            await cache.invalidate_character(character_id)
+
         return {"character_id": character_id, "status": "created"}
-    except Exception as e: 
+    except Exception as e:
         logging.error(f"[CREATE_CHARACTER] Error: {e}")
         raise HTTPException(status_code=500, detail={
             "error": "creation_failed",
@@ -93,14 +98,13 @@ async def create_character_endpoint(
 
 @router.get("")
 async def get_create_character_data(user: User = Depends(get_current_user)):
-    return stepsList
+    return {"groups": stepsGroups}
 
 @router.post("/scenario")
 async def generate_character_scenario(
         payload: CreateCharacterRequest = Body(...),
         user: User = Depends(get_current_user)
 ):
-                                    
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)

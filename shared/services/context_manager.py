@@ -364,7 +364,7 @@ class ContextManager:
 
             # Try to enqueue task via arq
             try:
-                from webapp.main import app
+                from main import app
                 arq_pool = getattr(app.state, "arq_pool", None)
                 if arq_pool:
                     await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
@@ -406,7 +406,7 @@ class ContextManager:
         if matches:
             for match in matches:
                 try:
-                    updates = json.loads(match.strip().replace("*", ""))
+                    updates = json.loads(match.strip().replace("*", "").replace("+", ""))
                     state_updates.update(updates)
                 except json.JSONDecodeError:
                     logging.info("malformed json: ", match.strip().replace("\n", ""))

@@ -10,34 +10,11 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 
-    <link rel="stylesheet" href="/static/css/styles.css?v=7">
+    <link rel="stylesheet" href="/static/css/styles.css?v=8">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-        /* Toast Notification Styles */
-        .toast {
-            position: fixed;
-            /* CRITICAL: Position above tabs + safe area, with 20px margin */
-            bottom: calc(20px + var(--bottom-total-spacing));
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 24px;
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 2000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            animation: slideUp 0.3s ease;
-        }
-        .toast--error { background-color: #ff3b30; }
-        .toast--success { background-color: #34c759; }
-        .toast--info { background-color: #007aff; }
-
-        @keyframes slideUp {
-            from { transform: translate(-50%, 20px); opacity: 0; }
-            to { transform: translate(-50%, 0); opacity: 1; }
-        }
+        /* Toast styles are defined in styles.css */
 
         /* Tags in Modal */
         .modal-tags {
@@ -57,7 +34,9 @@
         .auto-continue-bar {
             padding: 10px;
             text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--tg-theme-bg-color);
+            border-top: 1px solid var(--tg-theme-secondary-bg-color);
+            flex-shrink: 0;
         }
 
         .btn-auto-continue {
@@ -268,7 +247,7 @@
                 </div>
             </div>
 
-            <div class="messages-container" ref="messagesContainer">
+            <div class="messages-container" ref="messagesContainer" @click="handleMessagesClick">
                 <div v-for="(msg, index) in chatHistory" :key="index" 
                      class="message-wrapper" 
                      :class="msg.role === 'user' ? 'own' : 'foreign'">
@@ -311,7 +290,7 @@
             <div class="input-area">
                 <textarea
                     v-model="inputMessage"
-                    @keydown.enter.prevent="sendMessage"
+                    @keydown="handleTextareaKey"
                     placeholder="Сообщение..."
                     rows="1"
                     ref="inputField"
@@ -326,97 +305,197 @@
         </div>
 
         <!-- View: Create Character-->
-        <div v-if="currentView === 'create-character'" class="create-character-view" :style="{padding: '1rem'}">
+        <div v-if="currentView === 'create-character'" class="create-character-view">
             <div class="create-character-steps">
                 <div class="cc-step"
-                     v-for="(_, i) in 16"
-                     :class="{active: currentCCStep >= i}"
-                     :key="i"
+                     v-for="(group, i) in filteredGroups"
+                     :class="{active: currentCCGroupIndex >= i}"
+                     :key="group.group"
                 ></div>
+                <div class="cc-step" :class="{active: currentCCGroupIndex >= totalGroups}"></div>
             </div>
 
-            <div class="steps-container"
-                 v-if="stepsList[currentCCStep]"
-            >
-                <h2>{{stepsList[currentCCStep].title}}</h2>
-                <div v-if="stepsList[currentCCStep].type === 'nameInput'">
+            <!-- Шаги выбора параметров -->
+            <div class="steps-container" ref="stepsContainer" v-if="currentStep && currentCCGroupIndex < totalGroups">
+                <h3 class="cc-group-title">{{ currentGroup?.title }}</h3>
+                <h2>{{ currentStep.title }}</h2>
+
+                <!-- Ввод имени -->
+                <div v-if="currentStep.type === 'nameInput'" class="name-input-container">
                     <label>
                         Ввод имени
                         <input
                             v-model="createCharacterData.name"
                             type="text"
                             placeholder="Введите имя персонажа"
+                            class="cc-name-input"
                         >
                     </label>
                 </div>
-                <div v-if="stepsList[currentCCStep].type === 'imgSelect'" class="grid">
-                    <div v-for="(item, index) in stepsList[currentCCStep]['items']"
+
+                <!-- Выбор с изображениями -->
+                <div v-if="currentStep.type === 'imgSelect'" class="grid">
+                    <div v-for="(item, index) in currentStep.items"
                         :key="item.value"
                          class="card"
-                         :style="{border: createCharacterData[stepsList[currentCCStep].id] === item.value ? '5px solid red': ''}"
-                         :class="{ selected: createCharacterData[stepsList[currentCCStep].id] === item.value }"
-                         @click="selectCCItem(currentCCStep, index)"
+                         :class="{ selected: createCharacterData[currentStep.id] === item.value }"
+                         @click="selectCCItem(index)"
                     >
                         <img :src="item.img" loading="lazy">
                         <div class="card-title">
                             {{ item.title }}
                         </div>
                     </div>
-                    <div v-if="stepsList[currentCCStep]['items'].length === 0" class="empty-state">Загружается...</div>
+                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
                 </div>
 
-                <div v-if="stepsList[currentCCStep].type === 'textSelect'" class="grid">
-                    <div v-for="(item, index) in stepsList[currentCCStep]['items']"
+                <!-- Текстовый выбор -->
+                <div v-if="currentStep.type === 'textSelect'" class="grid">
+                    <div v-for="(item, index) in currentStep.items"
                          :key="item"
                          class="card"
-                         :style="{border: createCharacterData[stepsList[currentCCStep].id] === item ? '3px solid red': ''}"
-                         :class="{ selected: createCharacterData[stepsList[currentCCStep].id] === item }"
-                         @click="selectCCItem(currentCCStep, index)"
+                         :class="{ selected: createCharacterData[currentStep.id] === item }"
+                         @click="selectCCItem(index)"
                     >
                         <div class="card-title">
                             {{ item }}
                         </div>
                     </div>
-                    <div v-if="stepsList[currentCCStep]['items'].length === 0" class="empty-state">Загружается...</div>
+                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
                 </div>
 
-                <div v-if="stepsList[currentCCStep].type === 'textMultiSelect'" class="grid">
-                    <div v-for="(item, index) in stepsList[currentCCStep]['items']"
+                <!-- Мульти-выбор -->
+                <div v-if="currentStep.type === 'textMultiSelect'" class="grid">
+                    <div v-for="(item, index) in currentStep.items"
                          :key="item"
                          class="card"
-                         :style="{border: createCharacterData[stepsList[currentCCStep].id]?.includes(item) ? '3px solid red': ''}"
-                         :class="{ selected: createCharacterData[stepsList[currentCCStep].id]?.includes(item) }"
-                         @click="selectCCItem(currentCCStep, index)"
+                         :class="{ selected: createCharacterData[currentStep.id]?.includes(item) }"
+                         @click="selectCCItem(index)"
                     >
                         <div class="card-title">
                             {{ item }}
                         </div>
                     </div>
-                    <div v-if="stepsList[currentCCStep]['items'].length === 0" class="empty-state">Загружается...</div>
+                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
                 </div>
 
-                <button class="change-step-button" @click="changeStep(1)">Далее</button>
-                <button class="change-step-button" @click="changeStep(-1)">Назад</button>
+                <!-- Навигационные кнопки -->
+                <div class="cc-navigation">
+                    <button class="change-step-button" @click="changeStep(1)">Далее</button>
+                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
+                </div>
             </div>
-            <!-- Preview new character Step-->
-            <div v-if="currentCCStep === 15">
-                <img :src="newCharacterPreview" class="modal-character-image" alt="Cover">
-                <button @click="generateNewCharacterPreview">Сгенерировать изображение</button>
-                <div>
-                    <p>Сценарий:</p>
-                    <p v-if="isGeneratingScenario">Генерация сценария...</p>
-                    <p v-else>{{newCharacterScenario}}</p>
-                    <button @click="generateNewCharacterScenario" :disabled="isGeneratingScenario">
-                        {{ isGeneratingScenario ? 'Генерация...' : 'Сгенерировать новый сценарий' }}
+
+            <!-- Финальный шаг: превью и редактирование -->
+            <div v-if="currentCCGroupIndex >= totalGroups" class="final-step-container" @click="hideKeyboard">
+                <!-- Резюме выбранных параметров -->
+                <div class="cc-summary-section">
+                    <h3 class="cc-summary-title">Параметры персонажа</h3>
+                    <div class="cc-summary-grid">
+                        <div class="cc-summary-item" v-if="createCharacterData.name">
+                            <span class="cc-summary-label">Имя:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.name }}</span>
+                        </div>
+                        <div class="cc-summary-item" v-if="createCharacterData.style">
+                            <span class="cc-summary-label">Стиль:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.style === 'anime' ? 'Аниме' : 'Реалистично' }}</span>
+                        </div>
+                        <div class="cc-summary-item" v-if="createCharacterData.age">
+                            <span class="cc-summary-label">Возраст:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.age }} лет</span>
+                        </div>
+                        <div class="cc-summary-item" v-if="createCharacterData.nationality">
+                            <span class="cc-summary-label">Национальность:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.nationality }}</span>
+                        </div>
+                        <div class="cc-summary-item" v-if="createCharacterData.personality">
+                            <span class="cc-summary-label">Характер:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.personality }}</span>
+                        </div>
+                        <div class="cc-summary-item" v-if="createCharacterData.relationship">
+                            <span class="cc-summary-label">Отношения:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.relationship }}</span>
+                        </div>
+                        <div class="cc-summary-item cc-summary-full" v-if="createCharacterData.preferences?.length">
+                            <span class="cc-summary-label">Предпочтения:</span>
+                            <span class="cc-summary-value">{{ createCharacterData.preferences.join(', ') }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cc-preview-section">
+                    <!-- Loader во время генерации -->
+                    <div v-if="isGeneratingPreview" class="cc-preview-loading">
+                        <div class="cc-spinner"></div>
+                        <span>Генерация изображения...</span>
+                    </div>
+                    <!-- Сгенерированное изображение -->
+                    <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Cover">
+                    <!-- Placeholder если нет изображения -->
+                    <div v-else class="cc-preview-placeholder">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Изображение не сгенерировано</span>
+                    </div>
+                    <button class="cc-generate-btn" @click="generateNewCharacterPreview" :disabled="isGeneratingPreview">
+                        <i class="fas fa-image"></i>
+                        {{ isGeneratingPreview ? 'Генерация...' : 'Сгенерировать изображение' }}
                     </button>
                 </div>
-                <button
-                    class="create-character-final-btn"
-                    @click="createCharacterFinal"
-                    :disabled="!createCharacterData.name || isCreatingCharacter || isGeneratingScenario || !newCharacterScenario"
-                >
-                    {{ isCreatingCharacter ? 'Создание...' : 'Создать персонажа' }}
-                </button>
+
+                <div class="cc-fields-section">
+                    <!-- Кнопка генерации всего контента -->
+                    <button class="cc-generate-btn cc-generate-scenario-btn" @click="generateNewCharacterScenario" :disabled="isGeneratingScenario">
+                        <i class="fas fa-magic"></i>
+                        {{ isGeneratingScenario ? 'Генерация...' : 'Сгенерировать сценарий' }}
+                    </button>
+                    <p class="cc-hint">Нажмите для автоматической генерации сценария, первого сообщения и описания через ИИ</p>
+
+                    <!-- Сценарий -->
+                    <div class="cc-field">
+                        <label>Сценарий:</label>
+                        <textarea
+                            v-model="newCharacterScenario"
+                            class="scenario-textarea"
+                            placeholder="Опишите сценарий взаимодействия..."
+                            :disabled="isGeneratingScenario"
+                        ></textarea>
+                    </div>
+
+                    <!-- Первое сообщение -->
+                    <div class="cc-field">
+                        <label>Первое сообщение:</label>
+                        <textarea
+                            v-model="newCharacterFirstMes"
+                            class="scenario-textarea"
+                            placeholder="Первое сообщение персонажа игроку..."
+                            :disabled="isGeneratingScenario"
+                        ></textarea>
+                    </div>
+
+                    <!-- Описание персонажа -->
+                    <div class="cc-field">
+                        <label>Описание персонажа:</label>
+                        <textarea
+                            v-model="newCharacterDescription"
+                            class="scenario-textarea"
+                            placeholder="Внешность, характер, особенности..."
+                            :disabled="isGeneratingScenario"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <!-- Навигация финального шага -->
+                <div class="cc-navigation">
+                    <button
+                        class="create-character-final-btn"
+                        @click="createCharacterFinal"
+                        :disabled="!createCharacterData.name || isCreatingCharacter || isGeneratingScenario || !newCharacterScenario"
+                    >
+                        <i class="fas fa-check"></i>
+                        {{ isCreatingCharacter ? 'Создание...' : 'Создать персонажа' }}
+                    </button>
+                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
+                </div>
             </div>
         </div>
 
@@ -490,7 +569,7 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted, nextTick, watch } = Vue;
+        const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
 
         marked.setOptions({ breaks: true, gfm: true });
 
@@ -518,14 +597,63 @@
                 const messagesContainer = ref(null);
 
                 // Create Character
-                const currentCCStep = ref(0);
-                const stepsList = ref([])
+                const currentCCGroupIndex = ref(0);
+                const currentCCStepIndex = ref(0);
+                const stepsGroups = ref([])
                 const createCharacterData = ref({name: ""})
+                const stepsContainer = ref(null);
                 const newCharacterPreview = ref(null);
                 const newCharacterScenario = ref(null);
                 const newCharacterFirstMes = ref(null);
                 const newCharacterDescription = ref(null);
                 const isGeneratingScenario = ref(false);
+
+                // Computed: отфильтрованные группы (пропуск национальности для аниме)
+                const filteredGroups = computed(() => {
+                    if (createCharacterData.value.style === 'anime') {
+                        return stepsGroups.value.map(group => ({
+                            ...group,
+                            steps: group.steps.filter(step => step.id !== 'nationality')
+                        }));
+                    }
+                    return stepsGroups.value;
+                });
+
+                // Computed: текущая группа
+                const currentGroup = computed(() => {
+                    return filteredGroups.value[currentCCGroupIndex.value];
+                });
+
+                // Computed: текущий шаг внутри группы
+                const currentStep = computed(() => {
+                    return currentGroup.value?.steps?.[currentCCStepIndex.value];
+                });
+
+                // Computed: общее количество групп
+                const totalGroups = computed(() => {
+                    return filteredGroups.value.length;
+                });
+
+                // Computed: индекс текущего шага в плоском списке (для прогресс-бара)
+                const currentCCStep = computed(() => {
+                    let total = 0;
+                    for (let i = 0; i < currentCCGroupIndex.value; i++) {
+                        total += filteredGroups.value[i]?.steps?.length || 0;
+                    }
+                    return total + currentCCStepIndex.value;
+                });
+
+                // Computed: общее количество шагов
+                const totalSteps = computed(() => {
+                    return filteredGroups.value.reduce((sum, g) => sum + (g.steps?.length || 0), 0);
+                });
+
+                // Для совместимости со старым кодом
+                const stepsList = computed(() => {
+                    return filteredGroups.value.flatMap(g => g.steps || []);
+                });
+
+                const filteredStepsList = stepsList;
 
                 // Modal state
                 const showScenarioModal = ref(false);
@@ -596,6 +724,13 @@
                 const showToast = (message, type = 'error') => {
                     toast.value = { show: true, message, type };
                     setTimeout(() => toast.value.show = false, 3000);
+                };
+
+                const hideKeyboard = (e) => {
+                    // Скрываем клавиатуру только если клик не по textarea или input
+                    if (e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+                        document.activeElement?.blur();
+                    }
                 };
                 axios.interceptors.request.use(
                     (config) => {
@@ -679,15 +814,6 @@
                     // CRITICAL: Expand to full height immediately
                     tg.expand();
 
-                    // Request fullscreen mode (removes Telegram bars)
-                    if (typeof tg.requestFullscreen === 'function') {
-                        try {
-                            tg.requestFullscreen();
-                        } catch (e) {
-                            console.warn('Fullscreen request failed:', e);
-                        }
-                    }
-
                     // Prevent accidental app closure when scrolling (Bot API 7.7+)
                     if (typeof tg.disableVerticalSwipes === 'function') {
                         tg.disableVerticalSwipes();
@@ -699,12 +825,6 @@
                     // Initial viewport sync
                     updateViewportVariables();
 
-                    // Listen for fullscreen state changes
-                    tg.onEvent('fullscreenChanged', () => {
-                        console.log('Fullscreen state changed:', tg.isFullscreen);
-                        updateViewportVariables();
-                    });
-
                     // Listen for stable viewport changes only
                     tg.onEvent('viewportChanged', (event) => {
                         if (event.isStateStable) {
@@ -712,12 +832,6 @@
                             console.log('Viewport stable at:', tg.viewportStableHeight);
                             updateViewportVariables();
                         }
-                    });
-
-                    // Handle fullscreen request failures
-                    tg.onEvent('fullscreenFailed', (error) => {
-                        console.error('Fullscreen failed:', error);
-                        // Fallback: continue with expanded mode
                     });
 
                     // DEBUG: Check if Telegram variables are loaded
@@ -773,7 +887,7 @@
                 const loadStepsList = async () => {
                     try {
                         const res = await axios.get("/api/create_character")
-                        stepsList.value = res.data;
+                        stepsGroups.value = res.data.groups || [];
                     } catch (e) { console.error(e); }
                 };
 
@@ -1135,6 +1249,18 @@
                         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
                     }
                 };
+
+                const handleTextareaKey = (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                };
+
+                const inputField = ref(null);
+                const handleMessagesClick = () => {
+                    inputField.value?.blur();
+                };
                 
                 const formatMessage = (text) => {
                     if (!text) return '';
@@ -1225,20 +1351,62 @@
                 }
 
                 const changeStep = async (delta) => {
-                    if (currentCCStep.value === 0 && delta === -1) {
+                    // Переход назад из первого шага первой группы - выход
+                    if (currentCCGroupIndex.value === 0 && currentCCStepIndex.value === 0 && delta === -1) {
                         currentView.value = "selection";
-                        return
+                        return;
                     }
-                    const newStep = currentCCStep.value + delta;
-                    currentCCStep.value = newStep;
 
-                    if (newStep === stepsList.value.length  && !newCharacterScenario.value) {
-                        await generateNewCharacterScenario();
+                    if (delta === 1) {
+                        // Переход вперед
+                        const currentGroupSteps = currentGroup.value?.steps?.length || 0;
+                        if (currentCCStepIndex.value < currentGroupSteps - 1) {
+                            // Следующий шаг в текущей группе
+                            currentCCStepIndex.value++;
+                        } else if (currentCCGroupIndex.value < totalGroups.value - 1) {
+                            // Переход к следующей группе
+                            currentCCGroupIndex.value++;
+                            currentCCStepIndex.value = 0;
+                        } else {
+                            // Переход на финальный шаг (генерация)
+                            currentCCGroupIndex.value = totalGroups.value;
+                            currentCCStepIndex.value = 0;
+                            // Автоматически запускаем генерацию превью
+                            if (!newCharacterPreview.value && !isGeneratingPreview.value) {
+                                generateNewCharacterPreview();
+                            }
+                            // Автоматически генерируем сценарий
+                            if (!newCharacterScenario.value) {
+                                await generateNewCharacterScenario();
+                            }
+                        }
+                    } else {
+                        // Переход назад
+                        if (currentCCGroupIndex.value >= totalGroups.value) {
+                            // Возврат с финального шага
+                            currentCCGroupIndex.value = totalGroups.value - 1;
+                            currentCCStepIndex.value = (filteredGroups.value[currentCCGroupIndex.value]?.steps?.length || 1) - 1;
+                        } else if (currentCCStepIndex.value > 0) {
+                            // Предыдущий шаг в текущей группе
+                            currentCCStepIndex.value--;
+                        } else if (currentCCGroupIndex.value > 0) {
+                            // Переход к предыдущей группе
+                            currentCCGroupIndex.value--;
+                            currentCCStepIndex.value = (filteredGroups.value[currentCCGroupIndex.value]?.steps?.length || 1) - 1;
+                        }
+                    }
+
+                    // Скролл к началу контейнера
+                    await nextTick();
+                    if (stepsContainer.value) {
+                        stepsContainer.value.scrollTop = 0;
                     }
                 }
 
-                function selectCCItem(stepIndex, itemIndex) {
-                    const step = stepsList.value[stepIndex];
+                function selectCCItem(itemIndex) {
+                    const step = currentStep.value;
+                    if (!step) return;
+
                     const item = step.items[itemIndex];
 
                     if (step.type === 'imgSelect') {
@@ -1247,18 +1415,18 @@
 
                     else if (step.type === 'textMultiSelect') {
                         if (!createCharacterData.value.preferences) {
-                            createCharacterData.value.preferences = []
+                            createCharacterData.value.preferences = [];
                         }
 
-                        const alreadySelected = createCharacterData.value.preferences?.includes(item)
+                        const alreadySelected = createCharacterData.value.preferences?.includes(item);
 
                         if (alreadySelected) {
                             createCharacterData.value.preferences = createCharacterData.value.preferences?.filter(
                                 i => i !== item
-                            )
+                            );
                         }
                         else if (createCharacterData.value.preferences?.length < 3) {
-                            createCharacterData.value.preferences.push(item)
+                            createCharacterData.value.preferences.push(item);
                         }
                     }
 
@@ -1267,11 +1435,19 @@
                     }
                 }
 
+                const isGeneratingPreview = ref(false);
+
                 const generateNewCharacterPreview = async () => {
+                    if (isGeneratingPreview.value) return;
+                    isGeneratingPreview.value = true;
                     try {
                         const res = await axios.post('/api/image-gen/generate_preview', createCharacterData.value);
                         newCharacterPreview.value = res.data.url;
-                    } catch (e) { showToast('Ошибка генерации фото'); return }
+                    } catch (e) {
+                        showToast('Ошибка генерации фото');
+                    } finally {
+                        isGeneratingPreview.value = false;
+                    }
                 }
 
                 const generateNewCharacterScenario = async () => {
@@ -1306,19 +1482,40 @@
                             description: newCharacterDescription.value,
                             avatar_url: newCharacterPreview.value
                         };
-                        const res = await axios.post('/api/create_character', payload);
+                        // 1. Создаем персонажа
+                        const createRes = await axios.post('/api/create_character', payload);
+                        const characterId = createRes.data.character_id;
+
                         showToast('Персонаж создан!');
 
-                        currentCCStep.value = 0;
+                        // 2. Сохраняем данные для чата
+                        const chatMeta = {
+                            name: createCharacterData.value.name,
+                            avatar: newCharacterPreview.value
+                        };
+
+                        // 3. Создаем чат с персонажем
+                        const chatRes = await axios.post('/api/chat/create', {
+                            chat_type: 'character',
+                            target_id: characterId,
+                            scenario_index: 0
+                        });
+
+                        // 4. Очищаем данные создания персонажа
+                        currentCCGroupIndex.value = 0;
+                        currentCCStepIndex.value = 0;
                         createCharacterData.value = {name: ""};
                         newCharacterPreview.value = null;
                         newCharacterScenario.value = null;
                         newCharacterFirstMes.value = null;
                         newCharacterDescription.value = null;
-                        currentView.value = 'selection';
 
-                        // Перезагрузить список персонажей
-                        await loadCharacters();
+                        // 5. Открываем чат (вместо возврата в selection)
+                        await openChat(chatRes.data.chat_id, chatMeta);
+
+                        // 6. Перезагружаем списки в фоне
+                        loadCharacters();
+                        loadChats();
                     } catch (e) {
                         console.error(e);
                         showToast('Ошибка создания персонажа');
@@ -1332,16 +1529,19 @@
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar, currentChatId,
-                    isWaitingResponse, isStreaming, messagesContainer,
+                    isWaitingResponse, isStreaming, messagesContainer, inputField,
+                    handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
-                    toast, autoContinue,
+                    toast, autoContinue, hideKeyboard,
                     newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
-                    createCharacterOnClick, selectCCItem, currentCCStep, newCharacterPreview,
-                    stepsList, createCharacterData, changeStep, generateNewCharacterPreview,
-                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario,
+                    createCharacterOnClick, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
+                    stepsList, filteredStepsList, currentStep, totalSteps, stepsGroups,
+                    filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex,
+                    createCharacterData, changeStep, generateNewCharacterPreview,
+                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
                     // NSFW Blur

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from ...create_character.cc_schemas import CreateCharacterRequest
+from ...create_character.cc_schemas import CreateCharacterRequest, clothes_to_prompt
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -24,7 +24,7 @@ from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.generate import submit_anime, submit_real
+from ..services.generate import submit_anime, submit_real, build_prompt_from_character
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
@@ -132,12 +132,11 @@ async def gen(
             pose = scene.pose
             environment = scene.location
             scene_reasoning = scene.reasoning
-            scene_description = scene.scene_description
 
             logging.info(f"Scene analysis: {scene_reasoning}")
-            logging.info(f"Scene description: {scene_description}")
 
         except Exception as e:
+
             logging.warning(f"Scene analysis failed, using fallback: {e}")
             nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
             outfit_key = outfit
@@ -191,7 +190,7 @@ async def gen(
     )
 
     try:
-        from webapp.main import app
+        from main import app
         arq_pool = getattr(app.state, "arq_pool", None)
         if arq_pool:
             await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
@@ -214,7 +213,6 @@ async def gen(
 
 @router.post("/generate_preview")
 async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
@@ -222,26 +220,53 @@ async def generate_char_preview(data: CreateCharacterRequest, user: User = Depen
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
-    visual = data.build_visual()
-    appearance = visual.get("appearance", "")
-    body = visual.get("body", "")
-    character_base = f"{appearance}, {body}" if appearance else body
-
-    prompt = Prompt(
-        character_base=character_base,
-        facial_expression=visual["face"],
-        clothing=visual["default_outfit"],
-        style=visual.get("style_tags", "")
-    )
-
-    pos, neg = await prompt.build_prompt(data.style)
-    logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
-
     image_url = None
-    if data.style == "anime":
+    char_temp = {
+        "model_type": data.style,
+        "visual": {
+            "wardrobe": {
+                "casual": clothes_to_prompt[data.clothing],
+                "underwear": "black lingerie set",
+                "nude": "nothing, showing her naked body"
+            },
+            "body_type": data.body_type,
+            "model_type": data.style,
+            "nationality": data.nationality,
+            "age": data.age,
+            "ass": data.ass_size,
+            "boobs": data.boobs_size,
+            "hair_color": data.hair_color,
+            "haircut": data.haircut,
+            "eye_color": data.eyes_color,
+        }
+    }
+    if data.style == "real":
+        pos, neg = await build_prompt_from_character(
+            character=char_temp,
+            face_expression="confident and dominant with piercing gaze",
+            location="in modern and sophisticated office lobby",
+            position="standing seductively",
+            nsfw_level=0,
+            outfit_key="casual",
+            close_up=True
+        )
+        image_url = await submit_real(
+            prompt=pos,
+            allow_nsfw=True,
+            nsfw_level=0
+        )
+    elif data.style == "anime":
+        pos, neg = await build_prompt_from_character(
+            character=char_temp,
+            face_expression="confident and dominant with piercing gaze",
+            location="in modern and sophisticated office lobby",
+            position="standing seductively, intimate pose",
+            nsfw_level=0,
+            outfit_key="casual",
+            close_up=True
+        )
+        logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
         image_url = await submit_anime(pos, neg)
-    elif data.style == "real":
-        image_url = await submit_real(prompt=pos, allow_nsfw=True)
 
     if image_url:
         return {"url": image_url}

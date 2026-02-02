@@ -36,7 +36,9 @@ async def _submit_anime(positive_prompt: str, negative_prompt: str) -> str | Non
             "prepend_preprompt": False
         }
     )
-    return result[0].url if result else None
+    if result and len(result) > 0 and hasattr(result[0], 'url'):
+        return result[0].url
+    return None
 
 
 async def _submit_real(prompt: str, allow_nsfw: bool, nsfw_level: int = 0) -> str | None:
@@ -192,7 +194,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
 
                     if pose:
                         chat_repo = ChatRepository(session)
-                        chat = await chat_repo.get(chat_id)
+                        chat = await chat_repo.get_by_id(chat_id)
                         if chat:
                             current_meta = chat.state_meta or {}
                             await chat_repo.update_metrics(
@@ -213,6 +215,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
         return {"status": "completed", "result": result}
 
     except Exception as e:
-        logger.error(f"Task {task_id} failed: {e}")
-        await _update_task_status(redis, task_id, "failed", error=str(e))
-        return {"status": "failed", "error": str(e)}
+        error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
+        logger.error(f"Task {task_id} failed: {error_msg}")
+        await _update_task_status(redis, task_id, "failed", error=error_msg)
+        return {"status": "failed", "error": error_msg}
