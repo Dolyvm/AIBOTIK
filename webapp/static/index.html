@@ -1364,11 +1364,6 @@
                     currentView.value = "create-character";
                 }
 
-                // public == true; private == false;
-                const toggleModelVisibility = async () => {
-                    createCharacterData.value.is_public = !createCharacterData.value.is_public;
-                }
-
                 const changeStep = async (delta) => {
                     // Переход назад из первого шага первой группы - выход
                     if (currentCCGroupIndex.value === 0 && currentCCStepIndex.value === 0 && delta === -1) {
