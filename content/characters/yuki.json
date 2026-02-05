@@ -1,5 +1,6 @@
 {
   "id": "yuki",
+  "is_public": true,
   "model_type": "anime",
   "is_nsfw": false,
   "name": "Юки",

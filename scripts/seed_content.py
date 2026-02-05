@@ -51,6 +51,7 @@ async def load_characters(session, content_dir: Path):
         }
         character = Character(
             id=char_id,
+            is_public=data.get("is_public", True),
             name=data["name"],
             description=data.get("description", ""),
             personality=data.get("personality", ""),

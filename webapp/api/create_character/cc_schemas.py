@@ -167,6 +167,7 @@ clothes_to_prompt = {
 class CreateCharacterRequest(BaseModel):
     name: str
     style: Literal["anime", "real"]
+    is_public: bool
     age: Literal["18", "25", "35", "45", "70"]
     nationality: Optional[Literal["american", "asian", "russian", "italian", "latin", "german", "japanese", "indian", "arab"]] = None
     eyes_color: Literal["brown", "blue", "green", "grey"]

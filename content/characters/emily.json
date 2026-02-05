@@ -1,5 +1,6 @@
 {
   "name": "Эмили",
+  "is_public": true,
   "appearance": "slim athletic build, long blonde hair, blue eyes, defined cheekbones, clear natural skin",
   "visual": {
       "llm_settings": {

@@ -1,5 +1,6 @@
 {
   "id": "aigerim",
+  "is_public": true,
   "model_type": "real",
   "is_nsfw": false,
   "name": "Айгерим",

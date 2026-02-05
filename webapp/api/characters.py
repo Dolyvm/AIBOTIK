@@ -1,19 +1,22 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import sys
+
+from shared.models import User
 
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.services.content_loader import get_all_characters, get_character
-
+from auth.telegram_auth import get_current_user
 router = APIRouter(prefix="/api/characters", tags=["characters"])
 
 
 @router.get("")
 async def list_characters(
     tag: str = None,
-    style: str = None
+    style: str = None,
+    user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
     characters = await get_all_characters(tag=tag)
@@ -22,8 +25,12 @@ async def list_characters(
     for char_id, char in characters.items():
         char_tags = char.get("tags", [])
         model_type = char.get("model_type", "real")
+        is_public = char.get("is_public", False)
 
         if style and style != model_type:
+            continue
+
+        if not is_public and char.get("author", {"display_name": "AiKai Team"}) != user.telegram_id:
             continue
 
         result.append({

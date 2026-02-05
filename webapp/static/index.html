@@ -423,6 +423,14 @@
                     </div>
                 </div>
 
+                <div class="cc-summary-section" :style="{ 'display': 'flex', 'alignItems': 'center' }">
+                    <h3 class="cc-summary-title" :style="{ 'marginBottom': '0' }">Публичная модель</h3>
+                    <label class="form-switch">
+                        <input type="checkbox" v-model="createCharacterData.is_public">
+                        <i></i>
+                    </label>
+                </div>
+
                 <div class="cc-preview-section">
                     <!-- Loader во время генерации -->
                     <div v-if="isGeneratingPreview" class="cc-preview-loading">
@@ -497,8 +505,6 @@
                     <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
                 </div>
             </div>
-        </div>
-
         <!-- Modal: Scenario Selection -->
         <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
             <div class="modal-content">
@@ -601,7 +607,7 @@
                 const currentCCGroupIndex = ref(0);
                 const currentCCStepIndex = ref(0);
                 const stepsGroups = ref([])
-                const createCharacterData = ref({name: ""})
+                const createCharacterData = ref({name: "", is_public: false})
                 const stepsContainer = ref(null);
                 const newCharacterPreview = ref(null);
                 const newCharacterScenario = ref(null);
@@ -1356,6 +1362,11 @@
                 // --- CREATE CHARACTER ---
                 const createCharacterOnClick = () => {
                     currentView.value = "create-character";
+                }
+
+                // public == true; private == false;
+                const toggleModelVisibility = async () => {
+                    createCharacterData.value.is_public = !createCharacterData.value.is_public;
                 }
 
                 const changeStep = async (delta) => {

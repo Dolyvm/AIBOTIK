@@ -70,6 +70,7 @@ class Character(Base):
 
     id = Column(String(100), primary_key=True) 
     name = Column(String(255), nullable=False)
+    is_public = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=False)
     personality = Column(Text, nullable=False)
 
