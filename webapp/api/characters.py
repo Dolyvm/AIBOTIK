@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import sys
@@ -25,7 +27,9 @@ async def list_characters(
     for char_id, char in characters.items():
         char_tags = char.get("tags", [])
         model_type = char.get("model_type", "real")
-        is_public = char.get("is_public", False)
+
+        # у созданных этот параметр 100% будет, поэтому тут ставим такой дефолт
+        is_public = char.get("is_public", True)
 
         if style and style != model_type:
             continue
