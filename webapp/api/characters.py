@@ -34,7 +34,7 @@ async def list_characters(
         if style and style != model_type:
             continue
 
-        if not is_public and char.get("author", {"display_name": "AiKai Team"}) != user.telegram_id:
+        if not is_public and char.get("author", {}).get("user_id", 0) != user.telegram_id:
             continue
 
         result.append({

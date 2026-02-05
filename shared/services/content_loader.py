@@ -33,6 +33,7 @@ def character_to_dict(char: Character) -> dict:
     return {
         "id": char.id,
         "name": char.name,
+        "is_public": char.is_public,
         "description": char.description,
         "personality": char.personality,
         "model_type": visual_data.get("model_type", "anime"),
