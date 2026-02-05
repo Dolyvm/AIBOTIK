@@ -4,13 +4,11 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "443:443"
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - generated_images:/data/images:ro
       - ./content:/data/content:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - webapp
     restart: unless-stopped
