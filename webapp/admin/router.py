@@ -421,6 +421,7 @@ async def create_character(
     new_character = Character(
         id=character_id,
         name=name,
+        is_public=True,
         description=description,
         personality=personality,
         visual_data=visual_data,
