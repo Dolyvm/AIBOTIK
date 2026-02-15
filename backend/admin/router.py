@@ -427,7 +427,8 @@ async def create_character(
         scenarios=scenarios,
         tags=tags,
         is_nsfw=is_nsfw,
-        created_by_username=created_by_username
+        created_by_username=created_by_username,
+        is_public=True
     )
 
     db.add(new_character)

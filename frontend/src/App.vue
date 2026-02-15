@@ -1,13 +1,26 @@
-<template>
-  <div>
-    Hello world uk
-  </div>
-</template>
+<script setup>
+import { ref } from 'vue'
 
-<script>
+const message = ref('Hello World!')
 
-export default {
-  components: {
-  }
+function reverseMessage() {
+  message.value = message.value.split('').reverse().join('')
+}
+
+function notify() {
+  alert('navigation was prevented.')
 }
 </script>
+
+<template>
+
+  <div></div>
+
+</template>
+
+<style>
+button, a {
+  display: block;
+  margin-bottom: 1em;
+}
+</style>

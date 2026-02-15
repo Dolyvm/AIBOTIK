@@ -420,6 +420,14 @@ def build_personality_with_preferences(req: CreateCharacterRequest) -> str:
 
     return base
 
+async def build_character_prompt(prompt: str) -> str:
+    """Для того, чтобы создать персонажа из текстового описания пользователя. """
+    from shared.services.prompt_service import get_prompt
+
+    prompt_template = await get_prompt("create_character_prompt")
+    return prompt_template.format(user_prompt=prompt).strip()
+
+
 async def build_llm_prompt(req: CreateCharacterRequest) -> str:
     from shared.services.prompt_service import get_prompt
 

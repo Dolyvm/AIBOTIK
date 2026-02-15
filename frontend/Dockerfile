@@ -1,6 +1,16 @@
-FROM python:3.11-slim
+# dev
+FROM node:18-alpine
+
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем package.json и package-lock.json
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем весь код
 COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+# Запускаем Vite dev сервер
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

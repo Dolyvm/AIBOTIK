@@ -8,7 +8,7 @@ from shared.config import SCENE_ANALYZER_MODEL
 from shared.services.llm import LLMClient
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
-from .cc_schemas import CreateCharacterRequest
+from .cc_schemas import CreateCharacterRequest, GenerateCharacterByPromptRequest
 from .cc_service import (
     stepsGroups,
     build_llm_prompt,
@@ -126,6 +126,63 @@ async def generate_character_scenario(
             messages=[],
             max_tokens=500,
             temperature=0.75
+        )
+
+        first_mes_prompt = await build_first_mes_prompt(payload, scenario)
+        first_mes = await llm_client.generate(
+            system_prompt=first_mes_prompt,
+            messages=[],
+            max_tokens=800,
+            temperature=0.75
+        )
+
+        description_prompt = await build_description_prompt(payload)
+        description = await llm_client.generate(
+            system_prompt=description_prompt,
+            messages=[],
+            max_tokens=500,
+            temperature=0.7
+        )
+
+        return {
+            "scenario": scenario,
+            "first_mes": first_mes,
+            "description": description
+        }
+    except Exception as e:
+        logging.error(f"[CREATE_CHARACTER] LLM error: {e}")
+        raise HTTPException(status_code=500, detail={
+            "error": "generation_failed",
+            "message": "Ошибка генерации сценария",
+            "code": "SCENARIO_GENERATION_FAILED"
+        })
+
+
+@router.post("/create_character_prompt")
+async def generate_character_with_prompt(
+        payload: GenerateCharacterByPromptRequest = Body(...),
+        user: User = Depends(get_current_user)
+):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["llm"]
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"]
+            )
+
+    try:
+        llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
+
+        scenario_prompt = await build_llm_prompt(payload)
+        scenario = await llm_client.generate(
+            system_prompt=scenario_prompt,
+            messages=[],
+            max_tokens=500,
+            temperature=0.6
         )
 
         first_mes_prompt = await build_first_mes_prompt(payload, scenario)

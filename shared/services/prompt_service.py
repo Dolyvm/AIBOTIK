@@ -211,6 +211,15 @@ NSFW Level Guide (choose carefully based on conversation):
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact""",
 
+    "create_character_prompt": """Ты - создатель описания ИИ-персонажей в формате JSON.
+Твоя задача - проанализировать текстовое описания персонажа и максимально четко перевести его в JSON формат. 
+Требования:
+- В ответ отправляй ТОЛЬКО валидный JSON. 
+- Твой ответ - это ТОЛЬКО готовый JSON текст.
+
+
+""",
+
     "cc_scenario_prompt": """
 Ты — сценарист интерактивных диалогов для ИИ-персонажей.
 

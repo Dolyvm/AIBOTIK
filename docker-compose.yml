@@ -10,7 +10,8 @@ services:
       - generated_images:/data/images:ro
       - ./content:/data/content:ro
     depends_on:
-      - webapp
+      - backend
+      - frontend
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
@@ -48,8 +49,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-  webapp:
-    build: ./webapp
+  backend:
+    build: ./backend
     expose:
       - "8080"
     environment:
@@ -63,14 +64,16 @@ services:
       - IMAGES_STORAGE_PATH=/app/generated_images
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
       - SECRET_KEY=${SECRET_KEY}
+      - DEV_MODE=${DEV_MODE:-true}
+      - FRONTEND_URL=http://frontend:5173  # dev
     volumes:
-      - ./webapp/api:/app/api
-      - ./webapp/admin:/app/admin
-      - ./webapp/auth:/app/auth
-      - ./webapp/services:/app/services
-      - ./webapp/static:/app/static
-      - ./webapp/main.py:/app/main.py
-      - ./webapp/config.py:/app/config.py
+      - ./backend/api:/app/api
+      - ./backend/admin:/app/admin
+      - ./backend/auth:/app/auth
+      - ./backend/services:/app/services
+      - ./backend/static:/app/static
+      - ./backend/main.py:/app/main.py
+      - ./backend/config.py:/app/config.py
       - ./content:/app/content:ro
       - ./shared:/app/shared:ro
       - ./bot:/app/bot:ro
@@ -81,8 +84,27 @@ services:
       redis:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"  # Vite dev server
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost/api
+      - VITE_WEBSOCKET_URL=ws://localhost/ws
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+
+    depends_on:
+      - backend
+
   worker:
-    build: ./webapp
+    build: ./backend
     command: arq shared.queue.worker.WorkerSettings
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
@@ -92,8 +114,8 @@ services:
       - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
       - IMAGES_STORAGE_PATH=/app/generated_images
     volumes:
-      - ./webapp/api:/app/api
-      - ./webapp/services:/app/services
+      - ./backend/api:/app/api
+      - ./backend/services:/app/services
       - ./shared:/app/shared:ro
       - ./content:/app/content:ro
       - generated_images:/app/generated_images
@@ -119,6 +141,7 @@ services:
       - WEBHOOK_PATH=${WEBHOOK_PATH}
       - WEBHOOK_HOST=${WEBHOOK_HOST}
       - WEBHOOK_PORT=${WEBHOOK_PORT}
+      - IS_PROD=${IS_PROD:-false}
     volumes:
       - ./bot/handlers:/app/handlers
       - ./bot/main.py:/app/main.py
@@ -133,7 +156,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      webapp:
+      backend:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]

@@ -249,3 +249,7 @@ class CreateCharacterRequest(BaseModel):
             visual["avatar"] = self.avatar_url
 
         return visual
+
+
+class GenerateCharacterByPromptRequest(BaseModel):
+    prompt: str

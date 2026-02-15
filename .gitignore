@@ -1,5 +1,8 @@
 # Environment
 .env
+.env.dev
+.env.prod
+
 __pycache__/
 *.pyc
 *.pyo
@@ -31,3 +34,5 @@ Thumbs.db
 
 
 repomix-output.xml
+
+docker-compose.override.yml
