@@ -1089,7 +1089,7 @@ body.desktop .grid {
         margin-bottom: 10px;
     }
 
-    .cc-navigation {
+    .cc-navigation, .cc-type-btn-container {
         flex-direction: row;
         gap: 10px;
     }
@@ -1166,7 +1166,8 @@ body.desktop .grid {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 20px;
+    /*padding-bottom: 20px;*/
+    padding-bottom: 140px;
 }
 
 .cc-group-title {
@@ -1221,10 +1222,26 @@ body.desktop .grid {
 
 /* Кнопки навигации */
 .cc-navigation {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+
+    background: var(--tg-theme-bg-color);
+    padding: 12px;
+    padding-bottom: calc(12px + var(--tg-safe-area-inset-bottom));
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    z-index: 100;
+}
+
+.cc-type-btn-container {
     flex-shrink: 0;
     background: var(--tg-theme-bg-color);
-    padding: 12px 0;
-    padding-bottom: calc(12px + var(--tg-safe-area-inset-bottom));
+    padding: 12px 0 calc(12px + var(--tg-safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     gap: 8px;

@@ -179,6 +179,7 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
             logging.error(f"Error resetting chat: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/{chat_id}/auto-continue")
 async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_user)):
                          
@@ -227,6 +228,50 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
             "arousal": result["arousal"],
             "mood": chat.current_mood,
             "location": chat.current_location
+        }
+
+    except Exception as e:
+        logging.error(f"Error in auto_continue_dialogue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{chat_id}/generate-auto-reply")
+async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_user)):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_api_rate_limit(
+            endpoint="chat_auto_continue",
+            telegram_id=user.telegram_id
+        )
+        if not allowed:
+            limits = RATE_LIMITS["chat_auto_continue"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
+    chat = await verify_chat_ownership(chat_id, user)
+
+    try:
+        if chat.chat_type == "character":
+            content = await get_character(chat.target_id)
+            character, world = content, None
+        else:
+            content = await get_world(chat.target_id)
+            character, world = None, content
+
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+        user_name = user.username or "User"
+
+        result = await context_manager.auto_reply_cycle(
+            chat=chat,
+            character=character,
+            world=world,
+            user_name=user_name,
+            only_user_reply=True
+        )
+
+        return {
+            "player_message": result["player_message"]
         }
 
     except Exception as e:

@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/worlds", tags=["worlds"])
 @router.get("")
 async def list_worlds(
     tag: str = None,
-    rating: str = None
+    rating: str = None,
+    creator_type: str = None  # "all" -> me+public, "me", "public"
 ):
     """List all worlds"""
     worlds = await get_all_worlds(tag=tag)
@@ -21,9 +22,12 @@ async def list_worlds(
     for world_id, world in worlds.items():
         world_tags = world.get("tags", [])
         filters = world.get("filters", {})
+
         # Фильтрация по рейтингу (если нужно)
         if rating and filters.get("rating") != rating:
             continue
+
+        # todo фильтр по creator_type.
 
         description_short = world["description"][:150] + "..." if len(world["description"]) > 150 else world["description"]
 

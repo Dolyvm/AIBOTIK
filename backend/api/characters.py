@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/characters", tags=["characters"])
 async def list_characters(
     tag: str = None,
     style: str = None,
+    creator_type: str = None,  # "all" -> me+public, "me", "public"
     user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
@@ -37,6 +38,13 @@ async def list_characters(
         if not is_public and char.get("author", {}).get("user_id", 0) != user.telegram_id:
             continue
 
+        if creator_type == "me" and char.get("author", {}).get("user_id", 0) != user.telegram_id:
+            continue
+
+        if creator_type == "public" and char.get("author", {}).get("user_id", 0) == user.telegram_id:
+            continue
+        logging.info(f"Добавляем перса: {char['name']}")
+        logging.info(f"{creator_type=}")
         result.append({
             "id": char_id,
             "name": char["name"],

@@ -222,12 +222,13 @@ async def gen(
 
 @router.post("/generate_preview")
 async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-    rate_limiter = get_rate_limiter()
-    if rate_limiter:
-        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
-        if not allowed:
-            limits = RATE_LIMITS["images"]
-            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+    # fixme не забыть убрать эту хуету
+    # rate_limiter = get_rate_limiter()
+    # if rate_limiter:
+    #     allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+    #     if not allowed:
+    #         limits = RATE_LIMITS["images"]
+    #         raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
     image_url = None
     char_temp = {

@@ -420,12 +420,13 @@ def build_personality_with_preferences(req: CreateCharacterRequest) -> str:
 
     return base
 
-async def build_character_prompt(prompt: str) -> str:
-    """Для того, чтобы создать персонажа из текстового описания пользователя. """
+
+async def build_create_character_prompt() -> str:
     from shared.services.prompt_service import get_prompt
 
     prompt_template = await get_prompt("create_character_prompt")
-    return prompt_template.format(user_prompt=prompt).strip()
+
+    return prompt_template.strip()
 
 
 async def build_llm_prompt(req: CreateCharacterRequest) -> str:
@@ -463,3 +464,151 @@ async def build_first_mes_prompt(req: CreateCharacterRequest, scenario: str) -> 
         preferences=', '.join(req.preferences) if req.preferences else 'не указаны',
         scenario=scenario
     ).strip()
+
+
+def fix_generated_fields(create_character_data: dict):
+    # === Литералы ===
+    ALLOWED_AGES = ["18", "25", "35", "45", "70"]
+    ALLOWED_NATIONALITIES = [
+        "american", "asian", "russian", "italian", "latin",
+        "german", "japanese", "indian", "arab", "kazakh"
+    ]
+    ALLOWED_EYES = ["brown", "blue", "green", "grey", "purple"]
+    ALLOWED_HAIR_COLOR = ["black", "brown", "blond", "red", "grey", "white"]
+    ALLOWED_HAIRCUT = [
+        "straight haircut", "braids haircut", "curly hair",
+        "hair in bun", "pixie haircut", "ponytail hair", "two ponytails hair"
+    ]
+    ALLOWED_BODY = [
+        "anorexic slender body", "petite slim body",
+        "fit body", "curvy body", "fat body"
+    ]
+    ALLOWED_BOOBS = [
+        "small breasts", "beautiful breasts",
+        "big breasts", "huge breasts"
+    ]
+    ALLOWED_ASS = [
+        "small ass", "fit ass",
+        "big round ass", "huge round ass"
+    ]
+    ALLOWED_PERSONALITY = [
+        "Заботливый", "Мудрец", "Невинный", "Соблазнительница",
+        "Доминант", "Покорный", "Любовник", "Фанатик",
+        "Апатичный", "Доверенное лицо"
+    ]
+    ALLOWED_RELATIONSHIP = [
+        "Падчерица", "Мачеха", "Любовница", "Одноклассник",
+        "Коллега", "Учитель", "Девушка",
+        "Друзья с привилегиями", "Жена", "Друг"
+    ]
+
+    # === AGE ===
+    age = create_character_data.get("age")
+    if age not in ALLOWED_AGES:
+        try:
+            allowed_ages_int = list(map(int, ALLOWED_AGES))
+            current_age = int(age)
+            closest = min(allowed_ages_int, key=lambda x: abs(x - current_age))
+            age = str(closest)
+        except Exception:
+            age = "18"  # fallback
+
+    # === NATIONALITY ===
+    nationality = create_character_data.get("nationality")
+
+    if nationality not in ALLOWED_NATIONALITIES:
+        nationality = None
+
+    # === EYES COLOR ===
+    eyes_color = create_character_data.get("eyes_color")
+    if eyes_color not in ALLOWED_EYES:
+        eyes_color = "brown"
+
+    # === HAIR COLOR ===
+    hair_color = create_character_data.get("hair_color")
+    if hair_color == "blonde":
+        hair_color = "blond"
+
+    if hair_color not in ALLOWED_HAIR_COLOR:
+        hair_color = "brown"
+
+    # === HAIRCUT ===
+    haircut = create_character_data.get("haircut")
+
+    if haircut == "long hair":
+        haircut = "straight haircut"
+
+    if haircut not in ALLOWED_HAIRCUT:
+        haircut = "straight haircut"
+
+    # === BODY TYPE ===
+    body_type = create_character_data.get("body_type")
+
+    if body_type == "slim body":
+        body_type = "petite slim body"
+
+    if body_type == "slender body":
+        body_type = "anorexic slender body"
+
+    if body_type not in ALLOWED_BODY:
+        body_type = "fit body"
+
+    # === BOOBS SIZE ===
+    boobs_size = create_character_data.get("boobs_size")
+
+    if boobs_size == "medium breasts":
+        boobs_size = "beautiful breasts"
+
+    if boobs_size not in ALLOWED_BOOBS:
+        boobs_size = "beautiful breasts"
+
+    # === ASS SIZE ===
+    ass_size = create_character_data.get("ass_size")
+
+    if ass_size == "medium ass":
+        ass_size = "fit ass"
+
+    if ass_size not in ALLOWED_ASS:
+        ass_size = "fit ass"
+
+    # === PERSONALITY ===
+    personality = create_character_data.get("personality")
+    if personality not in ALLOWED_PERSONALITY:
+        personality = "Заботливый"
+
+    # === RELATIONSHIP ===
+    relationship = create_character_data.get("relationship")
+
+    if relationship == "Подруга":
+        relationship = "Друг"
+
+    if relationship not in ALLOWED_RELATIONSHIP:
+        relationship = "Друг"
+
+    # === PREFERENCES ===
+    preferences = create_character_data.get("preferences", [])
+    if not isinstance(preferences, list):
+        preferences = []
+
+    # TODO: если там строки вне допустимого диапазона — добавь whitelist
+
+    # === FINAL DICT ===
+    create_character_data_new = {
+        "name": create_character_data.get("name"),
+        "style": create_character_data.get("style"),
+        "is_public": create_character_data.get("is_public"),
+        "age": age,
+        "nationality": nationality,
+        "eyes_color": eyes_color,
+        "hair_color": hair_color,
+        "haircut": haircut,
+        "body_type": body_type,
+        "boobs_size": boobs_size,
+        "ass_size": ass_size,
+        "clothing": create_character_data.get("clothing", "Свободная рубашка"),
+        "personality": personality,
+        "relationship": relationship,
+        "preferences": preferences,
+    }
+
+    return create_character_data_new

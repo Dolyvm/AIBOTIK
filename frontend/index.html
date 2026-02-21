@@ -14,6 +14,78 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <title>AIKAI</title>
+
+    <style>
+        /* Toast styles are defined in styles.css */
+
+        /* Tags in Modal */
+        .modal-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .tag-badge {
+            background: var(--tg-theme-secondary-bg-color);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color);
+        }
+
+        .auto-continue-bar {
+            padding: 10px;
+            text-align: center;
+            background: var(--tg-theme-bg-color);
+            border-top: 1px solid var(--tg-theme-secondary-bg-color);
+            flex-shrink: 0;
+        }
+
+        .btn-auto-continue {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-auto-continue:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+
+        .btn-auto-continue:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .generating-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-radius: 12px;
+            color: var(--tg-theme-hint-color, #999);
+            min-height: 150px;
+        }
+
+        .generating-placeholder i {
+            font-size: 32px;
+            margin-bottom: 12px;
+            color: var(--tg-theme-button-color, #667eea);
+        }
+
+        .generating-placeholder span {
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
 <div id="app" v-cloak>
@@ -21,22 +93,38 @@
         <div v-if="currentView === 'selection'" class="selection-view">
             <div class="grid-container">
                 <!-- Filters Characters -->
-                <div v-if="tab === 'characters'" class="filters">
-                    <select v-model="characterFilters.tag" @change="loadCharacters">
-                        <option :value="null">Все теги</option>
-                        <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
-                    </select>
-                    <select v-model="characterFilters.style" @change="loadCharacters">
-                        <option :value="null">Все стили</option>
-                        <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ style }}</option>
-                    </select>
+                <div v-if="tab === 'characters'">
+                    <div class="filters">
+                        <select v-model="characterFilters.tag" @change="loadCharacters">
+                            <option :value="null">Все теги</option>
+                            <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
+                        </select>
+                        <select v-model="characterFilters.style" @change="loadCharacters">
+                            <option :value="null">Все стили</option>
+                            <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ style }}</option>
+                        </select>
+                    </div>
+                    <div class="filters">
+                        <select v-model="characterFilters.creator_type"  @change="loadCharacters">
+                            <option :value="null">Указать фильтр по создателю...</option>
+                            <option value="me">Мои персонажи</option>
+                            <option value="public">Персонажи сообщества</option>
+                        </select>
+                    </div>
                 </div>
+
+
 
                 <!-- Filters Worlds -->
                 <div v-if="tab === 'worlds'" class="filters">
                     <select v-model="worldFilters.tag" @change="loadWorlds">
                         <option :value="null">Все теги</option>
                         <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
+                    </select>
+                    <select v-model="worldFilters.creator_type">
+                        <option :value="null">Фильтр по создателю...</option>
+                        <option value="me">Мои миры</option>
+                        <option value="public">Миры от сообщества</option>
                     </select>
                 </div>
 
@@ -166,7 +254,7 @@
                 <button @click="backToMenu" class="back-btn"><i class="fas fa-arrow-left"></i></button>
                 <div class="header-info">
                     <span class="header-name">{{ currentChatName }}</span>
-                    <span class="header-status">bot</span>
+                    <span class="header-status">online</span>
                 </div>
                 <button @click="resetChat" class="reset-btn" title="Сбросить диалог">
                     <i class="fas fa-redo"></i>
@@ -210,7 +298,7 @@
             <div v-if="currentChatId" class="auto-continue-bar">
                 <button
                     class="btn-auto-continue"
-                    @click="autoContinue"
+                    @click="generateAutoReply"
                     :disabled="isWaitingResponse">
                     ⏭️ Автопродолжение
                 </button>
@@ -237,46 +325,47 @@
         <div v-if="currentView === 'create-character'" class="create-character-view">
             <div v-if="createStrategy === null" class="steps-container">
                 <h2>Опишите персонажа:</h2>
-                <div class="name-input-container">
-                    <label>
-                        Ввод описания
-                        <input
-                                v-model="createPromptText"
-                                type="text"
-                                placeholder="Опишите своего персонажа"
-                                class="cc-name-input"
-                        >
-                    </label>
+                <div class="cc-field">
+                    <textarea
+                            v-model="createPromptText"
+                            class="scenario-textarea"
+                            placeholder="Опишите своего персонажа..."
+                    ></textarea>
                 </div>
-                <button class="change-step-button" @click="changeStep(1)">Сгенерировать</button>
-                <h2>или...</h2>
+
+                <button
+                    class="change-step-button"
+                    @click="createCharacterFromPrompt"
+                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}"
+                >
+                    Сгенерировать
+                </button>
+
+                <h2 :style="{width: '100%', textAlign: 'center'}">или...</h2>
+
+                <div class="cc-type-btn-container">
+                    <button class="change-step-button" @click="createStrategy = 'manual'">Создание вручную</button>
+                </div>
+
                 <div class="cc-navigation">
-                    <button class="change-step-button secondary" @click="changeStep(-1)">Создание вручную</button>
+                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
                 </div>
-            </div>
-
-            <!-- Создание персонажа текстовым промптом -->
-            <div>
-
             </div>
 
             <!-- Шаги выбора параметров (ручное создание) -->
-            <div class="steps-container" ref="stepsContainer" v-if="createStrategy === 'manual' && currentStep && currentCCGroupIndex < totalGroups">
+            <div class="steps-container" ref="stepsContainer" v-if="(createStrategy === 'manual') && currentStep && (currentCCGroupIndex < totalGroups)">
                 <div class="create-character-steps">
                     <div class="cc-step"
                          v-for="(group, i) in filteredGroups"
                          :class="{active: currentCCGroupIndex >= i}"
                          :key="group.group"
+                         @click="goToGroup(i)"
                     ></div>
-                    <div class="cc-step" :class="{active: currentCCGroupIndex >= totalGroups}"></div>
+                    <div class="cc-step" :class="{active: currentCCGroupIndex >= totalGroups}" @click="currentCCGroupIndex = totalGroups; currentCCStepIndex = 0"></div>
                 </div>
 
                 <h3 class="cc-group-title">{{ currentGroup?.title }}</h3>
                 <h2>{{ currentStep.title }}</h2>
-
-                <!-- Создание персонажа текстом или вручную -->
-                <div v-if="currentCCGroupIndex <= totalGroups" class="final-step-container" @click="hideKeyboard">
-
 
                 <!-- Ввод имени -->
                 <div v-if="currentStep.type === 'nameInput'" class="name-input-container">
@@ -344,39 +433,68 @@
                 </div>
             </div>
 
+            <!-- Для генерации по промпту: сначала просим выбрать стиль аниме/реал -->
+            <div v-if="!createCharacterData.style && currentCCGroupIndex >= totalGroups">
+                <h3 class="cc-group-title">Основное</h3>
+                <h2>Выбрать стиль</h2>
+                <div class="grid">
+                    <div
+                            class="card"
+                            :class="{ selected: createCharacterData.style === 'anime' }"
+                            @click="createCharacterData.style = 'real'; generateNewCharacterPreview()"
+                    >
+                        <img :src="filteredStepsList?.[1]?.img" loading="lazy">
+                        <div class="card-title">
+                            Аниме
+                        </div>
+                    </div>
+                    <div
+                            class="card"
+                            :class="{ selected: createCharacterData.style === 'real' }"
+                            @click="createCharacterData.style = 'real'; generateNewCharacterPreview()"
+                    >
+                        <img :src="filteredStepsList?.[1]?.[1]?.img" loading="lazy">
+                        <div class="card-title">
+                            Реалистично
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
             <!-- Финальный шаг: превью и редактирование -->
-            <div v-if="currentCCGroupIndex >= totalGroups" class="final-step-container" @click="hideKeyboard">
+            <div v-else-if="currentCCGroupIndex >= totalGroups" class="final-step-container" @click="hideKeyboard">
                 <!-- Резюме выбранных параметров -->
-                <div class="cc-summary-section">
+                <div v-else class="cc-summary-section">
                     <h3 class="cc-summary-title">Параметры персонажа</h3>
                     <div class="cc-summary-grid">
-                        <div class="cc-summary-item" v-if="createCharacterData.name">
+                        <div class="cc-summary-item" @click="goToStep('name')">
                             <span class="cc-summary-label">Имя:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.name }}</span>
+                            <span class="cc-summary-value">{{ createCharacterData.name ?? 'Не заполнено'}}</span>
                         </div>
-                        <div class="cc-summary-item" v-if="createCharacterData.style">
+                        <div class="cc-summary-item" @click="goToStep('style')">
                             <span class="cc-summary-label">Стиль:</span>
                             <span class="cc-summary-value">{{ createCharacterData.style === 'anime' ? 'Аниме' : 'Реалистично' }}</span>
                         </div>
-                        <div class="cc-summary-item" v-if="createCharacterData.age">
+                        <div class="cc-summary-item" @click="goToStep('age')">
                             <span class="cc-summary-label">Возраст:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.age }} лет</span>
+                            <span class="cc-summary-value">{{ createCharacterData.age ?? 'Не заполнено'}} лет</span>
                         </div>
-                        <div class="cc-summary-item" v-if="createCharacterData.nationality">
+                        <div class="cc-summary-item" @click="goToStep('nationality')">
                             <span class="cc-summary-label">Национальность:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.nationality }}</span>
+                            <span class="cc-summary-value">{{ createCharacterData.nationality ?? 'Не заполнено' }}</span>
                         </div>
-                        <div class="cc-summary-item" v-if="createCharacterData.personality">
+                        <div class="cc-summary-item" @click="goToStep('personality')">
                             <span class="cc-summary-label">Характер:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.personality }}</span>
+                            <span class="cc-summary-value">{{ createCharacterData.personality ?? 'Не заполнено' }}</span>
                         </div>
-                        <div class="cc-summary-item" v-if="createCharacterData.relationship">
+                        <div class="cc-summary-item" @click="goToStep('relationship')">
                             <span class="cc-summary-label">Отношения:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.relationship }}</span>
+                            <span class="cc-summary-value">{{ createCharacterData.relationship ?? 'Не заполнено' }}</span>
                         </div>
-                        <div class="cc-summary-item cc-summary-full" v-if="createCharacterData.preferences?.length">
+                        <div class="cc-summary-item cc-summary-full" @click="goToStep('preferences')">
                             <span class="cc-summary-label">Предпочтения:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.preferences.join(', ') }}</span>
+                            <span class="cc-summary-value">{{ createCharacterData?.preferences?.join(', ') ?? 'Не заполнено' }}</span>
                         </div>
                     </div>
                 </div>
@@ -543,8 +661,8 @@
                 const tg = window.Telegram.WebApp;
 
                 // State
-                // const currentView = ref('selection');
-                const currentView = ref('create-character');
+                const currentView = ref('selection');
+                // const currentView = ref('create-character');
                 const tab = ref('characters');
                 const characters = ref([]);
                 const worlds = ref([]);
@@ -630,8 +748,8 @@
 
                 // Filters
                 const filterOptions = ref({ tags: [], styles: [], worldTags: [] });
-                const characterFilters = ref({ tag: null, style: null });
-                const worldFilters = ref({ tag: null });
+                const characterFilters = ref({ tag: null, style: null, creator_type: null });
+                const worldFilters = ref({ tag: null, creator_type: null  });
 
                 // Toast
                 const toast = ref({ show: false, message: '', type: 'error' });
@@ -863,6 +981,7 @@
                     const params = {};
                     if (characterFilters.value.tag) params.tag = characterFilters.value.tag;
                     if (characterFilters.value.style) params.style = characterFilters.value.style;
+                    if (characterFilters.value.creator_type) params.creator_type = characterFilters.value.creator_type;
                     try {
                         const res = await axios.get('/api/characters', { params });
                         characters.value = res.data.characters;
@@ -872,6 +991,7 @@
                 const loadWorlds = async () => {
                     const params = {};
                     if (worldFilters.value.tag) params.tag = worldFilters.value.tag;
+                    if (worldFilters.value.creator_type) params.creator_type = worldFilters.value.creator_type;
                     try {
                         const res = await axios.get('/api/worlds', { params });
                         worlds.value = res.data.worlds;
@@ -1320,15 +1440,105 @@
                     }
                 };
 
+                const generateAutoReply = async () => {
+                    if (!currentChatId.value || isWaitingResponse.value) return;
+                    inputMessage.value = ''
+                    isWaitingResponse.value = true;
+
+                    try {
+                        const response = await axios.post(`/api/chat/${currentChatId.value}/generate-auto-reply`);
+
+                        const data = response.data;
+                        inputMessage.value = data.player_message
+                        // await nextTick();
+                        // scrollToBottom();
+
+                    } catch (error) {
+                        console.error('Auto-continue failed:', error);
+                        const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
+                        showToast('Ошибка: ' + errorMsg);
+                        isWaitingResponse.value = false;
+                    } finally {
+                        isWaitingResponse.value = false;
+                        isStreaming.value = false;
+                    }
+                };
+
                 // --- CREATE CHARACTER ---
                 const createCharacterOnClick = () => {
                     currentView.value = "create-character";
                 }
 
+                const createCharacterFromPrompt = async () => {
+                    // if (isGeneratingScenario.value) return;
+                    // isGeneratingScenario.value = true;
+                    try {
+                        const res = await axios.post('/api/create_character/create_character_from_prompt', {
+                            user_prompt: createPromptText.value
+                        });
+                        console.log("Получили сгенерированного персонажа по промпту:")
+                        console.log(res.data);
+                        createCharacterData.value = {
+                            ...res.data.createCharacterData,
+                            is_public: false
+                        };
+                        newCharacterScenario.value = res.data.newCharacterScenario;
+                        newCharacterFirstMes.value = res.data.newCharacterFirstMes;
+                        newCharacterDescription.value = res.data.newCharacterDescription;
+
+                        currentCCGroupIndex.value = totalGroups.value+1;
+
+                        // ебучий костыль. Типа после генерации даем
+                        // возможность вручную скорректировать
+                        // upd: хотя не, заебись
+                        createStrategy.value = "manual";
+
+                        // Переход на финальный шаг (генерация)
+                        currentCCGroupIndex.value = totalGroups.value;
+                        currentCCStepIndex.value = 0;
+                        // Автоматически запускаем генерацию превью
+                        if (!newCharacterPreview.value && !isGeneratingPreview.value && createCharacterData.value.style) {
+                            generateNewCharacterPreview();  // поч не асинк?
+                        }
+                    } catch (e) {
+                        showToast('Ошибка генерации персонажа');
+                    } finally {
+                        // isGeneratingScenario.value = false;
+                    }
+                }
+
+                const goToStep = (stepId) => {
+                    if (stepId === "name") {
+                        currentCCGroupIndex.value = 0;
+                        currentCCStepIndex.value = 0;
+                        return;
+                    }
+
+                    for (let groupIndex = 0; groupIndex < filteredGroups.value.length; groupIndex++) {
+                        const group = filteredGroups.value[groupIndex];
+                        const stepIndex = group.steps.findIndex(step => step.id === stepId);
+
+                        if (stepIndex !== -1) {
+                            currentCCGroupIndex.value = groupIndex;
+                            currentCCStepIndex.value = stepIndex;
+                            return;
+                        }
+                    }
+                };
+
+                const goToGroup = (groupIndex) => {
+                    console.log(groupIndex);
+                    if (!filteredGroups.value[groupIndex]) return;
+
+                    currentCCGroupIndex.value = groupIndex;
+                    currentCCStepIndex.value = 0; // всегда первый шаг группы
+                };
+
                 const changeStep = async (delta) => {
                     // Переход назад из первого шага первой группы - выход
                     if (currentCCGroupIndex.value === 0 && currentCCStepIndex.value === 0 && delta === -1) {
                         currentView.value = "selection";
+                        createStrategy.value = null;
                         return;
                     }
 
@@ -1514,13 +1724,14 @@
                     newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
                     createCharacterOnClick, createStrategy, createPromptText, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
                     stepsList, filteredStepsList, currentStep, totalSteps, stepsGroups,
-                    filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex,
-                    createCharacterData, changeStep, generateNewCharacterPreview,
+                    filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex, goToStep, goToGroup,
+                    createCharacterData, changeStep, generateNewCharacterPreview, createCharacterFromPrompt,
                     isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
                     // NSFW Blur
-                    revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard
+                    revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
+                    generateAutoReply
                 };
             }
         }).mount('#app');

@@ -178,7 +178,7 @@ class CreateCharacterRequest(BaseModel):
     style: Literal["anime", "real"]
     is_public: bool
     age: Literal["18", "25", "35", "45", "70"]
-    nationality: Optional[Literal["american", "asian", "russian", "italian", "latin", "german", "japanese", "indian", "arab"]] = None
+    nationality: Optional[Literal["american", "asian", "russian", "italian", "latin", "german", "japanese", "indian", "arab", "kazakh"]] = None
     eyes_color: Literal["brown", "blue", "green", "grey"]
     hair_color: Literal["black", "brown", "blond", "red", "grey", "white"]
     haircut: Literal["straight haircut", "braids haircut", "curly hair", "hair in bun", "pixie haircut", "ponytail hair", "two ponytails hair"]
@@ -211,6 +211,8 @@ class CreateCharacterRequest(BaseModel):
         visual["hair_color"] = self.hair_color
         visual["haircut"] = self.haircut
         visual["eye_color"] = self.eyes_color
+
+        # todo fixme ??? это что за хуйня. Бля у нас все одежда уебищно реализована.
         visual["wardrobe"] = {
             "casual": clothes_to_prompt[self.clothing],
             "underwear": "black lingerie set",
@@ -251,5 +253,5 @@ class CreateCharacterRequest(BaseModel):
         return visual
 
 
-class GenerateCharacterByPromptRequest(BaseModel):
-    prompt: str
+class CreateCharacterFromPromptRequest(BaseModel):
+    user_prompt: str
