@@ -165,11 +165,3 @@ async def get_current_user(
     logging.info(f"[AUTH] Successfully authenticated user {telegram_id}")
     return user
 
-
-async def get_current_user(
-    authorization: Optional[str] = Header(None)
-) -> User:
-    async with get_session() as session:
-        user_repo = UserRepository(session)
-        user = await user_repo.get_by_telegram_id(714799964)
-    return user
