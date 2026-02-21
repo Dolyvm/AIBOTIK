@@ -52,11 +52,12 @@ class LLMClient:
             cls._http_client = None
             logger.info("Closed httpx client")
 
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(self, api_key: str = None, model: str = None, override_payload: dict = None):
         self.api_key = api_key or OPENROUTER_API_KEY
         self.model = model or LLM_MODEL
         self.base_url = OPENROUTER_BASE_URL
-        
+        self.override_payload = override_payload or dict()
+
         if not self.api_key:
             logger.warning("OPENROUTER_API_KEY не установлен!")
 
@@ -79,6 +80,7 @@ class LLMClient:
             "top_p": LLM_TOP_P,
             "repetition_penalty": LLM_REPETITION_PENALTY,
         }
+        payload.update(self.override_payload)
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -98,7 +100,7 @@ class LLMClient:
                     json=payload,
                     headers=headers,
                 )
-                
+
                 if response.status_code == 429:
                     logger.warning(f"Rate limit (429), попытка {attempt}/{self.MAX_RETRIES}")
                     if attempt < self.MAX_RETRIES:

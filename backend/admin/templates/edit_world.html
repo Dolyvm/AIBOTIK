@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block title %}Редактировать мир: {{ world.name }} - Админ Панель{% endblock %}
+
+{% block content %}
+<a href="/admin/worlds" class="back-link">← Назад к мирам</a>
+
+<div class="card">
+    <h2>Редактировать мир</h2>
+
+    <div style="margin-bottom: 20px;">
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+            {% if world.is_nsfw %}
+            <span class="category-badge" style="background: #e74c3c; color: white;">NSFW</span>
+            {% endif %}
+            <strong style="font-size: 18px;">{{ world.name }}</strong>
+        </div>
+        <div style="font-size: 13px; color: #7f8c8d;">
+            <strong>ID:</strong>
+            <code style="background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">
+                {{ world.id }}
+            </code>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/worlds/{{ world.id }}" id="worldForm">
+        <div class="form-group">
+            <label for="name">Название мира:</label>
+            <input
+                type="text"
+                id="name"
+                name="name"
+                value="{{ world.name }}"
+                required
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="description">Описание (используется в AI промпте):</label>
+            <textarea
+                id="description"
+                name="description"
+                rows="10"
+                required
+                class="auto-resize"
+            >{{ world.description }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="gm_instructions">Инструкции для ГМ (инструкции Мастера Игры, используются в AI промпте):</label>
+            <textarea
+                id="gm_instructions"
+                name="gm_instructions"
+                rows="8"
+                class="auto-resize"
+            >{{ gm_instructions }}</textarea>
+            <div style="font-size: 12px; color: #7f8c8d; margin-top: 5px;">
+                Примечание: Инструкции для ГМ для будущего использования. В настоящее время не активны в AI промптах.
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="intro_message">Вступительное сообщение (введение в основной сценарий):</label>
+            <textarea
+                id="intro_message"
+                name="intro_message"
+                rows="4"
+                required
+                class="auto-resize"
+            >{{ intro_message }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Альтернативные сценарии:</label>
+            <div id="alternateСценарийsContainer">
+                {% for scenario in alternate_scenarios %}
+                <div class="alternate-scenario-item" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <strong style="font-size: 13px; color: #7f8c8d;">Сценарий {{ loop.index }}</strong>
+                        <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateСценарий(this)">Удалить</button>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Название:</label>
+                        <input
+                            type="text"
+                            name="alt_scenario_title"
+                            value="{{ scenario.title }}"
+                            placeholder="Сценарий title"
+                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+                        />
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Вступление:</label>
+                        <textarea
+                            name="alt_scenario_intro"
+                            rows="3"
+                            class="auto-resize"
+                            placeholder="Сценарий intro message"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                        >{{ scenario.intro }}</textarea>
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Инструкции для ГМ:</label>
+                        <textarea
+                            name="alt_scenario_gm_instructions"
+                            rows="3"
+                            class="auto-resize"
+                            placeholder="Optional: GM instructions for this scenario"
+                            style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                        >{{ scenario.gm_instructions }}</textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateСценарий()">+ Добавить альтернативный сценарий</button>
+        </div>
+
+        <div class="form-group">
+            <label for="tags">Теги (через запятую):</label>
+            <input
+                type="text"
+                id="tags"
+                name="tags"
+                value="{{ world.tags|join(', ') }}"
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    id="is_nsfw"
+                    name="is_nsfw"
+                    {% if world.is_nsfw %}checked{% endif %}
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <span>NSFW контент</span>
+            </label>
+        </div>
+
+        <div class="meta-info">
+            Последнее обновление: {{ world.updated_at.strftime('%Y-%m-%d %H:%M:%S') if world.updated_at else 'Никогда' }}
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn">Сохранить изменения</button>
+            <a href="/admin/worlds" class="btn btn-secondary">Отмена</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Auto-resize all textareas
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = (textarea.scrollHeight) + 'px';
+    }
+
+    document.querySelectorAll('.auto-resize').forEach(textarea => {
+        autoResize(textarea);
+        textarea.addEventListener('input', function() {
+            autoResize(this);
+        });
+    });
+
+    // Add alternate scenario
+    function addAlternateСценарий() {
+        const container = document.getElementById('alternateСценарийsContainer');
+        const count = container.querySelectorAll('.alternate-scenario-item').length;
+
+        const div = document.createElement('div');
+        div.className = 'alternate-scenario-item';
+        div.style.marginBottom = '20px';
+        div.style.padding = '15px';
+        div.style.background = '#f8f9fa';
+        div.style.borderRadius = '4px';
+
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <strong style="font-size: 13px; color: #7f8c8d;">Сценарий ${count + 1}</strong>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateСценарий(this)">Удалить</button>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Название:</label>
+                <input
+                    type="text"
+                    name="alt_scenario_title"
+                    placeholder="Сценарий title"
+                    style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
+                />
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Вступление:</label>
+                <textarea
+                    name="alt_scenario_intro"
+                    rows="3"
+                    class="auto-resize"
+                    placeholder="Сценарий intro message"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                ></textarea>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600;">Инструкции для ГМ:</label>
+                <textarea
+                    name="alt_scenario_gm_instructions"
+                    rows="3"
+                    class="auto-resize"
+                    placeholder="Optional: GM instructions for this scenario"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                ></textarea>
+            </div>
+        `;
+
+        container.appendChild(div);
+
+        // Attach auto-resize to new textareas
+        div.querySelectorAll('textarea').forEach(textarea => {
+            autoResize(textarea);
+            textarea.addEventListener('input', function() {
+                autoResize(this);
+            });
+        });
+    }
+
+    // Удалить alternate scenario
+    function removeAlternateСценарий(button) {
+        button.closest('.alternate-scenario-item').remove();
+        updateСценарийNumbers();
+    }
+
+    // Update scenario numbers after removal
+    function updateСценарийNumbers() {
+        const items = document.querySelectorAll('.alternate-scenario-item');
+        items.forEach((item, index) => {
+            item.querySelector('strong').textContent = `Сценарий ${index + 1}`;
+        });
+    }
+</script>
+{% endblock %}

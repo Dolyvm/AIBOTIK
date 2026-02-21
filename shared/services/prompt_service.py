@@ -211,6 +211,59 @@ NSFW Level Guide (choose carefully based on conversation):
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact""",
 
+    "create_character_prompt": """Ты — генератор карточек персонажей в строго заданном JSON-формате.
+Твоя задача — проанализировать предоставленный пользователем текст и создать ровно один объект по следующей структуре.
+Отвечай ТОЛЬКО валидным JSON — без каких-либо пояснений, комментариев, markdown, ```json и т.п.
+
+Правила заполнения:
+- name          → имя из текста или null
+- description   → красивое связное описание (внешность + характер + немного биографии), 80–180 слов, на русском
+- visual → все поля обязательны, используй только значения из enum-списков. НЕ ПЕРЕВОДИ ПОЛЯ НА ДРУГОЙ ЯЗЫК, ИСПОЛЬЗУЙ ТО, ЧТО ДАНО. 
+- preferences   → только если явно подходит по тексту, иначе null (коротко, 1–4 слова)
+- relationship_role → ЭТО ПОЛЕ БЕРЕТСЯ СТРОГО ИЗ ПРИВЕДЕННОГО ENUM СПИСКА. отвечает на вопрос "кем приходится персонаж пользователю?". На русском языке, обязательно из enum списка. 
+- default_outfit и wardrobe → описывай одежду в формате тегов через запятую
+- personality   → подробный список черт характера на русском. ОДНА СТРОКА
+- scenario      → 1–3 предложения о том, как пользователь встретил персонажа
+- first_mes     → первое сообщение, с действиями (*) и речью ("")
+- alternate_greetings → 0–3 альтернативных приветствия (обычно 1–2)
+- example_dialogue → 1–3 коротких обмена репликами в формате {user} / {char}
+
+Не придумывай ничего, чего нет в исходном тексте, но логично дорисовывай детали в рамках стиля.
+Пример правильной JSON карточки:
+{
+    "alternate_greetings": [
+        "Привет! Садись, тут свободно.",
+        "О, ты тоже здесь заучиваешься? Спасибо, что не громко."
+    ],
+    "description": "Айгерим — 22-летняя студентка-медик из Алматы, чья грация сочетается с неотразимой умностью. Её чёрные, как ночь, волосы всегда аккуратно заплетены в толстую косу, подчёркивающую высокие скулы и оливковую кожу. Тёмно-карие глаза светятся живым интересом и внутренней силой. Учёба для неё — не просто обязанность, а призвание. Она целеустремлённая и дисциплинированная, но при этом тёплая, добрая и безгранично гостеприимная. В свободное время любит готовить традиционное бешбармак, вспоминая детские воспоминания с матерью. Её душа — это гармония казахских традиций и современного мышления. В библиотеке она казалась воплощением спокойствия, но с лёгкой улыбкой, будто приглашала к себе.",
+    "example_dialogue": "Айгерим: *закрывает учебник, смотрит на тебя* Ты тоже на анатомии? У меня с собой сладости — бешбармак из таблеток и мёда. Не хочешь? \n{{user}}: А что за сладости? \nАйгерим: *смеётся* Просто шучу. Но если хочешь, могу угостить настоящим бешбармаком — в пятницу у меня день готовки.",
+    "first_mes": "*поднимает глаза от тетради, улыбается лёгкой, дружелюбной улыбкой* Привет. Ты тоже здесь заучиваешься? Садись, тут свободно. Я, кстати, Айгерим. Готовлюсь к экзамену по анатомии — ужас, но я справлюсь.",
+    "name": "Айгерим",
+    "personality": "Умная, целеустремлённая, дисциплинированная, тёплая, гостеприимная, внимательная к деталям, уважающая традиции, с чувством юмора, спокойная в стрессовых ситуациях, ответственная, искренняя, заботливая, сильная волей, обаятельная, заинтересованная в развитии других.",
+    "scenario": "Ты зашёл в библиотеку университета ищешь тихое место для учёбы. Айгерим уже сидела за столом, погружённая в тетради по анатомии. Увидев тебя, она улыбнулась и предложила место рядом, несмотря на то, что стол был маленький. Её спокойная уверенность и добрый взгляд сразу создали ощущение доверия.",
+    "visual": {
+        "age": "25",
+        "ass": "small ass",
+        "body_type": "petite slim body",
+        "boobs": "small breasts",
+        "default_outfit": "white blouse, black skirt, black shoes, black hair braid",
+        "eye_color": "brown",
+        "hair_color": "black",
+        "haircut": "braids haircut",
+        "llm_settings": {
+            "preferences": "natural, calm, quiet, kind",
+            "relationship_role": "Одноклассник"
+        },
+        "nationality": "kazakh",
+        "wardrobe": {
+            "casual": "cotton dress, cardigan, leather shoes",
+            "formal": "long dress, gold earrings, high heels",
+            "work": "white lab coat, black pants, white shoes"
+        }
+    }
+}
+""",
+
     "cc_scenario_prompt": """
 Ты — сценарист интерактивных диалогов для ИИ-персонажей.
 
@@ -549,7 +602,216 @@ Style: Anti-AI style, snapshot aesthetic, high-fidelity detail.""",
 
     "illustrious_template": "1girl, anime girl, {age_interval}, {outfit}, {eye_color}, {hair_color}, {haircut}, "
                             "{body_type}, {boobs}, {ass}, {face_expression}, {position}, {location}, "
-                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting"
+                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
+    "create_character_output_schema": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "russian_language_character_card",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "description": "Имя персонажа, извлечённое из текста. Если имени нет — null."
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Краткое, связное описание персонажа на русском языке (внешность + характер + немного фона)."
+                            },
+                            "visual": {
+                                "type": "object",
+                                "properties": {
+                                    "llm_settings": {
+                                        "type": "object",
+                                        "properties": {
+                                            "preferences": {
+                                                "type": [
+                                                    "string",
+                                                    "null"
+                                                ],
+                                                "description": "Сексуальные предпочтения / фетиши, подходящие персонажу. Если не подходит — null. Примеры: anal sex, domination, gentle romance, etc."
+                                            },
+                                            "relationship_role": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "Падчерица",
+                                                    "Мачеха",
+                                                    "Любовница",
+                                                    "Одноклассник",
+                                                    "Коллега",
+                                                    "Учитель",
+                                                    "Девушка",
+                                                    "Друзья с привилегиями",
+                                                    "Жена",
+                                                    "Друг"
+                                                ],
+                                                "description": "Роль в отношениях с пользователем. Обязательно из списка."
+                                            }
+                                        },
+                                        "required": [
+                                            "preferences",
+                                            "relationship_role"
+                                        ],
+                                        "additionalProperties": False
+                                    },
+                                    "nationality": {
+                                        "type": "string",
+                                        "enum": [
+                                            "american",
+                                            "asian",
+                                            "russian",
+                                            "italian",
+                                            "latin",
+                                            "german",
+                                            "japanese",
+                                            "indian",
+                                            "arab",
+                                            "kazakh"
+                                        ],
+                                        "description": "Национальность из фиксированного списка."
+                                    },
+                                    "age": {
+                                        "type": "string",
+                                        "enum": [
+                                            "18",
+                                            "25",
+                                            "35",
+                                            "45",
+                                            "70"
+                                        ],
+                                        "description": "Возраст строго из списка (как строка)."
+                                    },
+                                    "ass": {
+                                        "type": "string",
+                                        "enum": [
+                                            "small ass",
+                                            "fit ass",
+                                            "big round ass",
+                                            "huge round ass"
+                                        ]
+                                    },
+                                    "boobs": {
+                                        "type": "string",
+                                        "enum": [
+                                            "small breasts",
+                                            "beautiful breasts",
+                                            "big breasts",
+                                            "huge breasts"
+                                        ]
+                                    },
+                                    "hair_color": {
+                                        "type": "string",
+                                        "enum": [
+                                            "black",
+                                            "brown",
+                                            "blond",
+                                            "grey",
+                                            "white",
+                                            "dark blue"
+                                        ]
+                                    },
+                                    "haircut": {
+                                        "type": "string",
+                                        "enum": [
+                                            "straight haircut",
+                                            "braids haircut",
+                                            "curly hair",
+                                            "hair in bun",
+                                            "pixie haircut",
+                                            "ponytail hair",
+                                            "two ponytails hair"
+                                        ]
+                                    },
+                                    "eye_color": {
+                                        "type": "string",
+                                        "enum": [
+                                            "brown",
+                                            "blue",
+                                            "green",
+                                            "grey",
+                                            "purple"
+                                        ]
+                                    },
+                                    "body_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "anorexic slender body",
+                                            "petite slim body",
+                                            "fit body",
+                                            "curvy body",
+                                            "fat body"
+                                        ]
+                                    },
+                                    "default_outfit": {
+                                        "type": "string",
+                                        "description": "Одежда по умолчанию в формате тегов через запятую, СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ, например: 'cream colored knit sweater, blue jeans, simple gold stud earrings, hair in long single braid'"
+                                    },
+                                    "wardrobe": {
+                                        "type": "object",
+                                        "description": "Набор одежды по ситуациям. СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ. Ключи — произвольные (casual, traditional, student и т.д.), значения — строка с тегами через запятую.",
+                                        "additionalProperties": {
+                                            "type": "string"
+                                        },
+                                        "minProperties": 1
+                                    }
+                                },
+                                "required": [
+                                    "llm_settings",
+                                    "nationality",
+                                    "age",
+                                    "ass",
+                                    "boobs",
+                                    "hair_color",
+                                    "haircut",
+                                    "eye_color",
+                                    "body_type",
+                                    "default_outfit",
+                                    "wardrobe"
+                                ],
+                                "additionalProperties": False
+                            },
+                            "personality": {
+                                "type": "string",
+                                "description": "Подробное описание характера на русском языке."
+                            },
+                            "scenario": {
+                                "type": "string",
+                                "description": "Сценарий / обстоятельства знакомства с персонажем. На русском."
+                            },
+                            "first_mes": {
+                                "type": "string",
+                                "description": "Первое сообщение от персонажа. На русском, с *действиями* и \"речью\"."
+                            },
+                            "alternate_greetings": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                },
+                                "description": "Массив альтернативных приветствий. Каждое — полноценное сообщение на русском."
+                            },
+                            "example_dialogue": {
+                                "type": "string",
+                                "description": "Пример диалога в формате {{user}}: ...\\n{{char}}: ... На русском."
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "description",
+                            "visual",
+                            "personality",
+                            "scenario",
+                            "first_mes",
+                            "alternate_greetings",
+                            "example_dialogue"
+                        ],
+                        "additionalProperties": False
+                    }
+                }
+            }
 }
 
 async def init_prompt_cache(db: AsyncSession):

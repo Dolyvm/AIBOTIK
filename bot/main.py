@@ -102,6 +102,8 @@ async def main():
     webhook_host = os.getenv("WEBHOOK_HOST", "0.0.0.0")
     webhook_port = int(os.getenv("WEBHOOK_PORT", "8443"))
 
+    is_prod = os.getenv("IS_PROD", "false").lower() == "true"
+
     if not webhook_url:
         raise ValueError("WEBHOOK_URL environment variable is required!")
 
@@ -115,36 +117,58 @@ async def main():
         logger.info("Menu button set")
 
         full_webhook_url = f"{webhook_url}{webhook_path}"
-        await bot.set_webhook(
-            url=full_webhook_url,
-            drop_pending_updates=False
-        )
-        logger.info(f"Webhook set to {full_webhook_url}")
+        if is_prod:
+            await bot.set_webhook(
+                url=full_webhook_url,
+                drop_pending_updates=False
+            )
+            logger.info(f"Webhook set to {full_webhook_url}")
 
-        app = web.Application()
-        webhook_requests_handler = SimpleRequestHandler(
-            dispatcher=dp,
-            bot=bot
-        )
-        webhook_requests_handler.register(app, path=webhook_path)
-        setup_application(app, dp, bot=bot)
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, webhook_host, webhook_port)
-        await site.start()
+            app = web.Application()
+            webhook_requests_handler = SimpleRequestHandler(
+                dispatcher=dp,
+                bot=bot
+            )
+            webhook_requests_handler.register(app, path=webhook_path)
+            setup_application(app, dp, bot=bot)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, webhook_host, webhook_port)
+            await site.start()
 
-        logger.info(f"Webhook server started on {webhook_host}:{webhook_port}")
-        logger.info("Bot is running, waiting for updates...")
+            logger.info(f"Webhook server started on {webhook_host}:{webhook_port}")
+            logger.info("Bot is running, waiting for updates...")
 
-        await shutdown_flag.wait()
+            await shutdown_flag.wait()
 
-        logger.info("Shutdown signal received, stopping bot...")
+            logger.info("Shutdown signal received, stopping bot...")
 
-        await runner.cleanup()
-        logger.info("Webhook server stopped")
+            await runner.cleanup()
+            logger.info("Webhook server stopped")
 
-        await bot.delete_webhook()
-        logger.info("Webhook deleted from Telegram")
+            await bot.delete_webhook()
+            logger.info("Webhook deleted from Telegram")
+        else:
+            try:
+                # Проверяем текущий статус webhook
+                webhook_info = await bot.get_webhook_info()
+                logger.info(f"Current webhook info: {webhook_info}")
+
+                if webhook_info.url:
+                    logger.info(f"Webhook is active: {webhook_info.url}")
+                    if not is_prod:
+                        # В режиме разработки - удаляем webhook
+                        logger.info("Deleting webhook for polling mode...")
+                        await bot.delete_webhook(drop_pending_updates=True)
+                        logger.info("Webhook deleted successfully")
+                else:
+                    logger.info("No active webhook found")
+
+            except Exception as e:
+                logger.error(f"Error checking/deleting webhook: {e}")
+            logger.info("Local Env detected...")
+            await dp.start_polling(bot)
+            logger.info("Started bot with long polling")
 
     except Exception as e:
         logger.error(f"Error in main loop: {e}", exc_info=True)

@@ -430,7 +430,8 @@ class ContextManager:
         character: Optional[dict] = None,
         world: Optional[dict] = None,
         user_name: str = "User",
-        allow_nsfw: bool = True
+        allow_nsfw: bool = True,
+        only_user_reply: bool = False
     ) -> dict:
         cache = get_cache()
         lock_name = f"chat:{chat.id}:auto_reply"
@@ -447,7 +448,8 @@ class ContextManager:
                 character=character,
                 world=world,
                 user_name=user_name,
-                allow_nsfw=allow_nsfw
+                allow_nsfw=allow_nsfw,
+                only_user_reply=only_user_reply
             )
         finally:
             if cache and lock_acquired:
@@ -459,7 +461,8 @@ class ContextManager:
         character: Optional[dict] = None,
         world: Optional[dict] = None,
         user_name: str = "User",
-        allow_nsfw: bool = True
+        allow_nsfw: bool = True,
+        only_user_reply: bool = False
     ) -> dict:
         async with get_session() as session:
             message_repo = MessageRepository(session)
@@ -494,6 +497,11 @@ class ContextManager:
             max_tokens=100,
             temperature=0.9
         )
+
+        if only_user_reply:
+            return {
+                "player_message": player_action.strip()
+            }
 
         result = await self.process_turn(
             chat=chat,
