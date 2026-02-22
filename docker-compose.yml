@@ -13,8 +13,8 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - frontend_dist:/usr/share/nginx/html:ro
     depends_on:
-      - backend
       - frontend
+      - backend
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
@@ -92,8 +92,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     volumes:
-      - frontend_dist:/app/dist
-    restart: "no"
+      - frontend_dist:/dist
+    restart: "unless-stopped"
 
   worker:
     build: ./backend
