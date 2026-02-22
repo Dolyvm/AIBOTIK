@@ -8,7 +8,7 @@ import logging
 import json
 import re
 
-from shared.models import Prompt, User, Character, World, get_async_session
+from shared.models import Prompt, User, Character, World, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
@@ -263,6 +263,40 @@ async def list_characters(
             "admin": admin
         }
     )
+
+@router.delete("/api/characters/{character_id}")
+async def admin_delete_character(
+    character_id: str,
+    db: AsyncSession = Depends(get_async_session),
+    admin: dict = Depends(get_admin_user)
+):
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    # Удаляем все чаты с этим персонажем (сообщения/картинки каскадно)
+    chats_result = await db.execute(
+        select(Chat).where(Chat.chat_type == "character", Chat.target_id == character_id)
+    )
+    chats = chats_result.scalars().all()
+
+    cache = get_cache()
+    for chat in chats:
+        await db.delete(chat)
+        if cache:
+            await cache.invalidate_chat_state(chat.id)
+
+    await db.delete(character)
+    await db.commit()
+
+    await invalidate_character_modifiers_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    return {"success": True}
+
 
 @router.get("/api/check-character-id/{character_id}")
 async def check_character_id(
@@ -539,6 +573,15 @@ async def update_character(
         visual_data = json.loads(visual_data_str)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
+
+    avatar_url = form_data.get("avatar_url", "").strip()
+    if avatar_url:
+        try:
+            avatar_path = await save_avatar(avatar_url, character_id)
+            visual_data["avatar"] = f"/images/{avatar_path}"
+        except Exception as e:
+            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+            visual_data["avatar"] = avatar_url
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -832,12 +875,23 @@ async def update_world(
                 "gm_instructions": gm_instr
             })
 
+    cover_image_url = form_data.get("cover_image", "").strip() or None
+    new_cover_image = world.cover_image
+    if cover_image_url:
+        try:
+            cover_path = await save_world_cover(cover_image_url, world_id)
+            new_cover_image = get_public_url(cover_path)
+        except Exception as e:
+            logger.warning(f"Failed to save world cover: {e}, using provided URL")
+            new_cover_image = cover_image_url
+
     await db.execute(
         update(World)
         .where(World.id == world_id)
         .values(
             name=name,
             description=description,
+            cover_image=new_cover_image,
             scenarios=scenarios,
             tags=tags,
             is_nsfw=is_nsfw

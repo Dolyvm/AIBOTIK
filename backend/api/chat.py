@@ -21,6 +21,7 @@ from shared.services.content_loader import get_character, get_world, get_first_m
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.cache import get_cache
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -116,6 +117,14 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/by-character/{target_id}")
+async def get_chats_for_character(target_id: str, chat_type: str, user: User = Depends(get_current_user)):
+    """Return existing chats for a given character/world (one per scenario_index)."""
+    async with get_session() as session:
+        chat_repo = ChatRepository(session)
+        chats = await chat_repo.get_chats_for_target(user.telegram_id, target_id, chat_type)
+        return [{"chat_id": c.id, "scenario_index": c.scenario_index} for c in chats]
+
 @router.post("/create")
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
     async with get_session() as session:
@@ -125,22 +134,23 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
 
-            chat = await chat_repo.create_chat(
+            chat, is_new = await chat_repo.create_chat(
                 user_id=user.telegram_id,
                 chat_type=payload.chat_type,
                 target_id=payload.target_id,
                 scenario_index=payload.scenario_index
             )
 
-            first_message = await get_first_message(
-                chat_type=payload.chat_type,
-                target_id=payload.target_id,
-                scenario_index=payload.scenario_index,
-                user_name=user_name,
-            )
+            if is_new:
+                first_message = await get_first_message(
+                    chat_type=payload.chat_type,
+                    target_id=payload.target_id,
+                    scenario_index=payload.scenario_index,
+                    user_name=user_name,
+                )
 
-            if first_message:
-                await message_repo.add(chat.id, "assistant", first_message)
+                if first_message:
+                    await message_repo.add(chat.id, "assistant", first_message)
 
             return {"chat_id": chat.id, "success": True}
 
@@ -277,3 +287,22 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
     except Exception as e:
         logging.error(f"Error in auto_continue_dialogue: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{chat_id}")
+async def delete_chat(
+    chat_id: int,
+    user: User = Depends(get_current_user)
+):
+    """Delete a chat and all its messages/images."""
+    await verify_chat_ownership(chat_id, user)
+
+    async with get_session() as session:
+        chat_repo = ChatRepository(session)
+        await chat_repo.delete(chat_id)
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_chat_state(chat_id)
+
+    return {"success": True}

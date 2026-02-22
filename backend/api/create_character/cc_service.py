@@ -466,6 +466,20 @@ async def build_first_mes_prompt(req: CreateCharacterRequest, scenario: str) -> 
     ).strip()
 
 
+def fix_mojibake(s: str) -> str:
+    """Исправляет строки, где кириллица закодирована как UTF-8-байты в Latin-1.
+    Модель qwen3 иногда возвращает \u00d0\u009b вместо \u041b (Л), и т.д.
+    """
+    if not isinstance(s, str):
+        return s
+    if all(ord(c) < 256 for c in s):
+        try:
+            return s.encode('latin-1').decode('utf-8')
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            return s
+    return s
+
+
 def fix_generated_fields(create_character_data: dict):
     # === Литералы ===
     ALLOWED_AGES = ["18", "25", "35", "45", "70"]
@@ -473,7 +487,7 @@ def fix_generated_fields(create_character_data: dict):
         "american", "asian", "russian", "italian", "latin",
         "german", "japanese", "indian", "arab", "kazakh"
     ]
-    ALLOWED_EYES = ["brown", "blue", "green", "grey", "purple"]
+    ALLOWED_EYES = ["brown", "blue", "green", "grey"]
     ALLOWED_HAIR_COLOR = ["black", "brown", "blond", "red", "grey", "white"]
     ALLOWED_HAIRCUT = [
         "straight haircut", "braids haircut", "curly hair",
@@ -521,6 +535,8 @@ def fix_generated_fields(create_character_data: dict):
 
     # === EYES COLOR ===
     eyes_color = create_character_data.get("eyes_color")
+    if eyes_color == "purple":
+        eyes_color = "blue"  # purple не поддерживается image API
     if eyes_color not in ALLOWED_EYES:
         eyes_color = "brown"
 

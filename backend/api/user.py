@@ -8,10 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from sqlalchemy import select
+
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, UserRepository
 from shared.services.content_loader import get_character, get_world
-from shared.models import User
+from shared.models import User, Character, World
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_user_id_match
 
@@ -20,6 +22,14 @@ class UpdateSettingsRequest(BaseModel):
     nsfw_blur: Optional[bool] = None
 
 router = APIRouter(prefix="/api/user", tags=["user"])
+
+
+def _scenario_display_name(sc: dict) -> str:
+    """Generate human-readable scenario name (mirrors characters.py logic)."""
+    idx = sc.get("index", 0)
+    if idx == 0:
+        return "Основной"
+    return sc.get("title") or f"Сценарий {idx}"
 
 
 @router.get("/{user_id}")
@@ -45,6 +55,23 @@ async def get_user_active_chats(user_id: int, user: User = Depends(get_current_u
         chat_repo = ChatRepository(session)
         chats = await chat_repo.get_user_chats(user.telegram_id)
 
+        # Collect unique target IDs per type to batch-fetch from DB
+        char_ids = {c.target_id for c in chats if c.chat_type == "character"}
+        world_ids = {c.target_id for c in chats if c.chat_type == "world"}
+
+        chars_by_id = {}
+        worlds_by_id = {}
+
+        if char_ids:
+            rows = await session.execute(select(Character).where(Character.id.in_(char_ids)))
+            for char in rows.scalars():
+                chars_by_id[char.id] = char
+
+        if world_ids:
+            rows = await session.execute(select(World).where(World.id.in_(world_ids)))
+            for world in rows.scalars():
+                worlds_by_id[world.id] = world
+
     result = []
 
     for chat in chats:
@@ -54,19 +81,27 @@ async def get_user_active_chats(user_id: int, user: User = Depends(get_current_u
             "target_id": chat.target_id,
             "is_active": chat.is_active,
             "updated_at": chat.updated_at.isoformat(),
-            "name": chat.target_id
+            "name": chat.target_id,
+            "scenario_name": None
         }
 
         if chat.chat_type == "character":
-            character = await get_character(chat.target_id)
-            if character:
-                chat_data["name"] = character["name"]
-                chat_data["avatar"] = character.get("avatar", "")
+            char = chars_by_id.get(chat.target_id)
+            if char:
+                visual = char.visual_data or {}
+                chat_data["name"] = char.name
+                chat_data["avatar"] = visual.get("avatar", "")
+                scenarios = char.scenarios or []
+                sc = next((s for s in scenarios if s.get("index") == chat.scenario_index), None)
+                chat_data["scenario_name"] = _scenario_display_name(sc) if sc else None
         else:  # world
-            world = await get_world(chat.target_id)
+            world = worlds_by_id.get(chat.target_id)
             if world:
-                chat_data["name"] = world["name"]
-                chat_data["avatar"] = world.get("cover_image", "")
+                chat_data["name"] = world.name
+                chat_data["avatar"] = world.cover_image or ""
+                scenarios = world.scenarios or []
+                sc = next((s for s in scenarios if s.get("index") == chat.scenario_index), None)
+                chat_data["scenario_name"] = _scenario_display_name(sc) if sc else None
 
         result.append(chat_data)
 

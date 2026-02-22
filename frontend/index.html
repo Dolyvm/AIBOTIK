@@ -18,6 +18,12 @@
     <style>
         /* Toast styles are defined in styles.css */
 
+        /* Swipe-to-delete chat row */
+        .chat-row {
+            overflow: hidden;
+            will-change: transform;
+        }
+
         /* Tags in Modal */
         .modal-tags {
             display: flex;
@@ -196,12 +202,21 @@
 
                 <!-- List Chats -->
                 <div v-if="tab === 'chats'" class="chats-list">
-                    <div v-for="chat in activeChats" :key="chat.id" class="chat-row" @click="openChat(chat.id)">
+                    <div v-for="chat in activeChats" :key="chat.id"
+                         class="chat-row"
+                         :style="chatSwipeStyles[chat.id] || {}"
+                         @click="handleChatRowClick(chat.id)"
+                         @touchstart.passive="onChatSwipeStart($event, chat.id)"
+                         @touchmove.passive="onChatSwipeMove($event, chat.id)"
+                         @touchend="onChatSwipeEnd($event, chat.id)">
                         <div class="chat-row-avatar">
                             <img :src="chat.avatar || 'https://via.placeholder.com/50'">
                         </div>
                         <div class="chat-row-info">
-                            <div class="chat-row-name">{{ chat.name }}</div>
+                            <div class="chat-row-name">
+                                {{ chat.name }}
+                                <span v-if="chat.scenario_name" class="chat-row-scenario">{{ chat.scenario_name }}</span>
+                            </div>
                             <div class="chat-row-date">{{ formatDate(chat.updated_at) }}</div>
                         </div>
                     </div>
@@ -347,7 +362,71 @@
 
         <!-- View: Create Character-->
         <div v-if="currentView === 'create-character'" class="create-character-view">
-            <div v-if="createStrategy === null" class="steps-container">
+
+            <!-- ПРЕД-ШАГ 0: Имя -->
+            <div v-if="preStep === 0" class="steps-container">
+                <div class="create-character-steps">
+                    <div class="cc-step active"></div>
+                    <div class="cc-step"></div>
+                </div>
+                <h3 class="cc-group-title">Основное</h3>
+                <h2>Укажите имя</h2>
+                <div class="name-input-container">
+                    <label>
+                        Ввод имени
+                        <input
+                            v-model="createCharacterData.name"
+                            type="text"
+                            placeholder="Введите имя персонажа"
+                            class="cc-name-input"
+                        >
+                    </label>
+                </div>
+                <div class="cc-navigation">
+                    <button class="change-step-button" @click="preStep++" :disabled="!(createCharacterData.name && createCharacterData.name.trim())">Далее</button>
+                    <button class="change-step-button secondary" @click="currentView = 'selection'">Назад</button>
+                </div>
+            </div>
+
+            <!-- ПРЕД-ШАГ 1: Стиль -->
+            <div v-else-if="preStep === 1" class="steps-container">
+                <div class="create-character-steps">
+                    <div class="cc-step active"></div>
+                    <div class="cc-step active"></div>
+                </div>
+                <h3 class="cc-group-title">Основное</h3>
+                <h2>Выберите стиль</h2>
+                <div class="grid">
+                    <div v-for="item in (stepsGroups[0] && stepsGroups[0].steps && stepsGroups[0].steps[1] ? stepsGroups[0].steps[1].items : [])"
+                         :key="item.value"
+                         class="card"
+                         :class="{ selected: createCharacterData.style === item.value }"
+                         @click="createCharacterData.style = item.value"
+                    >
+                        <img :src="item.img" loading="lazy">
+                        <div class="card-title">{{ item.title }}</div>
+                    </div>
+                </div>
+                <div class="cc-navigation">
+                    <button class="change-step-button" @click="preStep++" :disabled="!createCharacterData.style">Далее</button>
+                    <button class="change-step-button secondary" @click="preStep--">Назад</button>
+                </div>
+            </div>
+
+            <!-- ПРЕД-ШАГ 2: Развилка — конструктор или промт -->
+            <div v-else-if="preStep === 2 && createStrategy === null" class="steps-container">
+                <h2>Как создать персонажа?</h2>
+                <div class="cc-type-btn-container">
+                    <button class="change-step-button" @click="createStrategy = 'manual'; currentCCGroupIndex = 1; currentCCStepIndex = 0">Конструктор</button>
+                    <button class="change-step-button" @click="createStrategy = 'prompt'">Описать текстом</button>
+                </div>
+                <div class="cc-navigation">
+                    <button class="change-step-button secondary" @click="preStep--">Назад</button>
+                </div>
+            </div>
+
+            <!-- ПРОМТ-РЕЖИМ: ввод текстового описания -->
+            <div v-else-if="createStrategy === 'prompt' && currentCCGroupIndex < totalGroups" class="steps-container">
                 <h2>Опишите персонажа:</h2>
                 <div class="cc-field">
                     <textarea
@@ -356,27 +435,21 @@
                             placeholder="Опишите своего персонажа..."
                     ></textarea>
                 </div>
-
                 <button
                     class="change-step-button"
                     @click="createCharacterFromPrompt"
-                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%)'}"
+                    :disabled="isGeneratingFromPrompt"
+                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%)', opacity: isGeneratingFromPrompt ? '0.6' : '1'}"
                 >
-                    Сгенерировать
+                    <span v-if="isGeneratingFromPrompt">Генерация...</span>
+                    <span v-else>Сгенерировать</span>
                 </button>
-
-                <h2 :style="{width: '100%', textAlign: 'center'}">или...</h2>
-
-                <div class="cc-type-btn-container">
-                    <button class="change-step-button" @click="createStrategy = 'manual'">Создание вручную</button>
-                </div>
-
                 <div class="cc-navigation">
-                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
+                    <button class="change-step-button secondary" @click="createStrategy = null">Назад</button>
                 </div>
             </div>
 
-            <!-- Шаги выбора параметров (ручное создание) -->
+            <!-- КОНСТРУКТОР: шаги выбора параметров (группы 1-4, имя и стиль уже заданы) -->
             <div class="steps-container" ref="stepsContainer" v-if="(createStrategy === 'manual') && currentStep && (currentCCGroupIndex < totalGroups)">
                 <div class="create-character-steps">
                     <div class="cc-step"
@@ -455,35 +528,6 @@
                     <button class="change-step-button" @click="changeStep(1)">Далее</button>
                     <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
                 </div>
-            </div>
-
-            <!-- Для генерации по промпту: сначала просим выбрать стиль аниме/реал -->
-            <div v-if="!createCharacterData.style && currentCCGroupIndex >= totalGroups">
-                <h3 class="cc-group-title">Основное</h3>
-                <h2>Выбрать стиль</h2>
-                <div class="grid">
-                    <div
-                            class="card"
-                            :class="{ selected: createCharacterData.style === 'anime' }"
-                            @click="createCharacterData.style = 'real'; generateNewCharacterPreview()"
-                    >
-                        <img :src="filteredStepsList?.[1]?.img" loading="lazy">
-                        <div class="card-title">
-                            Аниме
-                        </div>
-                    </div>
-                    <div
-                            class="card"
-                            :class="{ selected: createCharacterData.style === 'real' }"
-                            @click="createCharacterData.style = 'real'; generateNewCharacterPreview()"
-                    >
-                        <img :src="filteredStepsList?.[1]?.[1]?.img" loading="lazy">
-                        <div class="card-title">
-                            Реалистично
-                        </div>
-                    </div>
-                </div>
-
             </div>
 
             <!-- Финальный шаг: превью и редактирование -->
@@ -632,9 +676,16 @@
                         </div>
                     </div>
 
-                    <!-- Tags -->
-                    <div class="modal-tags" v-if="selectedCharacter.tags">
-                        <span class="tag-badge" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
+                    <!-- Tags + Delete -->
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+                        <div class="modal-tags" v-if="selectedCharacter.tags" style="flex:1; margin:0;">
+                            <span class="tag-badge" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
+                        </div>
+                        <button v-if="selectedCharacter.type === 'character' && selectedCharacter.author && selectedCharacter.author.user_id == userId"
+                                @click="deleteCharacter(selectedCharacter.id)"
+                                style="flex-shrink:0; background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                            Удалить
+                        </button>
                     </div>
 
                     <div class="modal-scenarios">
@@ -649,6 +700,8 @@
                                     {{ scenario.index === 0 ? '🎬' : '🔀' }}
                                 </span>
                                 <span class="scenario-name">{{ scenario.name }}</span>
+                                <span v-if="existingChatsForCharacter.some(c => c.scenario_index === scenario.index)"
+                                      class="scenario-existing-badge">чат уже есть</span>
                             </div>
                             <p class="scenario-preview">{{ scenario.preview }}</p>
                         </div>
@@ -664,6 +717,27 @@
                         </div>
 
                     </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Confirm Delete Chat -->
+        <div v-if="confirmDeleteChatId" class="modal-overlay" @click.self="cancelChatDelete">
+            <div class="modal-content" style="max-width: 320px; padding: 28px 24px; text-align: center;">
+                <p style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Удалить чат?</p>
+                <p style="font-size: 14px; color: var(--tg-theme-hint-color); margin-bottom: 24px;">
+                    История переписки будет удалена безвозвратно.
+                </p>
+                <div style="display: flex; gap: 12px;">
+                    <button @click="cancelChatDelete"
+                            style="flex:1; padding:10px; border-radius:10px; border:none; background:var(--tg-theme-secondary-bg-color); color:var(--tg-theme-text-color); font-size:15px; cursor:pointer;">
+                        Отмена
+                    </button>
+                    <button @click="confirmChatDelete"
+                            style="flex:1; padding:10px; border-radius:10px; border:none; background:#e74c3c; color:#fff; font-size:15px; font-weight:600; cursor:pointer;">
+                        Удалить
+                    </button>
                 </div>
             </div>
         </div>
@@ -716,6 +790,13 @@
                 const activeChats = ref([]);
                 const userId = ref(null);
 
+                // Swipe-to-delete state
+                const chatSwipeOrigins = ref({});
+                const chatSwipeStyles = ref({});
+                const chatWasSwiped = ref({});
+                const SWIPE_THRESHOLD = 80;
+                const confirmDeleteChatId = ref(null);
+
                 // Chat State
                 const currentChatId = ref(null);
                 const currentChatName = ref('');
@@ -730,6 +811,7 @@
 
                 // Create Character
                 const createStrategy = ref(null); // "prompt" || "manual"
+                const preStep = ref(0); // 0=имя, 1=стиль, 2=развилка
                 const createPromptText = ref(null);
                 const currentCCGroupIndex = ref(0);
                 const currentCCStepIndex = ref(0);
@@ -741,6 +823,7 @@
                 const newCharacterFirstMes = ref(null);
                 const newCharacterDescription = ref(null);
                 const isGeneratingScenario = ref(false);
+                const isGeneratingFromPrompt = ref(false);
 
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
                 const filteredGroups = computed(() => {
@@ -793,6 +876,7 @@
                 const showScenarioModal = ref(false);
                 const selectedCharacter = ref(null);
                 const isLoadingScenarios = ref(false);
+                const existingChatsForCharacter = ref([]);
 
                 // Character profile modal state
                 const showCharacterProfileModal = ref(false);
@@ -1173,18 +1257,132 @@
                         const endpoint = type === 'character'
                             ? `/api/characters/${item.id}`
                             : `/api/worlds/${item.id}`;
-                        const res = await axios.get(endpoint);
+                        const [res, chatsRes] = await Promise.all([
+                            axios.get(endpoint),
+                            axios.get(`/api/chat/by-character/${item.id}?chat_type=${type}`)
+                        ]);
 
                         selectedCharacter.value = {
                             ...res.data,
                             type: type
                         };
+                        existingChatsForCharacter.value = chatsRes.data;
                     } catch (e) {
                         showToast('Ошибка загрузки данных');
                         showScenarioModal.value = false;
                     } finally {
                         isLoadingScenarios.value = false;
                     }
+                };
+
+                const deleteCharacter = async (characterId) => {
+                    if (!confirm('Удалить персонажа? Это действие нельзя отменить.')) return;
+                    try {
+                        await axios.delete(`/api/characters/${characterId}`);
+                        closeModal();
+                        await loadCharacters();
+                        showToast('Персонаж удалён');
+                    } catch (e) {
+                        showToast('Ошибка удаления персонажа');
+                    }
+                };
+
+                // --- SWIPE TO DELETE CHAT ---
+                const onChatSwipeStart = (e, chatId) => {
+                    chatSwipeOrigins.value[chatId] = {
+                        startX: e.touches[0].clientX,
+                        startY: e.touches[0].clientY
+                    };
+                };
+
+                const onChatSwipeMove = (e, chatId) => {
+                    const origin = chatSwipeOrigins.value[chatId];
+                    if (!origin) return;
+                    const deltaX = e.touches[0].clientX - origin.startX;
+                    const deltaY = e.touches[0].clientY - origin.startY;
+                    if (Math.abs(deltaY) > Math.abs(deltaX) || deltaX >= 0) return;
+                    const clamped = Math.max(deltaX, -160);
+                    chatSwipeStyles.value = {
+                        ...chatSwipeStyles.value,
+                        [chatId]: {
+                            transform: `translateX(${clamped}px)`,
+                            transition: 'none',
+                            opacity: String(1 + clamped / 160)
+                        }
+                    };
+                };
+
+                const onChatSwipeEnd = async (e, chatId) => {
+                    const origin = chatSwipeOrigins.value[chatId];
+                    if (!origin) return;
+                    const deltaX = e.changedTouches[0].clientX - origin.startX;
+                    delete chatSwipeOrigins.value[chatId];
+
+                    if (Math.abs(deltaX) > 10) {
+                        chatWasSwiped.value[chatId] = true;
+                        setTimeout(() => { delete chatWasSwiped.value[chatId]; }, 100);
+                    }
+
+                    if (deltaX < -SWIPE_THRESHOLD) {
+                        // Держим чат сдвинутым и показываем модал подтверждения
+                        chatSwipeStyles.value = {
+                            ...chatSwipeStyles.value,
+                            [chatId]: { transform: 'translateX(-80px)', transition: 'transform 0.2s ease' }
+                        };
+                        confirmDeleteChatId.value = chatId;
+                    } else {
+                        chatSwipeStyles.value = {
+                            ...chatSwipeStyles.value,
+                            [chatId]: { transform: 'translateX(0)', transition: 'transform 0.3s ease' }
+                        };
+                        setTimeout(() => {
+                            const s = { ...chatSwipeStyles.value };
+                            delete s[chatId];
+                            chatSwipeStyles.value = s;
+                        }, 300);
+                    }
+                };
+
+                const confirmChatDelete = async () => {
+                    const chatId = confirmDeleteChatId.value;
+                    if (!chatId) return;
+                    confirmDeleteChatId.value = null;
+                    chatSwipeStyles.value = {
+                        ...chatSwipeStyles.value,
+                        [chatId]: { transform: 'translateX(-100%)', opacity: '0', transition: 'transform 0.3s ease, opacity 0.3s ease' }
+                    };
+                    setTimeout(async () => {
+                        try {
+                            await axios.delete(`/api/chat/${chatId}`);
+                            await loadChats();
+                            showToast('Чат удалён');
+                        } catch {
+                            showToast('Ошибка удаления чата');
+                            const s = { ...chatSwipeStyles.value };
+                            delete s[chatId];
+                            chatSwipeStyles.value = s;
+                        }
+                    }, 300);
+                };
+
+                const cancelChatDelete = () => {
+                    const chatId = confirmDeleteChatId.value;
+                    if (!chatId) return;
+                    confirmDeleteChatId.value = null;
+                    chatSwipeStyles.value = {
+                        ...chatSwipeStyles.value,
+                        [chatId]: { transform: 'translateX(0)', transition: 'transform 0.3s ease' }
+                    };
+                    setTimeout(() => {
+                        const s = { ...chatSwipeStyles.value };
+                        delete s[chatId];
+                        chatSwipeStyles.value = s;
+                    }, 300);
+                };
+
+                const handleChatRowClick = (chatId) => {
+                    if (chatWasSwiped.value[chatId]) return;
+                    openChat(chatId);
                 };
 
                 const openChat = async (chatId, metaOverride = null) => {
@@ -1494,6 +1692,7 @@
                 const closeModal = () => {
                     showScenarioModal.value = false;
                     selectedCharacter.value = null;
+                    existingChatsForCharacter.value = [];
                 };
 
                 const openCharacterProfile = async () => {
@@ -1593,43 +1792,51 @@
                 // --- CREATE CHARACTER ---
                 const createCharacterOnClick = () => {
                     currentView.value = "create-character";
+                    createStrategy.value = null;
+                    preStep.value = 0;
+                    createCharacterData.value = { name: "", is_public: false };
+                    createPromptText.value = null;
+                    currentCCGroupIndex.value = 0;
+                    currentCCStepIndex.value = 0;
+                    newCharacterPreview.value = null;
+                    newCharacterScenario.value = null;
+                    newCharacterFirstMes.value = null;
+                    newCharacterDescription.value = null;
                 }
 
                 const createCharacterFromPrompt = async () => {
-                    // if (isGeneratingScenario.value) return;
-                    // isGeneratingScenario.value = true;
+                    if (isGeneratingFromPrompt.value) return;
+                    isGeneratingFromPrompt.value = true;
                     try {
                         const res = await axios.post('/api/create_character/create_character_from_prompt', {
-                            user_prompt: createPromptText.value
+                            user_prompt: createPromptText.value,
+                            user_name: createCharacterData.value.name,
+                            style: createCharacterData.value.style
                         });
-                        console.log("Получили сгенерированного персонажа по промпту:")
-                        console.log(res.data);
+                        // Сохраняем имя и стиль (бэкенд их учитывает, но дублируем для надёжности)
+                        const existingStyle = createCharacterData.value.style;
+                        const existingName = createCharacterData.value.name;
                         createCharacterData.value = {
                             ...res.data.createCharacterData,
-                            is_public: false
+                            is_public: false,
+                            style: existingStyle,
+                            name: existingName
                         };
                         newCharacterScenario.value = res.data.newCharacterScenario;
                         newCharacterFirstMes.value = res.data.newCharacterFirstMes;
                         newCharacterDescription.value = res.data.newCharacterDescription;
 
-                        currentCCGroupIndex.value = totalGroups.value+1;
-
-                        // ебучий костыль. Типа после генерации даем
-                        // возможность вручную скорректировать
-                        // upd: хотя не, заебись
-                        createStrategy.value = "manual";
-
-                        // Переход на финальный шаг (генерация)
+                        // Переход на финальный шаг
                         currentCCGroupIndex.value = totalGroups.value;
                         currentCCStepIndex.value = 0;
-                        // Автоматически запускаем генерацию превью
+                        // Автоматически запускаем генерацию превью (стиль уже известен)
                         if (!newCharacterPreview.value && !isGeneratingPreview.value && createCharacterData.value.style) {
-                            generateNewCharacterPreview();  // поч не асинк?
+                            generateNewCharacterPreview();
                         }
                     } catch (e) {
                         showToast('Ошибка генерации персонажа');
                     } finally {
-                        // isGeneratingScenario.value = false;
+                        isGeneratingFromPrompt.value = false;
                     }
                 }
 
@@ -1661,9 +1868,8 @@
                 };
 
                 const changeStep = async (delta) => {
-                    // Переход назад из первого шага первой группы - выход
-                    if (currentCCGroupIndex.value === 0 && currentCCStepIndex.value === 0 && delta === -1) {
-                        currentView.value = "selection";
+                    // Переход назад из первых шагов конструктора → развилка
+                    if (currentCCGroupIndex.value <= 1 && currentCCStepIndex.value === 0 && delta === -1) {
                         createStrategy.value = null;
                         return;
                     }
@@ -1843,22 +2049,26 @@
                     isWaitingResponse, isStreaming, messagesContainer, inputField,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
-                    showScenarioModal, selectedCharacter, isLoadingScenarios,
-                    closeModal, startChatWithScenario,
+                    showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
+                    closeModal, startChatWithScenario, deleteCharacter, userId,
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
                     toast, autoContinue, hideKeyboard,
                     newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
-                    createCharacterOnClick, createStrategy, createPromptText, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
+                    createCharacterOnClick, createStrategy, preStep, createPromptText, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
                     stepsList, filteredStepsList, currentStep, totalSteps, stepsGroups,
                     filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex, goToStep, goToGroup,
                     createCharacterData, changeStep, generateNewCharacterPreview, createCharacterFromPrompt,
-                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview,
+                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview, isGeneratingFromPrompt,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
                     // NSFW Blur
                     revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
-                    generateAutoReply
+                    generateAutoReply,
+                    // Swipe to delete chat
+                    chatSwipeStyles, handleChatRowClick,
+                    onChatSwipeStart, onChatSwipeMove, onChatSwipeEnd,
+                    confirmDeleteChatId, confirmChatDelete, cancelChatDelete
                 };
             }
         }).mount('#app');

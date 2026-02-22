@@ -116,6 +116,33 @@
             <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateСценарий()">+ Добавить альтернативный сценарий</button>
         </div>
 
+        <!-- Cover Image Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Обложка
+            </h3>
+
+            <div class="form-group">
+                <label for="cover_image">URL изображения обложки:</label>
+                <input
+                    type="url"
+                    id="cover_image"
+                    name="cover_image"
+                    value="{{ world.cover_image or '' }}"
+                    placeholder="https://example.com/image.jpg"
+                    oninput="updateCoverPreview(this.value)"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                />
+                <small style="color: #7f8c8d; font-size: 12px;">
+                    Введите прямой URL изображения обложки. Оставьте текущий URL или обновите на новый.
+                </small>
+            </div>
+
+            <div id="coverPreview" style="{% if world.cover_image %}display: block;{% else %}display: none;{% endif %} margin-top: 15px; text-align: center;">
+                <img id="previewCoverImage" src="{{ world.cover_image or '' }}" alt="Предпросмотр обложки" style="max-width: 300px; max-height: 200px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            </div>
+        </div>
+
         <div class="form-group">
             <label for="tags">Теги (через запятую):</label>
             <input
@@ -152,6 +179,18 @@
 </div>
 
 <script>
+    // Cover image preview
+    function updateCoverPreview(url) {
+        const preview = document.getElementById('coverPreview');
+        const img = document.getElementById('previewCoverImage');
+        if (url) {
+            img.src = url;
+            preview.style.display = 'block';
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
     // Auto-resize all textareas
     function autoResize(textarea) {
         textarea.style.height = 'auto';

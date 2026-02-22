@@ -16,14 +16,16 @@ class ChatRepository(BaseRepository[Chat]):
         target_id: str,
         chat_type: str,
         scenario_index: int = 0
-    ) -> Chat:
+    ) -> tuple[Chat, bool]:
+        """Returns (chat, is_new). If chat for this scenario already exists — returns it as-is."""
         chat_type = validate_chat_type(chat_type)
 
         result = await self.session.execute(
             select(Chat).where(
                 Chat.user_id == user_id,
                 Chat.target_id == target_id,
-                Chat.chat_type == chat_type
+                Chat.chat_type == chat_type,
+                Chat.scenario_index == scenario_index
             )
         )
         existing_chat = result.scalar_one_or_none()
@@ -34,27 +36,10 @@ class ChatRepository(BaseRepository[Chat]):
                 .where(Chat.user_id == user_id, Chat.id != existing_chat.id)
                 .values(is_active=False)
             )
-
-            await self.session.execute(
-                delete(Message).where(Message.chat_id == existing_chat.id)
-            )
-            await self.session.execute(
-                delete(GeneratedImage).where(GeneratedImage.chat_id == existing_chat.id)
-            )
-
             existing_chat.is_active = True
-            existing_chat.scenario_index = scenario_index
-            existing_chat.affinity = 0
-            existing_chat.arousal = 0
-            existing_chat.current_location = None
-            existing_chat.current_mood = "neutral"
-            existing_chat.summary = ""
-            existing_chat.msgs_since_summary = 0
-            existing_chat.state_meta = {}
-
             await self.session.commit()
             await self.session.refresh(existing_chat)
-            return existing_chat
+            return existing_chat, False
 
         await self.session.execute(
             update(Chat)
@@ -78,7 +63,7 @@ class ChatRepository(BaseRepository[Chat]):
         self.session.add(chat)
         await self.session.commit()
         await self.session.refresh(chat)
-        return chat
+        return chat, True
 
     async def get_active(self, user_id: int) -> Optional[Chat]:
         result = await self.session.execute(
@@ -87,6 +72,17 @@ class ChatRepository(BaseRepository[Chat]):
             .order_by(Chat.updated_at.desc())
         )
         return result.scalar_one_or_none()
+
+    async def get_chats_for_target(self, user_id: int, target_id: str, chat_type: str) -> list[Chat]:
+        chat_type = validate_chat_type(chat_type)
+        result = await self.session.execute(
+            select(Chat).where(
+                Chat.user_id == user_id,
+                Chat.target_id == target_id,
+                Chat.chat_type == chat_type
+            )
+        )
+        return list(result.scalars().all())
 
     async def get_user_chats(self, user_id: int) -> list[Chat]:
         result = await self.session.execute(

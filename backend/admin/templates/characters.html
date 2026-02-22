@@ -66,6 +66,11 @@
                 </td>
                 <td>
                     <a href="/admin/characters/{{ character.id }}" class="btn btn-small">Редактировать</a>
+                    <button class="btn btn-small"
+                            style="background:#e74c3c; color:#fff; border:none; margin-left:6px; cursor:pointer;"
+                            onclick="deleteCharacter('{{ character.id }}', '{{ character.name }}')">
+                        Удалить
+                    </button>
                 </td>
             </tr>
             {% endfor %}
@@ -81,4 +86,21 @@
     {% endif %}
     {% endif %}
 </div>
+
+<script>
+async function deleteCharacter(id, name) {
+    if (!confirm(`Удалить персонажа "${name}"?\nЭто действие нельзя отменить.`)) return;
+    try {
+        const res = await fetch(`/admin/api/characters/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert('Ошибка: ' + (data.detail || 'не удалось удалить персонажа'));
+        }
+    } catch (e) {
+        alert('Ошибка соединения');
+    }
+}
+</script>
 {% endblock %}

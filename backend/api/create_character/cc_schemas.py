@@ -255,3 +255,5 @@ class CreateCharacterRequest(BaseModel):
 
 class CreateCharacterFromPromptRequest(BaseModel):
     user_prompt: str
+    user_name: Optional[str] = None  # имя, введённое пользователем
+    style: Optional[str] = None      # "anime" или "real"

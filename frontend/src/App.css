@@ -222,6 +222,20 @@ body.desktop .grid {
     font-weight: 600;
     font-size: 16px;
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.chat-row-scenario {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--tg-theme-hint-color);
+    background: color-mix(in srgb, var(--tg-theme-hint-color) 12%, transparent);
+    padding: 1px 7px;
+    border-radius: 20px;
+    white-space: nowrap;
 }
 
 .chat-row-date {
@@ -585,6 +599,17 @@ body.desktop .grid {
     font-size: 16px;
     font-weight: 600;
     color: var(--tg-theme-text-color);
+}
+
+.scenario-existing-badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--tg-theme-button-color);
+    background: color-mix(in srgb, var(--tg-theme-button-color) 15%, transparent);
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
 }
 
 .scenario-preview {
@@ -1292,7 +1317,7 @@ body.desktop .grid {
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 20px;
+    padding-bottom: 140px;
     display: flex;
     flex-direction: column;
 }

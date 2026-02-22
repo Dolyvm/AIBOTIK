@@ -18,7 +18,7 @@ from .cc_service import (
     build_first_mes_prompt,
     generate_tags,
     build_personality_with_preferences,
-    build_create_character_prompt, fix_generated_fields
+    build_create_character_prompt, fix_generated_fields, fix_mojibake
 )
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -317,8 +317,7 @@ async def generate_character_from_prompt(
                                             "brown",
                                             "blue",
                                             "green",
-                                            "grey",
-                                            "purple"
+                                            "grey"
                                         ],
                                         "description": "Строго из списка, обязательно на английском. "
                                     },
@@ -363,7 +362,19 @@ async def generate_character_from_prompt(
                             },
                             "personality": {
                                 "type": "string",
-                                "description": "Подробное описание характера на русском языке."
+                                "enum": [
+                                    "Заботливый",
+                                    "Мудрец",
+                                    "Невинный",
+                                    "Соблазнительница",
+                                    "Доминант",
+                                    "Покорный",
+                                    "Любовник",
+                                    "Фанатик",
+                                    "Апатичный",
+                                    "Доверенное лицо"
+                                ],
+                                "description": "Тип личности персонажа. СТРОГО ИЗ ENUM СПИСКА. Выбери наиболее подходящий тип исходя из описания."
                             },
                             "scenario": {
                                 "type": "string",
@@ -415,7 +426,7 @@ async def generate_character_from_prompt(
                 }
             ],
             "temperature": 0.3,
-            "max_tokens": 1800,  # !!!
+            "max_tokens": 4000,
             "response_format": response_format
         }
         llm_client = LLMClient(model=STRUCTURED_MODEL, override_payload=override_payload)
@@ -425,7 +436,7 @@ async def generate_character_from_prompt(
         raw_character = await llm_client.generate(
             system_prompt=cc_prompt,
             messages=[],
-            max_tokens=500,
+            max_tokens=4000,
             temperature=0.3
         )
         logging.info("raw_character")
@@ -437,6 +448,10 @@ async def generate_character_from_prompt(
             preferences = preferences_str.split(", ")
         else:
             preferences = None
+        # Применяем mojibake-фикс к русским полям ДО валидации
+        relationship_role = fix_mojibake(visual.get("llm_settings", {}).get("relationship_role"))
+        personality_raw = fix_mojibake(new_character.get("personality"))
+
         create_character_data = fix_generated_fields({
                 "name": new_character.get("name"),
                 "age": visual.get("age"),
@@ -448,10 +463,19 @@ async def generate_character_from_prompt(
                 "boobs_size": visual.get("boobs"),
                 "ass_size": visual.get("ass"),
                 "clothing": "Свободная рубашка",
-                "personality": new_character.get("personality"),
-                "relationship": visual.get("llm_settings", {}).get("relationship_role"),
+                "personality": personality_raw,
+                "relationship": relationship_role,
                 "preferences": preferences,
             })
+
+        # Переопределения от пользователя
+        if payload.user_name:
+            create_character_data["name"] = payload.user_name
+        if payload.style:
+            create_character_data["style"] = payload.style
+        if payload.style == "anime":
+            create_character_data["nationality"] = None  # аниме не использует национальность
+
         return {
             "createCharacterData": create_character_data,
             "newCharacterScenario":  new_character.get("scenario"),

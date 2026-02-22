@@ -9,7 +9,12 @@ from shared.models import User
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from shared.models import Character, Chat, get_async_session
+from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
+from shared.services.cache import get_cache
 from auth.telegram_auth import get_current_user
 router = APIRouter(prefix="/api/characters", tags=["characters"])
 
@@ -120,3 +125,46 @@ async def get_filter_options():
         "tags": sorted(list(all_tags)),
         "styles": sorted(list(styles))
     }
+
+
+@router.delete("/{character_id}")
+async def delete_character(
+    character_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """Delete a character. Users can only delete their own; admins can delete any."""
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    is_admin = user.telegram_id in ADMIN_TELEGRAM_IDS
+    is_owner = character.created_by_username_id == user.telegram_id
+
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="You can only delete your own characters")
+
+    if not is_admin and character.created_by_username_id is None:
+        raise HTTPException(status_code=403, detail="Cannot delete system characters")
+
+    # Удаляем все чаты с этим персонажем (сообщения/картинки каскадно)
+    chats_result = await db.execute(
+        select(Chat).where(Chat.chat_type == "character", Chat.target_id == character_id)
+    )
+    chats = chats_result.scalars().all()
+
+    cache = get_cache()
+    for chat in chats:
+        await db.delete(chat)
+        if cache:
+            await cache.invalidate_chat_state(chat.id)
+
+    await db.delete(character)
+    await db.commit()
+
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    return {"success": True}
