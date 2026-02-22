@@ -25,22 +25,14 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 @router.get("/{user_id}")
 async def get_user_profile(user_id: int, user: User = Depends(get_current_user)):
     """User profile"""
-    #fixme откат сделать
     await verify_user_id_match(user_id, user)
 
-    # return {
-    #     "telegram_id": user.telegram_id,
-    #     "username": user.username,
-    #     "avatar_url": user.avatar_url,
-    #     "balance": user.balance,
-    #     "nsfw_blur": user.settings.nsfw_blur if user.settings else True
-    # }
     return {
-        "telegram_id": 714799964,
-        "username": "huseeads",
-        "avatar_url": None,
-        "balance": 10000,
-        "nsfw_blur": False
+        "telegram_id": user.telegram_id,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "balance": user.balance,
+        "nsfw_blur": user.settings.nsfw_blur if user.settings else True
     }
 
 

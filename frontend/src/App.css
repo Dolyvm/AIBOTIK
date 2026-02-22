@@ -95,7 +95,7 @@ html, body {
 
 .grid-container {
     padding: 10px;
-    padding-top: calc(var(--tg-content-safe-area-inset-top) + 10px);
+    padding-top: calc(var(--tg-safe-area-inset-top) + var(--tg-content-safe-area-inset-top) + 10px);
     padding-bottom: var(--bottom-total-spacing);
     -webkit-overflow-scrolling: touch;
 }
@@ -238,6 +238,7 @@ body.desktop .grid {
     display: flex;
     align-items: center;
     padding: 8px 12px;
+    padding-top: calc(8px + var(--tg-safe-area-inset-top));
     background: var(--tg-theme-bg-color);
     border-bottom: 1px solid var(--tg-theme-secondary-bg-color);
     height: 56px;
@@ -1133,6 +1134,7 @@ body.desktop .grid {
     flex-direction: column;
     overflow: hidden;
     padding: 1rem;
+    padding-top: calc(1rem + var(--tg-safe-area-inset-top));
     padding-bottom: 0;
     box-sizing: border-box;
     background: var(--tg-theme-bg-color);

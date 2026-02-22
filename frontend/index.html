@@ -899,6 +899,9 @@
                 onMounted(async () => {
                     // CRITICAL: Expand to full height immediately
                     tg.expand();
+                    if (typeof tg.requestFullscreen === 'function') {
+                        tg.requestFullscreen();
+                    }
 
                     // Prevent accidental app closure when scrolling (Bot API 7.7+)
                     if (typeof tg.disableVerticalSwipes === 'function') {
@@ -918,6 +921,10 @@
                             console.log('Viewport stable at:', tg.viewportStableHeight);
                             updateViewportVariables();
                         }
+                    });
+
+                    tg.onEvent('fullscreenChanged', () => {
+                        updateViewportVariables();
                     });
 
                     // DEBUG: Check if Telegram variables are loaded
