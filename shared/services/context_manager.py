@@ -258,9 +258,9 @@ class ContextManager:
             import sys
             from pathlib import Path
 
-            webapp_path = Path(__file__).parent.parent.parent / "webapp" / "api"
-            if str(webapp_path) not in sys.path:
-                sys.path.insert(0, str(webapp_path))
+            backend_path = Path(__file__).parent.parent.parent / "backend" / "api"
+            if str(backend_path) not in sys.path:
+                sys.path.insert(0, str(backend_path))
 
             from image_gen.schemas.generate import Prompt
             from image_gen.services.generate import submit_anime, submit_real

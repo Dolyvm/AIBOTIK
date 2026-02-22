@@ -43,7 +43,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["shared*", "bot*", "webapp*"]
+include = ["shared*", "bot*", "backend*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
