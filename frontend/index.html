@@ -396,10 +396,10 @@
                 </div>
                 <h3 class="cc-group-title">Основное</h3>
                 <h2>Выберите стиль</h2>
-                <div class="grid">
+                <div class="cc-carousel cc-carousel--img">
                     <div v-for="item in (stepsGroups[0] && stepsGroups[0].steps && stepsGroups[0].steps[1] ? stepsGroups[0].steps[1].items : [])"
                          :key="item.value"
-                         class="card"
+                         class="cc-carousel-card"
                          :class="{ selected: createCharacterData.style === item.value }"
                          @click="createCharacterData.style = item.value"
                     >
@@ -478,10 +478,10 @@
                 </div>
 
                 <!-- Выбор с изображениями -->
-                <div v-if="currentStep.type === 'imgSelect'" class="grid">
+                <div v-if="currentStep.type === 'imgSelect'" class="cc-carousel cc-carousel--img">
                     <div v-for="(item, index) in currentStep.items"
                         :key="item.value"
-                         class="card"
+                         class="cc-carousel-card"
                          :class="{ selected: createCharacterData[currentStep.id] === item.value }"
                          @click="selectCCItem(index)"
                     >
@@ -494,10 +494,10 @@
                 </div>
 
                 <!-- Текстовый выбор -->
-                <div v-if="currentStep.type === 'textSelect'" class="grid">
+                <div v-if="currentStep.type === 'textSelect'" class="cc-carousel cc-carousel--text">
                     <div v-for="(item, index) in currentStep.items"
                          :key="item"
-                         class="card"
+                         class="cc-carousel-card"
                          :class="{ selected: createCharacterData[currentStep.id] === item }"
                          @click="selectCCItem(index)"
                     >
@@ -509,15 +509,18 @@
                 </div>
 
                 <!-- Мульти-выбор -->
-                <div v-if="currentStep.type === 'textMultiSelect'" class="grid">
+                <div v-if="currentStep.type === 'textMultiSelect'" class="cc-carousel cc-carousel--text">
                     <div v-for="(item, index) in currentStep.items"
                          :key="item"
-                         class="card"
+                         class="cc-carousel-card"
                          :class="{ selected: createCharacterData[currentStep.id]?.includes(item) }"
                          @click="selectCCItem(index)"
                     >
                         <div class="card-title">
                             {{ item }}
+                        </div>
+                        <div v-if="createCharacterData[currentStep.id]?.includes(item)" class="cc-carousel-check">
+                            <i class="fas fa-check"></i>
                         </div>
                     </div>
                     <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
