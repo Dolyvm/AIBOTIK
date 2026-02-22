@@ -5,10 +5,13 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - generated_images:/data/images:ro
       - ./content:/data/content:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - frontend_dist:/usr/share/nginx/html:ro
     depends_on:
       - backend
       - frontend
@@ -88,20 +91,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "5173:5173"  # Vite dev server
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - NODE_ENV=development
-      - VITE_API_URL=http://localhost/api
-      - VITE_WEBSOCKET_URL=ws://localhost/ws
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
-
-    depends_on:
-      - backend
+      - frontend_dist:/app/dist
+    restart: "no"
 
   worker:
     build: ./backend
@@ -193,3 +185,4 @@ volumes:
   postgres_data:
   redis_data:
   generated_images:
+  frontend_dist:
