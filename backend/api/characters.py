@@ -19,6 +19,7 @@ async def list_characters(
     tag: str = None,
     style: str = None,
     creator_type: str = None,  # "all" -> me+public, "me", "public"
+    nsfw: str = None,  # "only" — только NSFW, "exclude" — скрыть NSFW
     user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
@@ -43,6 +44,13 @@ async def list_characters(
 
         if creator_type == "public" and char.get("author", {}).get("user_id", 0) == user.telegram_id:
             continue
+
+        char_is_nsfw = char.get("is_nsfw", False)
+        if nsfw == "only" and not char_is_nsfw:
+            continue
+        if nsfw == "exclude" and char_is_nsfw:
+            continue
+
         logging.info(f"Добавляем перса: {char['name']}")
         logging.info(f"{creator_type=}")
         result.append({

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -37,26 +37,35 @@
             padding: 10px;
             text-align: center;
             background: var(--tg-theme-bg-color);
-            border-top: 1px solid var(--tg-theme-secondary-bg-color);
             flex-shrink: 0;
         }
 
         .btn-auto-continue {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%);
             color: white;
             border: none;
+            outline: none;
+            box-shadow: none;
+            -webkit-appearance: none;
+            appearance: none;
+            -webkit-user-select: none;
+            user-select: none;
             padding: 10px 20px;
             border-radius: 20px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 500;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            transition: opacity 0.2s ease;
         }
 
-        .btn-auto-continue:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        .btn-auto-continue:focus,
+        .btn-auto-continue:focus-visible {
+            outline: none;
+            box-shadow: none;
+        }
+
+        .btn-auto-continue:active:not(:disabled) {
+            opacity: 0.75;
         }
 
         .btn-auto-continue:disabled {
@@ -70,7 +79,7 @@
             align-items: center;
             justify-content: center;
             padding: 40px 20px;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            background: linear-gradient(135deg, rgba(255, 47, 174, 0.1) 0%, rgba(0, 234, 255, 0.1) 100%);
             border-radius: 12px;
             color: var(--tg-theme-hint-color, #999);
             min-height: 150px;
@@ -79,11 +88,19 @@
         .generating-placeholder i {
             font-size: 32px;
             margin-bottom: 12px;
-            color: var(--tg-theme-button-color, #667eea);
+            color: var(--tg-theme-button-color, #FF2FAE);
         }
 
         .generating-placeholder span {
             font-size: 14px;
+        }
+
+        /* Push content below Telegram fullscreen header (status bar via env + TG header ~60px) */
+        .grid-container {
+            padding-top: calc(env(safe-area-inset-top, 50px) + 60px) !important;
+        }
+        .modal-overlay {
+            padding-top: calc(env(safe-area-inset-top, 50px) + 60px) !important;
         }
     </style>
 </head>
@@ -105,10 +122,15 @@
                         </select>
                     </div>
                     <div class="filters">
-                        <select v-model="characterFilters.creator_type"  @change="loadCharacters">
-                            <option :value="null">Указать фильтр по создателю...</option>
+                        <select v-model="characterFilters.creator_type" @change="loadCharacters" style="max-width: 60%">
+                            <option :value="null">Фильтр по создателю</option>
                             <option value="me">Мои персонажи</option>
                             <option value="public">Персонажи сообщества</option>
+                        </select>
+                        <select v-model="characterFilters.nsfw" @change="loadCharacters">
+                            <option :value="null">NSFW: все</option>
+                            <option value="exclude">Только SFW</option>
+                            <option value="only">Только NSFW</option>
                         </select>
                     </div>
                 </div>
@@ -122,7 +144,7 @@
                         <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
                     </select>
                     <select v-model="worldFilters.creator_type">
-                        <option :value="null">Фильтр по создателю...</option>
+                        <option :value="null">Фильтр по создателю</option>
                         <option value="me">Мои миры</option>
                         <option value="public">Миры от сообщества</option>
                     </select>
@@ -131,6 +153,7 @@
                 <!-- Grid Characters -->
                 <div v-if="tab === 'characters'" class="grid">
                     <div class="card" @click="createCharacterOnClick()">
+                        <img src="/create-character-cover.png" loading="lazy">
                         <div class="card-title">
                             Создать персонажа
                         </div>
@@ -142,7 +165,7 @@
                         <img :src="char.avatar"
                              loading="lazy"
                              :class="{'nsfw-blur': shouldBlurCard(char) && !isRevealed('card-'+char.id)}">
-                        <span v-if="char.is_nsfw" class="nsfw-badge">18+</span>
+                        <span v-if="char.is_nsfw" class="nsfw-badge">NSFW</span>
                         <div v-if="shouldBlurCard(char) && !isRevealed('card-'+char.id)" class="nsfw-blur-overlay">
                             <span class="click-hint">👁</span>
                         </div>
@@ -162,7 +185,7 @@
                         <img :src="world.cover_image"
                              loading="lazy"
                              :class="{'nsfw-blur': shouldBlurCard(world) && !isRevealed('card-'+world.id)}">
-                        <span v-if="world.is_nsfw" class="nsfw-badge">18+</span>
+                        <span v-if="world.is_nsfw" class="nsfw-badge">NSFW</span>
                         <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
                             <span class="click-hint">👁</span>
                         </div>
@@ -259,7 +282,7 @@
                 <button @click="resetChat" class="reset-btn" title="Сбросить диалог">
                     <i class="fas fa-redo"></i>
                 </button>
-                <div class="header-avatar" v-if="currentChatAvatar">
+                <div class="header-avatar" v-if="currentChatAvatar" @click="openCharacterProfile">
                     <img :src="currentChatAvatar">
                 </div>
             </div>
@@ -300,7 +323,7 @@
                     class="btn-auto-continue"
                     @click="generateAutoReply"
                     :disabled="isWaitingResponse">
-                    ⏭️ Автопродолжение
+                    Автопродолжение
                 </button>
             </div>
 
@@ -308,6 +331,7 @@
                 <textarea
                     v-model="inputMessage"
                     @keydown="handleTextareaKey"
+                    @input="autoResizeTextarea"
                     placeholder="Сообщение..."
                     rows="1"
                     ref="inputField"
@@ -336,7 +360,7 @@
                 <button
                     class="change-step-button"
                     @click="createCharacterFromPrompt"
-                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}"
+                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%)'}"
                 >
                     Сгенерировать
                 </button>
@@ -644,6 +668,29 @@
             </div>
         </div>
 
+        <!-- Modal: Character Profile -->
+        <div v-if="showCharacterProfileModal" class="modal-overlay" @click.self="closeCharacterProfile">
+            <div class="modal-content">
+                <button class="modal-close" @click="closeCharacterProfile">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div v-if="isLoadingProfile" class="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Загрузка...</p>
+                </div>
+                <div v-else-if="characterProfileData" class="modal-body">
+                    <div class="modal-character-header">
+                        <img :src="characterProfileData.avatar" class="modal-character-image" alt="Character">
+                        <div class="modal-character-info">
+                            <h2>{{ characterProfileData.name }}</h2>
+                            <p v-if="characterProfileData.author">Made by {{ characterProfileData.author.display_name }}</p>
+                            <p class="modal-character-description">{{ characterProfileData.description }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Toast Notification -->
         <div v-if="toast.show" class="toast" :class="'toast--' + toast.type">
             {{ toast.message }}
@@ -674,6 +721,7 @@
                 const currentChatName = ref('');
                 const currentChatAvatar = ref('');
                 const currentChatType = ref('character');
+                const currentCharacterId = ref(null);
                 const chatHistory = ref([]);
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
@@ -746,9 +794,14 @@
                 const selectedCharacter = ref(null);
                 const isLoadingScenarios = ref(false);
 
+                // Character profile modal state
+                const showCharacterProfileModal = ref(false);
+                const characterProfileData = ref(null);
+                const isLoadingProfile = ref(false);
+
                 // Filters
                 const filterOptions = ref({ tags: [], styles: [], worldTags: [] });
-                const characterFilters = ref({ tag: null, style: null, creator_type: null });
+                const characterFilters = ref({ tag: null, style: null, creator_type: null, nsfw: null });
                 const worldFilters = ref({ tag: null, creator_type: null  });
 
                 // Toast
@@ -911,6 +964,19 @@
                     // Signal app is ready
                     tg.ready();
 
+                    // Apply background theme based on Telegram color scheme
+                    const applyTheme = () => {
+                        if (tg.colorScheme === 'dark') {
+                            document.body.classList.add('theme-dark');
+                            document.body.classList.remove('theme-light');
+                        } else {
+                            document.body.classList.remove('theme-dark');
+                            document.body.classList.add('theme-light');
+                        }
+                    };
+                    applyTheme();
+                    tg.onEvent('themeChanged', applyTheme);
+
                     // Initial viewport sync
                     updateViewportVariables();
 
@@ -925,7 +991,21 @@
 
                     tg.onEvent('fullscreenChanged', () => {
                         updateViewportVariables();
+                        // Values from Telegram API may not be final immediately
+                        setTimeout(updateViewportVariables, 150);
+                        setTimeout(updateViewportVariables, 400);
+                        setTimeout(updateViewportVariables, 700);
+                        setTimeout(updateViewportVariables, 1500);
                     });
+
+                    // These fire when Telegram actually updates safe area values
+                    tg.onEvent('safeAreaChanged', updateViewportVariables);
+                    tg.onEvent('contentSafeAreaChanged', updateViewportVariables);
+
+                    // Retries — requestFullscreen() is async, values arrive with delay
+                    setTimeout(updateViewportVariables, 200);
+                    setTimeout(updateViewportVariables, 600);
+                    setTimeout(updateViewportVariables, 1200);
 
                     // DEBUG: Check if Telegram variables are loaded
                     setTimeout(() => {
@@ -989,6 +1069,7 @@
                     if (characterFilters.value.tag) params.tag = characterFilters.value.tag;
                     if (characterFilters.value.style) params.style = characterFilters.value.style;
                     if (characterFilters.value.creator_type) params.creator_type = characterFilters.value.creator_type;
+                    if (characterFilters.value.nsfw) params.nsfw = characterFilters.value.nsfw;
                     try {
                         const res = await axios.get('/api/characters', { params });
                         characters.value = res.data.characters;
@@ -1128,6 +1209,7 @@
                     try {
                         const res = await axios.get(`/api/chat/${chatId}/history`);
                         chatHistory.value = res.data.history;
+                        currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
                         currentView.value = 'chat';
                         await nextTick();
                         scrollToBottom();
@@ -1171,6 +1253,7 @@
                 const backToMenu = () => {
                     currentView.value = 'selection';
                     chatHistory.value = [];
+                    currentCharacterId.value = null;
                     loadChats(); // Refresh list to update dates
                 };
 
@@ -1181,6 +1264,7 @@
 
                     chatHistory.value.push({ role: 'user', content: text });
                     inputMessage.value = '';
+                    resetTextareaHeight();
                     isWaitingResponse.value = true;
                     scrollToBottom();
 
@@ -1360,6 +1444,20 @@
                 };
 
                 const inputField = ref(null);
+
+                const autoResizeTextarea = () => {
+                    const el = inputField.value;
+                    if (!el) return;
+                    el.style.height = 'auto';
+                    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+                };
+
+                const resetTextareaHeight = () => {
+                    const el = inputField.value;
+                    if (!el) return;
+                    el.style.height = '';
+                };
+
                 const handleMessagesClick = () => {
                     inputField.value?.blur();
                 };
@@ -1396,6 +1494,27 @@
                 const closeModal = () => {
                     showScenarioModal.value = false;
                     selectedCharacter.value = null;
+                };
+
+                const openCharacterProfile = async () => {
+                    if (!currentCharacterId.value) return;
+                    showCharacterProfileModal.value = true;
+                    isLoadingProfile.value = true;
+                    characterProfileData.value = null;
+                    try {
+                        const res = await axios.get(`/api/characters/${currentCharacterId.value}`);
+                        characterProfileData.value = res.data;
+                    } catch (e) {
+                        showToast('Ошибка загрузки профиля');
+                        showCharacterProfileModal.value = false;
+                    } finally {
+                        isLoadingProfile.value = false;
+                    }
+                };
+
+                const closeCharacterProfile = () => {
+                    showCharacterProfileModal.value = false;
+                    characterProfileData.value = null;
                 };
 
                 // --- AUTO CONTINUE ---
@@ -1456,9 +1575,9 @@
                         const response = await axios.post(`/api/chat/${currentChatId.value}/generate-auto-reply`);
 
                         const data = response.data;
-                        inputMessage.value = data.player_message
-                        // await nextTick();
-                        // scrollToBottom();
+                        inputMessage.value = data.player_message;
+                        await nextTick();
+                        autoResizeTextarea();
 
                     } catch (error) {
                         console.error('Auto-continue failed:', error);
@@ -1720,12 +1839,13 @@
                     currentView, tab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
-                    currentChatName, currentChatAvatar, currentChatId, currentChatType,
+                    currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
                     isWaitingResponse, isStreaming, messagesContainer, inputField,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios,
                     closeModal, startChatWithScenario,
+                    showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
                     toast, autoContinue, hideKeyboard,
                     newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,

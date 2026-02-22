@@ -158,15 +158,8 @@ async def gen(
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
     prompt.scene_details = scene_description
-    pos, neg = await build_prompt_from_character(
-        character,
-        face_expression=emotion,
-        location=environment,
-        position=state_meta.get("action") or pose,
-        nsfw_level=nsfw_level,
-        outfit_key=outfit_key,
-        close_up=False
-    )
+    prompt.facial_expression = emotion
+    pos, neg = await prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
     logging.info(f"{content=}")
