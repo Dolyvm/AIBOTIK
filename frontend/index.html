@@ -293,6 +293,29 @@
                                     <option value="en">English</option>
                                 </select>
                             </div>
+                            <div class="setting-item">
+                                <span class="setting-label">Мой никнейм</span>
+                                <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname">
+                                    <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
+                                    <i class="fas fa-pen nickname-edit-icon"></i>
+                                </div>
+                                <div v-else class="nickname-edit">
+                                    <input
+                                        type="text"
+                                        v-model="nicknameDraft"
+                                        class="nickname-input"
+                                        maxlength="50"
+                                        placeholder="Введите никнейм"
+                                        @keyup.enter="saveNickname"
+                                    >
+                                    <button class="nickname-save-btn" @click="saveNickname" :disabled="isSavingNickname">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="nickname-cancel-btn" @click="cancelEditNickname">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -968,8 +991,12 @@
                 });
                 const profileSettings = ref({
                     nsfw_blur: true,
-                    language: 'ru'
+                    language: 'ru',
+                    nickname: ''
                 });
+                const isEditingNickname = ref(false);
+                const nicknameDraft = ref('');
+                const isSavingNickname = ref(false);
                 const mockTransactions = ref([
                     { id: 1, amount: 100, source: 'daily_bonus', description: 'Ежедневный бонус', created_at: new Date().toISOString() },
                     { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
@@ -1010,6 +1037,41 @@
                     } catch (e) {
                         console.error('Failed to save nsfw_blur setting:', e);
                         showToast('Ошибка сохранения настроек', 'error');
+                    }
+                };
+
+                const startEditNickname = () => {
+                    nicknameDraft.value = profileSettings.value.nickname || '';
+                    isEditingNickname.value = true;
+                    nextTick(() => {
+                        const input = document.querySelector('.nickname-input');
+                        if (input) input.focus();
+                    });
+                };
+
+                const cancelEditNickname = () => {
+                    isEditingNickname.value = false;
+                    nicknameDraft.value = '';
+                };
+
+                const saveNickname = async () => {
+                    if (isSavingNickname.value || !userId.value) return;
+                    const trimmed = nicknameDraft.value.trim();
+                    if (trimmed.length > 50) {
+                        showToast('Никнейм слишком длинный (макс. 50 символов)', 'error');
+                        return;
+                    }
+                    try {
+                        isSavingNickname.value = true;
+                        await axios.patch(`/api/user/${userId.value}/settings`, { nickname: trimmed || '' });
+                        profileSettings.value.nickname = trimmed || '';
+                        isEditingNickname.value = false;
+                        showToast('Никнейм сохранён', 'success');
+                    } catch (e) {
+                        console.error('Failed to save nickname:', e);
+                        showToast('Ошибка сохранения никнейма', 'error');
+                    } finally {
+                        isSavingNickname.value = false;
                     }
                 };
 
@@ -1271,6 +1333,7 @@
                         isLoadingSettings = true;
                         const res = await axios.get(`/api/user/${userId.value}`);
                         profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                        profileSettings.value.nickname = res.data.nickname || '';
                         await nextTick();
                         isLoadingSettings = false;
                     } catch (e) {
@@ -1296,6 +1359,7 @@
                             const res = await axios.get(`/api/user/${userId.value}`);
                             userProfile.value.balance = res.data.balance;
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                            profileSettings.value.nickname = res.data.nickname || '';
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -2160,6 +2224,8 @@
                     isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview, isGeneratingFromPrompt,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
+                    isEditingNickname, nicknameDraft, isSavingNickname,
+                    startEditNickname, cancelEditNickname, saveNickname,
                     // NSFW Blur
                     revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
                     generateAutoReply,

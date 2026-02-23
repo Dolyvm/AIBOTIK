@@ -29,7 +29,8 @@ def user_to_dict(user: User) -> dict:
         "last_active_at": user.last_active_at.isoformat() if user.last_active_at else None,
         "settings": {
             "nsfw_blur": user.settings.nsfw_blur if user.settings else True,
-            "language": user.settings.language if user.settings else "ru"
+            "language": user.settings.language if user.settings else "ru",
+            "nickname": user.settings.nickname if user.settings else None
         } if user.settings else None
     }
 
@@ -53,7 +54,8 @@ def dict_to_user(data: dict) -> User:
         user.settings = UserSettings(
             user_id=data["telegram_id"],
             nsfw_blur=data["settings"].get("nsfw_blur", True),
-            language=data["settings"].get("language", "ru")
+            language=data["settings"].get("language", "ru"),
+            nickname=data["settings"].get("nickname")
         )
 
     return user

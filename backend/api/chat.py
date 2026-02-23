@@ -26,6 +26,14 @@ from shared.services.cache import get_cache
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+
+def _get_display_name(user: User) -> str:
+    """Get user display name: nickname > username > fallback."""
+    if user.settings and user.settings.nickname:
+        return user.settings.nickname
+    return user.username or "User"
+
+
 llm_client = LLMClient()
 context_manager = ContextManager(llm_client)
 
@@ -94,7 +102,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         allow_nsfw = character.get("is_nsfw", True) if character else True
 
@@ -130,7 +138,7 @@ async def get_chats_for_character(target_id: str, chat_type: str, user: User = D
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
     async with get_session() as session:
         try:
-            user_name = user.username if user.username else "Путешественник"
+            user_name = _get_display_name(user)
 
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
@@ -165,7 +173,7 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
     async with get_session() as session:
         try:
-            user_name = user.username if user.username else "Путешественник"
+            user_name = _get_display_name(user)
 
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
@@ -217,7 +225,7 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         allow_nsfw = character.get("is_nsfw", True) if character else True
 
@@ -271,7 +279,7 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         result = await context_manager.auto_reply_cycle(
             chat=chat,

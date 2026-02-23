@@ -20,6 +20,7 @@ from auth.authorization import verify_user_id_match
 
 class UpdateSettingsRequest(BaseModel):
     nsfw_blur: Optional[bool] = None
+    nickname: Optional[str] = None
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -42,7 +43,8 @@ async def get_user_profile(user_id: int, user: User = Depends(get_current_user))
         "username": user.username,
         "avatar_url": user.avatar_url,
         "balance": user.balance,
-        "nsfw_blur": user.settings.nsfw_blur if user.settings else True
+        "nsfw_blur": user.settings.nsfw_blur if user.settings else True,
+        "nickname": user.settings.nickname if user.settings else None
     }
 
 
@@ -120,7 +122,8 @@ async def update_user_settings(
         user_repo = UserRepository(session)
         await user_repo.update_settings(
             telegram_id=user.telegram_id,
-            nsfw_blur=payload.nsfw_blur
+            nsfw_blur=payload.nsfw_blur,
+            nickname=payload.nickname
         )
 
     return {"success": True}

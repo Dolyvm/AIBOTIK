@@ -60,6 +60,7 @@ class UserSettings(Base):
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
     nsfw_blur = Column(Boolean, default=True)
     language = Column(String(10), default="ru")
+    nickname = Column(String(50), nullable=True, default=None)
 
     user = relationship("User", back_populates="settings")
 

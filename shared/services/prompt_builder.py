@@ -83,6 +83,7 @@ async def build_character_prompt(
     template = await get_prompt("character_prompt_template")
     prompt = template.format(
         char_name=char_name,
+        user_name=user_name,
         description=description,
         personality=personality,
         scenario=scenario,
