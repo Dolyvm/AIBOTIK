@@ -344,15 +344,20 @@ body.desktop .grid {
 
 .message-wrapper {
     display: flex;
+    flex-direction: column;
     margin-bottom: 6px;
 }
 
+.message-wrapper:last-child {
+    margin-bottom: 14px;
+}
+
 .message-wrapper.own {
-    justify-content: flex-end;
+    align-items: flex-end;
 }
 
 .message-wrapper.foreign {
-    justify-content: flex-start;
+    align-items: flex-start;
 }
 
 .message-bubble {

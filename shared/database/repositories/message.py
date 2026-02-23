@@ -1,5 +1,5 @@
 """Репозиторий для работы с сообщениями."""
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, case
 
 from shared.models import Message, MessageRole, Chat
 from .base import BaseRepository
@@ -48,6 +48,46 @@ class MessageRepository(BaseRepository[Message]):
         messages = list(result.scalars().all())
         messages.reverse()
         return messages
+
+    async def delete_last_pair(self, chat_id: int):
+        """Удаляет последнюю пару сообщений (user + assistant).
+
+        Returns: (deleted_count, user_msg_created_at)
+        """
+        result = await self.session.execute(
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .order_by(Message.created_at.desc())
+            .limit(2)
+        )
+        last_two = list(result.scalars().all())
+
+        if len(last_two) < 2:
+            raise ValueError("Недостаточно сообщений для отмены")
+
+        if last_two[0].role != MessageRole.ASSISTANT or last_two[1].role != MessageRole.USER:
+            raise ValueError("Последние два сообщения не являются парой user+assistant")
+
+        user_msg_created_at = last_two[1].created_at
+        ids_to_delete = [msg.id for msg in last_two]
+
+        await self.session.execute(
+            delete(Message).where(Message.id.in_(ids_to_delete))
+        )
+
+        await self.session.execute(
+            update(Chat)
+            .where(Chat.id == chat_id)
+            .values(
+                msgs_since_summary=case(
+                    (Chat.msgs_since_summary >= 2, Chat.msgs_since_summary - 2),
+                    else_=0
+                )
+            )
+        )
+
+        await self.session.commit()
+        return len(ids_to_delete), user_msg_created_at
 
     async def delete_by_chat(self, chat_id: int) -> int:
         result = await self.session.execute(

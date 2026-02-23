@@ -79,6 +79,38 @@
             cursor: not-allowed;
         }
 
+        .btn-undo-turn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-hint-color, #999);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+            padding: 0;
+            margin-top: 4px;
+            align-self: flex-start;
+            flex-shrink: 0;
+        }
+
+        .btn-undo-turn:active {
+            opacity: 1;
+            background: var(--tg-theme-button-color, #FF2FAE);
+            color: #fff;
+        }
+
+        .btn-undo-turn:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
         .generating-placeholder {
             display: flex;
             flex-direction: column;
@@ -328,6 +360,12 @@
                             </span>
                         </div>
                     </div>
+                    <button v-if="index === undoTargetIndex"
+                            class="btn-undo-turn"
+                            @click.stop="undoLastTurn"
+                            :disabled="isUndoing">
+                        <i class="fas fa-trash-can"></i>
+                    </button>
                 </div>
 
                 <div v-if="isWaitingResponse && !isStreaming" class="message-wrapper foreign">
@@ -826,6 +864,7 @@
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
+                const isUndoing = ref(false);
                 const messagesContainer = ref(null);
 
                 // Create Character
@@ -844,6 +883,16 @@
                 const newCharacterShortDescription = ref("");
                 const isGeneratingScenario = ref(false);
                 const isGeneratingFromPrompt = ref(false);
+
+                const undoTargetIndex = computed(() => {
+                    if (isWaitingResponse.value || isStreaming.value || isUndoing.value) return -1;
+                    if (!currentChatId.value) return -1;
+                    const h = chatHistory.value;
+                    for (let i = h.length - 1; i >= 1; i--) {
+                        if (h[i].role === 'assistant' && h[i].content && h[i - 1].role === 'user') return i;
+                    }
+                    return -1;
+                });
 
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
                 const filteredGroups = computed(() => {
@@ -1636,6 +1685,31 @@
                     } catch (e) { showToast('Ошибка сброса'); }
                 };
 
+                const undoLastTurn = async () => {
+                    const idx = undoTargetIndex.value;
+                    if (idx < 1 || isUndoing.value) return;
+                    if (!confirm('Удалить последние два сообщения?')) return;
+
+                    isUndoing.value = true;
+                    const h = chatHistory.value;
+                    const userIdx = idx - 1;
+                    let endIdx = idx;
+                    while (endIdx + 1 < h.length && h[endIdx + 1].role === 'assistant' && !h[endIdx + 1].content) {
+                        endIdx++;
+                    }
+                    const removed = h.splice(userIdx, endIdx - userIdx + 1);
+
+                    try {
+                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
+                        showToast('Сообщения удалены', 'success');
+                    } catch (e) {
+                        chatHistory.value.splice(userIdx, 0, ...removed);
+                        showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                    } finally {
+                        isUndoing.value = false;
+                    }
+                };
+
                 // --- UTILS ---
                 const typeWriter = async (text) => {
                     const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
@@ -2069,7 +2143,8 @@
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
-                    isWaitingResponse, isStreaming, messagesContainer, inputField,
+                    isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
+                    undoTargetIndex, undoLastTurn,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
