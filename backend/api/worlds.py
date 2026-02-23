@@ -34,6 +34,7 @@ async def list_worlds(
         result.append({
             "id": world_id,
             "name": world["name"],
+            "short_description": world.get("short_description", ""),
             "cover_image": world.get("cover_image", ""),
             "tags": world_tags,
             "description_short": description_short,

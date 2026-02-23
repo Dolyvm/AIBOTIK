@@ -379,6 +379,7 @@ async def create_character(
 
     character_id = form_data.get("id", "").strip()
     name = form_data.get("name", "").strip()
+    short_description = form_data.get("short_description", "").strip()
     description = form_data.get("description", "").strip()
     personality = form_data.get("personality", "").strip()
     scenario = form_data.get("scenario", "").strip()
@@ -455,6 +456,7 @@ async def create_character(
     new_character = Character(
         id=character_id,
         name=name,
+        short_description=short_description,
         description=description,
         personality=personality,
         visual_data=visual_data,
@@ -551,6 +553,7 @@ async def update_character(
     form_data = await request.form()
 
     name = form_data.get("name", "").strip()
+    short_description = form_data.get("short_description", "").strip()
     description = form_data.get("description", "").strip()
     personality = form_data.get("personality", "").strip()
     scenario = form_data.get("scenario", "").strip()
@@ -615,6 +618,7 @@ async def update_character(
         .where(Character.id == character_id)
         .values(
             name=name,
+            short_description=short_description,
             description=description,
             personality=personality,
             visual_data=visual_data,
@@ -706,6 +710,7 @@ async def create_world(
 
     world_id = form_data.get("id", "").strip()
     name = form_data.get("name", "").strip()
+    short_description = form_data.get("short_description", "").strip()
     description = form_data.get("description", "").strip()
     gm_instructions = form_data.get("gm_instructions", "").strip()
     intro_message = form_data.get("intro_message", "").strip()
@@ -762,6 +767,7 @@ async def create_world(
     new_world = World(
         id=world_id,
         name=name,
+        short_description=short_description,
         description=description,
         cover_image=saved_cover_image,
         scenarios=scenarios,
@@ -839,6 +845,7 @@ async def update_world(
     form_data = await request.form()
 
     name = form_data.get("name", "").strip()
+    short_description = form_data.get("short_description", "").strip()
     description = form_data.get("description", "").strip()
     gm_instructions = form_data.get("gm_instructions", "").strip()
     intro_message = form_data.get("intro_message", "").strip()
@@ -890,6 +897,7 @@ async def update_world(
         .where(World.id == world_id)
         .values(
             name=name,
+            short_description=short_description,
             description=description,
             cover_image=new_cover_image,
             scenarios=scenarios,

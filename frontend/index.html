@@ -177,6 +177,7 @@
                         </div>
                         <div class="card-title">
                             {{ char.name }}
+                            <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                         </div>
                     </div>
                     <div v-if="characters.length === 0" class="empty-state">Персонажи не найдены</div>
@@ -195,7 +196,10 @@
                         <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
                             <span class="click-hint">👁</span>
                         </div>
-                        <div class="card-title">{{ world.name }}</div>
+                        <div class="card-title">
+                            {{ world.name }}
+                            <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
+                        </div>
                     </div>
                     <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
                 </div>
@@ -637,6 +641,18 @@
                             :disabled="isGeneratingScenario"
                         ></textarea>
                     </div>
+
+                    <!-- Короткое описание для карточки -->
+                    <div class="cc-field">
+                        <label>Короткое описание (для карточки):</label>
+                        <input
+                            v-model="newCharacterShortDescription"
+                            class="scenario-textarea"
+                            placeholder="Краткое описание в 1 строку..."
+                            maxlength="200"
+                            style="height: auto; padding: 10px;"
+                        />
+                    </div>
                 </div>
 
                 <!-- Навигация финального шага -->
@@ -825,6 +841,7 @@
                 const newCharacterScenario = ref(null);
                 const newCharacterFirstMes = ref(null);
                 const newCharacterDescription = ref(null);
+                const newCharacterShortDescription = ref("");
                 const isGeneratingScenario = ref(false);
                 const isGeneratingFromPrompt = ref(false);
 
@@ -1805,6 +1822,7 @@
                     newCharacterScenario.value = null;
                     newCharacterFirstMes.value = null;
                     newCharacterDescription.value = null;
+                    newCharacterShortDescription.value = "";
                 }
 
                 const createCharacterFromPrompt = async () => {
@@ -2000,6 +2018,7 @@
                             scenario: newCharacterScenario.value,
                             first_mes: newCharacterFirstMes.value,
                             description: newCharacterDescription.value,
+                            short_description: newCharacterShortDescription.value,
                             avatar_url: newCharacterPreview.value
                         };
                         // 1. Создаем персонажа
@@ -2029,6 +2048,7 @@
                         newCharacterScenario.value = null;
                         newCharacterFirstMes.value = null;
                         newCharacterDescription.value = null;
+                        newCharacterShortDescription.value = "";
 
                         // 5. Открываем чат (вместо возврата в selection)
                         await openChat(chatRes.data.chat_id, chatMeta);
@@ -2057,7 +2077,7 @@
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
                     toast, autoContinue, hideKeyboard,
-                    newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
+                    newCharacterScenario, newCharacterFirstMes, newCharacterDescription, newCharacterShortDescription, generateNewCharacterScenario,
                     createCharacterOnClick, createStrategy, preStep, createPromptText, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
                     stepsList, filteredStepsList, currentStep, totalSteps, stepsGroups,
                     filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex, goToStep, goToGroup,

@@ -61,6 +61,7 @@ async def list_characters(
         result.append({
             "id": char_id,
             "name": char["name"],
+            "short_description": char.get("short_description", ""),
             "avatar": char["avatar"],
             "tags": char_tags,
             "model_type": model_type,

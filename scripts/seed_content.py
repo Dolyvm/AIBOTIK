@@ -53,6 +53,7 @@ async def load_characters(session, content_dir: Path):
             id=char_id,
             is_public=data.get("is_public", True),
             name=data["name"],
+            short_description=data.get("short_description", ""),
             description=data.get("description", ""),
             personality=data.get("personality", ""),
             visual_data=visual_data,
@@ -99,6 +100,7 @@ async def load_worlds(session, content_dir: Path):
         world = World(
             id=world_id,
             name=data["name"],
+            short_description=data.get("short_description", ""),
             description=data.get("description", ""),
             cover_image=data.get("cover_image", ""),
             scenarios=scenarios,

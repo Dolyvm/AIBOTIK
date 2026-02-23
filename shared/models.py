@@ -72,12 +72,13 @@ class Character(Base):
     name = Column(String(255), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=False)
+    short_description = Column(String(30), nullable=True, default="")
     personality = Column(Text, nullable=False)
 
-    visual_data = Column(JSONB, nullable=False) 
+    visual_data = Column(JSONB, nullable=False)
     scenarios = Column(JSONB, default=[])
-    
-    tags = Column(ARRAY(String), default=[]) 
+
+    tags = Column(ARRAY(String), default=[])
     is_nsfw = Column(Boolean, default=False)
     created_by_username_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
     created_by_username = Column(String(255), nullable=True)
@@ -92,6 +93,7 @@ class World(Base):
     id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
+    short_description = Column(String(30), nullable=True, default="")
     cover_image = Column(String(500), nullable=True)
 
     scenarios = Column(JSONB, default=[])

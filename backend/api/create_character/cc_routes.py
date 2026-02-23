@@ -75,6 +75,7 @@ async def create_character_endpoint(
             character = Character(
                 id=character_id,
                 name=payload.name,
+                short_description=payload.short_description or "",
                 is_public=payload.is_public,
                 description=description,
                 personality=personality,

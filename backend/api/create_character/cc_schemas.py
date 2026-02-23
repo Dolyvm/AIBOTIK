@@ -193,6 +193,7 @@ class CreateCharacterRequest(BaseModel):
     scenario: Optional[str] = None
     first_mes: Optional[str] = None
     description: Optional[str] = None
+    short_description: Optional[str] = None
     avatar_url: Optional[str] = None
 
     def build_visual(self):

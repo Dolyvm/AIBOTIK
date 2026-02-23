@@ -33,6 +33,7 @@ def character_to_dict(char: Character) -> dict:
     return {
         "id": char.id,
         "name": char.name,
+        "short_description": char.short_description or "",
         "is_public": char.is_public,
         "description": char.description,
         "personality": char.personality,
@@ -76,6 +77,7 @@ def world_to_dict(world: World) -> dict:
     return {
         "id": world.id,
         "name": world.name,
+        "short_description": world.short_description or "",
         "description": world.description,
         "cover_image": world.cover_image,
         "setting": setting,
