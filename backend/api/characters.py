@@ -5,12 +5,14 @@ from pathlib import Path
 import sys
 
 from shared.models import User
+from shared.services.analytics import AnalyticsService
 
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from shared.database import get_session
 from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
@@ -74,7 +76,7 @@ async def list_characters(
 
 
 @router.get("/{character_id}")
-async def get_character_detail(character_id: str):
+async def get_character_detail(character_id: str, user: User = Depends(get_current_user)):
     """Detailed character information"""
     char = await get_character(character_id)
     if not char:
@@ -92,6 +94,14 @@ async def get_character_detail(character_id: str):
             "name": f"Сценарий {i}",
             "preview": alt
         })
+    async with get_session() as session:
+        await AnalyticsService.track(
+            session,
+            user.id,
+            "character_click",
+            "characters",
+            character_id
+        )
 
     return {
         "id": character_id,

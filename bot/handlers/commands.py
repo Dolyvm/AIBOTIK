@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 import os
 
+from shared.services.analytics import AnalyticsService
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.database import get_session
@@ -18,10 +20,14 @@ router = Router()
 async def cmd_start(message: Message):
     async with get_session() as session:
         user_repo = UserRepository(session)
-        user = await user_repo.get_or_create(
+        user, is_created = await user_repo.get_or_create(
             telegram_id=message.from_user.id,
-            username=message.from_user.username
+            username=message.from_user.username,
+            do_commit=False
         )
+        if is_created:
+            await AnalyticsService.track(session, user.id, "bot_enter")
+        await user_repo.commit()
 
     await message.answer(
         f"Привет, {message.from_user.first_name}!\n\n"

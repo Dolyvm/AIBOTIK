@@ -1388,6 +1388,7 @@
 
                     try {
                         const endpoint = type === 'character'
+                            // по этим эндпоинтам берется статистика открытия карточек (просмотров)
                             ? `/api/characters/${item.id}`
                             : `/api/worlds/${item.id}`;
                         const [res, chatsRes] = await Promise.all([

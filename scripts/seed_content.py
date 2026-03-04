@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import select
 
-from shared.models import Character, World
+from shared.models import Character, World, Event, User
 from shared.database import get_session
 
 
@@ -112,6 +112,51 @@ async def load_worlds(session, content_dir: Path):
     await session.commit()
 
 
+async def seed_events(session):
+    CHAR_IDS = ["aigerim", "aiko", "emily", "yuki"]
+    # 10 пользователей
+    for i in range(10):
+        # пользователь зарегался
+        event = Event(
+            user_id=i,
+            event_type="bot_enter",
+        )
+        session.add(event)
+
+        # отмечаем пользователя в базе
+        user = User(
+            telegram_id=i,
+            username=str(i)
+        )
+        session.add(user)
+
+        # добавляем просмотры от лица пользователя на всех персов
+        for index, char_id in enumerate(CHAR_IDS):
+            views = (index+1) * i
+            for _ in range(views):
+                session.add(Event(
+                    user_id=i,
+                    event_type="character_click",
+                    entity_type="characters",
+                    entity_id=char_id
+                ))
+
+            # добавляем "старт чата"
+            session.add(Event(
+                user_id=i,
+                event_type="character_chat_started",
+                entity_type="characters",
+                entity_id=char_id,
+                meta={
+                    "chat_type": "chat_type",
+                    "chat_id": "chat_id",
+                    "scenario_index": "scenario_index",
+                }
+            ))
+
+    await session.commit()
+
+
 async def main():
     if Path("/app/content").exists():
         content_dir = Path("/app/content")
@@ -120,6 +165,9 @@ async def main():
     async with get_session() as session:
         await load_characters(session, content_dir)
         await load_worlds(session, content_dir)
+
+        if True:  # seed test data
+            await seed_events(session)
 
 
 if __name__ == "__main__":

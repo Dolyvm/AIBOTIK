@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Body, Depends
 
 from shared.config import SCENE_ANALYZER_MODEL, STRUCTURED_MODEL
+from shared.services.analytics import AnalyticsService
 from shared.services.llm import LLMClient
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
@@ -88,6 +89,14 @@ async def create_character_endpoint(
             )
             session.add(character)
             await session.commit()
+
+            await AnalyticsService.track(
+                session,
+                user_id=user.telegram_id,
+                event_type="create_character",
+                entity_type="characters",
+                entity_id=str(character_id),
+            )
 
         cache = get_cache()
         if cache:
