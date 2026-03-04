@@ -181,7 +181,7 @@
                         <option :value="null">Все теги</option>
                         <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
                     </select>
-                    <select v-model="worldFilters.creator_type">
+                    <select v-model="worldFilters.creator_type" @change="loadWorlds">
                         <option :value="null">Фильтр по создателю</option>
                         <option value="me">Мои миры</option>
                         <option value="public">Миры от сообщества</option>
@@ -217,6 +217,12 @@
 
                 <!-- Grid Worlds -->
                 <div v-if="tab === 'worlds'" class="grid">
+                    <div class="card" @click="createWorldOnClick()">
+                        <img src="/create-character-cover.png" loading="lazy">
+                        <div class="card-title">
+                            Создать мир
+                        </div>
+                    </div>
                     <div v-for="world in worlds" :key="world.id"
                          class="card"
                          :class="{revealed: isRevealed('card-'+world.id)}"
@@ -527,12 +533,14 @@
                         <!-- Гардероб -->
                         <div class="cc-field">
                             <label>Гардероб:</label>
-                            <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" style="display: flex; gap: 8px; margin-bottom: 8px;">
-                                <input :value="key" @change="renameWardrobeKey(key, $event.target.value)" class="cc-name-input" style="flex: 1;" placeholder="Ключ (casual, formal...)">
-                                <input v-model="createCharacterData.wardrobe[key]" class="cc-name-input" style="flex: 2;" placeholder="Описание одежды (EN)">
-                                <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeWardrobeItem(key)">
-                                    <i class="fas fa-trash"></i>
-                                </button>
+                            <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" class="cc-wardrobe-item">
+                                <div class="cc-wardrobe-key-row">
+                                    <input :value="key" @change="renameWardrobeKey(key, $event.target.value)" class="cc-name-input" placeholder="Ключ (casual, formal...)">
+                                    <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeWardrobeItem(key)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <input v-model="createCharacterData.wardrobe[key]" class="cc-name-input" placeholder="Описание одежды (EN)">
                             </div>
                             <button class="cc-generate-btn" style="margin-top: 4px;" @click="addWardrobeItem">
                                 <i class="fas fa-plus"></i> Добавить наряд
@@ -573,7 +581,7 @@
                             :disabled="isCreatingCharacter"
                         >
                             <i class="fas fa-check"></i>
-                            {{ isCreatingCharacter ? 'Создание...' : 'Создать персонажа' }}
+                            {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
                         </button>
                     </div>
                 </div>
@@ -585,6 +593,121 @@
                 <button class="change-step-button secondary" @click="ccPrevStep">Назад</button>
             </div>
         </div>
+
+        <!-- View: Create World -->
+        <div v-if="currentView === 'create-world'" class="create-character-view" @click="hideKeyboard">
+            <!-- Прогресс-бар -->
+            <div class="create-character-steps">
+                <div v-for="i in 3" :key="i" class="cc-step" :class="{ active: cwStep >= i - 1 }" @click="cwGoToStep(i - 1)"></div>
+            </div>
+
+            <div class="final-step-container">
+
+                <!-- Шаг 1: Название и описание -->
+                <div v-if="cwStep === 0">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Название и описание</h3>
+
+                        <div class="cc-field">
+                            <label>Название мира: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <input v-model="createWorldData.name" type="text" class="cc-name-input" placeholder="Название мира">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Короткое описание (макс. 30 символов):</label>
+                            <input v-model="createWorldData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Описание (используется в AI промпте): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.description" class="scenario-textarea" placeholder="Подробное описание мира для AI..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Инструкции для ГМ:</label>
+                            <textarea v-model="createWorldData.gm_instructions" class="scenario-textarea" placeholder="Инструкции для AI о том, как вести этот мир..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 2: Сценарий и введение -->
+                <div v-if="cwStep === 1">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Сценарий и введение</h3>
+
+                        <div class="cc-field">
+                            <label>Вступительное сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Вступительное сообщение, когда игрок входит в мир..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Альтернативные сценарии:</label>
+                            <div v-for="(alt, idx) in createWorldData.alternate_scenarios" :key="idx" style="margin-bottom: 16px; padding: 12px; background: var(--tg-theme-secondary-bg-color); border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <strong style="font-size: 13px; color: var(--tg-theme-hint-color);">Сценарий {{ idx + 1 }}</strong>
+                                    <button class="change-step-button secondary" style="padding: 4px 10px; min-width: auto; font-size: 12px;" @click="removeAlternateScenario(idx)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="cc-field" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Название:</label>
+                                    <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название сценария">
+                                </div>
+                                <div class="cc-field" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Вступление:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Вступительное сообщение сценария..."></textarea>
+                                </div>
+                                <div class="cc-field">
+                                    <label style="font-size: 13px;">Инструкции для ГМ:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].gm_instructions" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Инструкции ГМ для этого сценария..."></textarea>
+                                </div>
+                            </div>
+                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateScenario">
+                                <i class="fas fa-plus"></i> Добавить сценарий
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 3: Обложка, теги и финал -->
+                <div v-if="cwStep === 2">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Обложка и финал</h3>
+
+                        <div class="cc-field">
+                            <label>URL обложки:</label>
+                            <input v-model="createWorldData.cover_image_url" type="url" class="cc-name-input" placeholder="https://example.com/image.jpg">
+                        </div>
+
+                        <div v-if="createWorldData.cover_image_url" class="cc-preview-section" style="margin-top: 8px; margin-bottom: 16px;">
+                            <img :src="createWorldData.cover_image_url" class="modal-character-image cc-preview-image" alt="Cover" style="width: 200px; height: auto; max-height: 200px; object-fit: cover;">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Теги (через запятую):</label>
+                            <input v-model="createWorldData.tags_str" type="text" class="cc-name-input" placeholder="fantasy, medieval, adventure">
+                        </div>
+
+                        <button
+                            class="create-character-final-btn"
+                            @click="createWorldFinal"
+                            :disabled="isCreatingWorld"
+                            style="margin-top: 16px;"
+                        >
+                            <i class="fas fa-check"></i>
+                            {{ isCreatingWorld ? (editingWorldId ? 'Сохранение...' : 'Создание...') : (editingWorldId ? 'Сохранить' : 'Создать мир') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Навигация -->
+            <div class="cc-navigation">
+                <button class="change-step-button" @click="cwNextStep" v-if="cwStep < 2">Далее</button>
+                <button class="change-step-button secondary" @click="cwPrevStep">Назад</button>
+            </div>
+        </div>
+
         <!-- Modal: Scenario Selection -->
         <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
             <div class="modal-content">
@@ -616,11 +739,17 @@
                         <div class="modal-tags" v-if="selectedCharacter.tags" style="flex:1; margin:0;">
                             <span class="tag-badge" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
                         </div>
-                        <button v-if="selectedCharacter.type === 'character' && selectedCharacter.author && selectedCharacter.author.user_id == userId"
-                                @click="deleteCharacter(selectedCharacter.id)"
-                                style="flex-shrink:0; background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
-                            Удалить
-                        </button>
+                        <div v-if="selectedCharacter.author && selectedCharacter.author.user_id == userId"
+                             style="display:flex; gap:6px; flex-shrink:0;">
+                            <button @click="selectedCharacter.type === 'character' ? editCharacterOnClick(selectedCharacter.id) : editWorldOnClick(selectedCharacter.id)"
+                                    style="background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                Редактировать
+                            </button>
+                            <button @click="selectedCharacter.type === 'character' ? deleteCharacter(selectedCharacter.id) : deleteWorld(selectedCharacter.id)"
+                                    style="background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                Удалить
+                            </button>
+                        </div>
                     </div>
 
                     <div class="modal-scenarios">
@@ -756,6 +885,18 @@
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
                 const ccStep = ref(0);
+                const editingCharacterId = ref(null);
+
+                // Create World
+                const defaultCreateWorldData = () => ({
+                    name: '', short_description: '', description: '', gm_instructions: '',
+                    intro_message: '', alternate_scenarios: [],
+                    cover_image_url: '', tags_str: ''
+                });
+                const createWorldData = ref(defaultCreateWorldData());
+                const cwStep = ref(0);
+                const editingWorldId = ref(null);
+                const isCreatingWorld = ref(false);
 
                 const undoTargetIndex = computed(() => {
                     if (isWaitingResponse.value || isStreaming.value || isUndoing.value) return -1;
@@ -1749,7 +1890,37 @@
                     currentView.value = "create-character";
                     createCharacterData.value = defaultCreateCharacterData();
                     newCharacterPreview.value = null;
+                    editingCharacterId.value = null;
                     ccStep.value = 0;
+                }
+
+                const editCharacterOnClick = async (characterId) => {
+                    try {
+                        const res = await axios.get(`/api/characters/${characterId}/edit`);
+                        const c = res.data;
+                        createCharacterData.value = {
+                            name: c.name,
+                            short_description: c.short_description || '',
+                            description: c.description,
+                            personality: c.personality,
+                            scenario: c.scenario,
+                            first_message: c.first_message,
+                            alternate_greetings: c.alternate_greetings || [],
+                            model_type: c.model_type || 'anime',
+                            appearance: c.appearance || '',
+                            visual_body: c.visual_body || '',
+                            visual_face: c.visual_face || '',
+                            visual_default_outfit: c.visual_default_outfit || '',
+                            wardrobe: c.wardrobe || {},
+                        };
+                        newCharacterPreview.value = c.avatar || null;
+                        editingCharacterId.value = characterId;
+                        ccStep.value = 0;
+                        closeModal();
+                        currentView.value = "create-character";
+                    } catch (e) {
+                        showToast('Ошибка загрузки данных персонажа');
+                    }
                 }
 
                 const ccNextStep = () => {
@@ -1781,6 +1952,7 @@
 
                 const ccPrevStep = () => {
                     if (ccStep.value === 0) {
+                        editingCharacterId.value = null;
                         currentView.value = 'selection';
                     } else {
                         ccStep.value--;
@@ -1882,34 +2054,195 @@
                             avatar_url: newCharacterPreview.value,
                         };
 
-                        const createRes = await axios.post('/api/create_character', payload);
-                        const characterId = createRes.data.character_id;
+                        if (editingCharacterId.value) {
+                            await axios.put(`/api/characters/${editingCharacterId.value}`, payload);
+                            showToast('Персонаж обновлён!');
+                            createCharacterData.value = defaultCreateCharacterData();
+                            newCharacterPreview.value = null;
+                            editingCharacterId.value = null;
+                            currentView.value = 'selection';
+                            loadCharacters();
+                        } else {
+                            const createRes = await axios.post('/api/create_character', payload);
+                            const characterId = createRes.data.character_id;
 
-                        showToast('Персонаж создан!');
+                            showToast('Персонаж создан!');
 
-                        const chatMeta = {
-                            name: d.name,
-                            avatar: newCharacterPreview.value
-                        };
+                            const chatMeta = {
+                                name: d.name,
+                                avatar: newCharacterPreview.value
+                            };
 
-                        const chatRes = await axios.post('/api/chat/create', {
-                            chat_type: 'character',
-                            target_id: characterId,
-                            scenario_index: 0
-                        });
+                            const chatRes = await axios.post('/api/chat/create', {
+                                chat_type: 'character',
+                                target_id: characterId,
+                                scenario_index: 0
+                            });
 
-                        createCharacterData.value = defaultCreateCharacterData();
-                        newCharacterPreview.value = null;
+                            createCharacterData.value = defaultCreateCharacterData();
+                            newCharacterPreview.value = null;
+                            editingCharacterId.value = null;
 
-                        await openChat(chatRes.data.chat_id, chatMeta);
+                            await openChat(chatRes.data.chat_id, chatMeta);
 
-                        loadCharacters();
-                        loadChats();
+                            loadCharacters();
+                            loadChats();
+                        }
                     } catch (e) {
                         console.error(e);
-                        showToast('Ошибка создания персонажа');
+                        showToast(editingCharacterId.value ? 'Ошибка обновления персонажа' : 'Ошибка создания персонажа');
                     } finally {
                         isCreatingCharacter.value = false;
+                    }
+                }
+
+                // --- CREATE WORLD ---
+                const createWorldOnClick = () => {
+                    currentView.value = "create-world";
+                    createWorldData.value = defaultCreateWorldData();
+                    editingWorldId.value = null;
+                    cwStep.value = 0;
+                }
+
+                const editWorldOnClick = async (worldId) => {
+                    try {
+                        const res = await axios.get(`/api/worlds/${worldId}/edit`);
+                        const w = res.data;
+                        createWorldData.value = {
+                            name: w.name,
+                            short_description: w.short_description || '',
+                            description: w.description,
+                            gm_instructions: w.gm_instructions || '',
+                            intro_message: w.intro_message || '',
+                            alternate_scenarios: (w.alternate_scenarios || []).map(a => ({
+                                title: a.title || '', intro: a.intro || '', gm_instructions: a.gm_instructions || ''
+                            })),
+                            cover_image_url: w.cover_image || '',
+                            tags_str: (w.tags || []).join(', ')
+                        };
+                        editingWorldId.value = worldId;
+                        cwStep.value = 0;
+                        closeModal();
+                        currentView.value = "create-world";
+                    } catch (e) {
+                        showToast('Ошибка загрузки данных мира');
+                    }
+                }
+
+                const deleteWorld = async (worldId) => {
+                    if (!confirm('Удалить мир? Это действие нельзя отменить.')) return;
+                    try {
+                        await axios.delete(`/api/worlds/${worldId}`);
+                        closeModal();
+                        await loadWorlds();
+                        showToast('Мир удалён');
+                    } catch (e) {
+                        showToast('Ошибка удаления мира');
+                    }
+                };
+
+                const cwNextStep = () => {
+                    const d = createWorldData.value;
+                    if (cwStep.value === 0) {
+                        if (!d.name.trim()) {
+                            showToast('Введите название мира');
+                            return;
+                        }
+                        if (!d.description.trim()) {
+                            showToast('Введите описание мира');
+                            return;
+                        }
+                    } else if (cwStep.value === 1) {
+                        if (!d.intro_message.trim()) {
+                            showToast('Введите вступительное сообщение');
+                            return;
+                        }
+                    }
+                    if (cwStep.value < 2) cwStep.value++;
+                };
+
+                const cwPrevStep = () => {
+                    if (cwStep.value === 0) {
+                        editingWorldId.value = null;
+                        currentView.value = 'selection';
+                    } else {
+                        cwStep.value--;
+                    }
+                };
+
+                const cwGoToStep = (step) => {
+                    if (step <= cwStep.value) {
+                        cwStep.value = step;
+                    }
+                };
+
+                const addAlternateScenario = () => {
+                    createWorldData.value.alternate_scenarios.push({ title: '', intro: '', gm_instructions: '' });
+                }
+
+                const removeAlternateScenario = (idx) => {
+                    createWorldData.value.alternate_scenarios.splice(idx, 1);
+                }
+
+                const createWorldFinal = async () => {
+                    const d = createWorldData.value;
+                    if (!d.name || !d.description || !d.intro_message) {
+                        showToast('Заполните все обязательные поля');
+                        return;
+                    }
+
+                    isCreatingWorld.value = true;
+                    try {
+                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
+                        const payload = {
+                            name: d.name,
+                            short_description: d.short_description,
+                            description: d.description,
+                            gm_instructions: d.gm_instructions,
+                            intro_message: d.intro_message,
+                            alternate_scenarios: d.alternate_scenarios.filter(a => a.title.trim() || a.intro.trim()),
+                            cover_image_url: d.cover_image_url || null,
+                            tags: tags
+                        };
+
+                        if (editingWorldId.value) {
+                            await axios.put(`/api/worlds/${editingWorldId.value}`, payload);
+                            showToast('Мир обновлён!');
+                            createWorldData.value = defaultCreateWorldData();
+                            editingWorldId.value = null;
+                            currentView.value = 'selection';
+                            loadWorlds();
+                        } else {
+                            const createRes = await axios.post('/api/create_world', payload);
+                            const worldId = createRes.data.world_id;
+
+                            showToast('Мир создан!');
+
+                            const chatMeta = {
+                                name: d.name,
+                                avatar: d.cover_image_url || null,
+                                chat_type: 'world'
+                            };
+
+                            const chatRes = await axios.post('/api/chat/create', {
+                                chat_type: 'world',
+                                target_id: worldId,
+                                scenario_index: 0
+                            });
+
+                            createWorldData.value = defaultCreateWorldData();
+                            editingWorldId.value = null;
+
+                            await openChat(chatRes.data.chat_id, chatMeta);
+
+                            loadWorlds();
+                            loadChats();
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        showToast(editingWorldId.value ? 'Ошибка обновления мира' : 'Ошибка создания мира');
+                    } finally {
+                        isCreatingWorld.value = false;
                     }
                 }
 
@@ -1927,12 +2260,17 @@
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
                     toast, autoContinue, hideKeyboard,
-                    createCharacterOnClick, createCharacterData, newCharacterPreview,
+                    createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
                     generateNewCharacterPreview, isGeneratingPreview,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     addAlternateGreeting, removeAlternateGreeting,
                     addWardrobeItem, removeWardrobeItem, renameWardrobeKey,
                     isCreatingCharacter, createCharacterFinal,
+                    // World creation
+                    createWorldOnClick, editWorldOnClick, deleteWorld, editingWorldId, createWorldData,
+                    cwStep, cwNextStep, cwPrevStep, cwGoToStep,
+                    addAlternateScenario, removeAlternateScenario,
+                    isCreatingWorld, createWorldFinal,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
                     isEditingNickname, nicknameDraft, isSavingNickname,

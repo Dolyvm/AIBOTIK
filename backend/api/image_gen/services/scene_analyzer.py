@@ -104,13 +104,19 @@ class SceneAnalyzer:
     def __init__(self, llm_client: LLMClient):
         self.llm = llm_client
 
+    NEGATIVE_MOODS = {"angry", "furious", "disgusted", "sad", "crying", "scared", "offended", "irritated"}
+
     async def analyze(
         self,
         history: list[dict],
         character_name: str,
         available_outfits: list[str],
         allow_nsfw: bool = True,
-        chat_id: int = None
+        chat_id: int = None,
+        mood: str = "neutral",
+        affinity: int = 50,
+        arousal: int = 0,
+        current_location: str = "",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
@@ -141,7 +147,11 @@ class SceneAnalyzer:
         prompt = prompt_template.format(
             character_name=character_name,
             formatted_chat=formatted,
-            available_outfits=', '.join(available_outfits)
+            available_outfits=', '.join(available_outfits),
+            mood=mood,
+            affinity=affinity,
+            arousal=arousal,
+            current_location=current_location or "unknown",
         )
 
         try:
@@ -161,7 +171,17 @@ class SceneAnalyzer:
             if not allow_nsfw:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
 
-            # Post-validate outfit_key ↔ nsfw_level consistency
+            if mood.lower() in self.NEGATIVE_MOODS:
+                scene.nsfw_level = min(scene.nsfw_level, 1)
+                logger.info(f"nsfw_level capped to {scene.nsfw_level} due to negative mood '{mood}'")
+
+            if affinity < 20:
+                scene.nsfw_level = min(scene.nsfw_level, 1)
+            elif affinity < 40:
+                scene.nsfw_level = min(scene.nsfw_level, 2)
+            elif affinity < 60:
+                scene.nsfw_level = min(scene.nsfw_level, 3)
+
             if scene.nsfw_level >= 4 and scene.outfit_key not in ("nude", "underwear"):
                 scene.outfit_key = "nude"
             elif scene.nsfw_level <= 1 and scene.outfit_key == "nude":

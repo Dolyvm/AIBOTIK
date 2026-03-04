@@ -74,6 +74,16 @@ def world_to_dict(world: World) -> dict:
 
     setting = locations[0].get("setting", {}) if locations else {}
 
+    if world.created_by_username_id is not None:
+        username = world.created_by_username
+        if username:
+            display_name = f"@{username}"
+        else:
+            display_name = f"User #{world.created_by_username_id}"
+        author_info = {"user_id": world.created_by_username_id, "username": username, "display_name": display_name}
+    else:
+        author_info = {"display_name": "AiKai Team"}
+
     return {
         "id": world.id,
         "name": world.name,
@@ -85,7 +95,8 @@ def world_to_dict(world: World) -> dict:
         "gm_instructions": gm_instructions,
         "alternate_scenarios": alternate_scenarios,
         "tags": world.tags or [],
-        "is_nsfw": world.is_nsfw
+        "is_nsfw": world.is_nsfw,
+        "author": author_info
     }
 
 async def get_character(character_id: str) -> Optional[dict]:

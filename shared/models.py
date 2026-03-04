@@ -102,6 +102,8 @@ class World(Base):
 
     tags = Column(ARRAY(String), default=[])
     is_nsfw = Column(Boolean, default=False)
+    created_by_username_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
+    created_by_username = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

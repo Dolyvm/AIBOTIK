@@ -58,11 +58,11 @@ DEFAULT_PROMPTS = {
 
 **КРИТИЧЕСКИ ВАЖНО:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +1 до +3
-- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -1 до -3
-- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +1 до +3
-- Если ситуация неловкая или отталкивающая — arousal_change может быть -1 до -2
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +1 к affinity.
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +10 до +25
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -5 до -7
+- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +10 до +25
+- Если ситуация неловкая или отталкивающая — arousal_change может быть -5 до -7
+- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +5 к affinity.
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - Меняй `new_location` СТРОГО ТОЛЬКО в том случае, если местоположений персонажей 100% поменялось. Если произошло действие, но оно произошло в той локации, поле new_location оставляй null.
 - Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`.
@@ -73,8 +73,8 @@ DEFAULT_PROMPTS = {
 Формат (СТРОГИЙ ВАЛИДНЫЙ JSON, без звёздочек и других форматирований):
 <meta>
 {
-  "affinity_change": int,   // -5 до +5. ОБЯЗАТЕЛЬНО меняется при любом взаимодействии
-  "arousal_change": int,    // -5 до +5. Меняется при флирте, физическом контакте, романтике
+  "affinity_change": int,   // -10 до +25. ОБЯЗАТЕЛЬНО меняется при любом взаимодействии
+  "arousal_change": int,    // -10 до +25. Меняется при флирте, физическом контакте, романтике
   "mood": "string",         // neutral, playful, curious, happy, sad, angry, horny, shy, etc
   "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). ВАЛИДНАЯ СТРОКА!
   "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.
@@ -88,7 +88,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Привет, как дела?"
 <meta>
 {
-  "affinity_change": 1,
+  "affinity_change": 5,
   "arousal_change": 0,
   "mood": "neutral",
   "thought": "Обычное приветствие. Нейтрально.",
@@ -100,8 +100,8 @@ DEFAULT_PROMPTS = {
 Игрок: "Ты очень красивая сегодня"
 <meta>
 {
-  "affinity_change": 2,
-  "arousal_change": 1,
+  "affinity_change": 12,
+  "arousal_change": 5,
   "mood": "playful",
   "thought": "Комплимент? Интересно... Немного смутило, но приятно.",
   "new_location": null,
@@ -113,8 +113,8 @@ DEFAULT_PROMPTS = {
 Игрок: "Пошла отсюда, надоела"
 <meta>
 {
-  "affinity_change": -3,
-  "arousal_change": -1,
+  "affinity_change": -7,
+  "arousal_change": -5,
   "mood": "angry",
   "thought": "Грубость. Неприятно. Почему так резко?",
   "new_location": null,
@@ -126,7 +126,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Давай сядем на скамейку?"
 <meta>
 {
-  "affinity_change": 2,
+  "affinity_change": 8,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -139,7 +139,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Вот, держи книгу"
 <meta>
 {
-  "affinity_change": 2,
+  "affinity_change": 10,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -179,6 +179,12 @@ Scene: {character_name}
 Chat:
 {formatted_chat}
 
+Character state:
+- Current mood: {mood}
+- Affinity (closeness to player, 0-100): {affinity}
+- Arousal (0-100): {arousal}
+- Current location in story: {current_location}
+
 Outfits: {available_outfits}
 You should make JSON values suitable for use in text to image models.
 You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
@@ -201,6 +207,14 @@ NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short v
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
 Return ONLY this JSON (no markdown, no nesting):
 {{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+
+CRITICAL RULES (based on character state):
+- "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
+- If mood is negative (angry, sad, scared, disgusted) → nsfw_level MUST be 0-1, character stays clothed
+- If affinity < 20 (strangers) → nsfw_level MUST be 0-1
+- If affinity < 40 (acquaintances) → nsfw_level MUST be 0-2
+- Do NOT escalate nsfw_level based on player's crude messages if the character rejected/refused them
+- Base your analysis on the CHARACTER's reaction (last assistant message), not the player's request
 
 NSFW Level Guide (choose carefully based on conversation):
 0 = fully clothed, public setting, modest
@@ -364,14 +378,14 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 - Флирт допустим, но сдержанный и игривый
 - ЗАПРЕЩЕНЫ explicit описания тела или сексуальных действий
 - Физический контакт ограничен: объятия, поцелуи в щёку, держание за руки
-- `arousal_change` должен быть умеренным (не более +2)
+- `arousal_change` должен быть умеренным (не более +10)
 
 **ВАЖНО ДЛЯ ЗНАЧЕНИЙ:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +1 до +3
-- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -1 до -3
-- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +1 до +2 (не более!)
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!**
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +5 до +15
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -3 до -7
+- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +5 до +10 (не более!)
+- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +3 до +5 к affinity.
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - `new_location` и `new_action` могут быть ТОЛЬКО на английском языке.
 - `send_photo`: установи в true только если персонаж совершает визуально значимое действие. МАКСИМУМ 1 раз на 4-5 сообщений.
@@ -414,6 +428,12 @@ Scene: {character_name}
 Chat:
 {formatted_chat}
 
+Character state:
+- Current mood: {mood}
+- Affinity (closeness to player, 0-100): {affinity}
+- Arousal (0-100): {arousal}
+- Current location in story: {current_location}
+
 Outfits: {available_outfits}
 You should make JSON values suitable for use in text to image models.
 You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
@@ -436,6 +456,11 @@ NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detaile
 Select suitable "outfit_key". Character should remain clothed at all times.
 Return ONLY this JSON (no markdown, no nesting):
 {{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+
+CRITICAL RULES:
+- "location" MUST match the current story location
+- If mood is negative (angry, sad, scared) → nsfw_level MUST be 0
+- Base your analysis on the CHARACTER's reaction, not the player's request
 
 SFW Level Guide (ONLY use 0 or 1):
 0 = fully clothed, public setting, modest, casual

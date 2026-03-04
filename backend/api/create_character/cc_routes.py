@@ -120,6 +120,86 @@ async def create_character(
     return {"character_id": character_id}
 
 
+@router.put("/api/characters/{character_id}")
+async def update_character(
+    character_id: str,
+    data: CreateCharacterRequest,
+    user: User = Depends(get_current_user),
+):
+    async with get_session() as db:
+        result = await db.execute(select(Character).where(Character.id == character_id))
+        character = result.scalar_one_or_none()
+
+        if not character:
+            raise HTTPException(status_code=404, detail="Character not found")
+
+        if character.created_by_username_id != user.telegram_id:
+            raise HTTPException(status_code=403, detail="You can only edit your own characters")
+
+        if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
+            raise HTTPException(status_code=400, detail="All main fields are required")
+
+        style_tags = data.visual_style_tags or ""
+        if not style_tags.strip():
+            if data.model_type == "anime":
+                style_tags = "anime style, cel shading, vibrant colors"
+            else:
+                style_tags = "soft natural lighting, film photography, warm tones"
+
+        old_visual = character.visual_data or {}
+        visual_data = {
+            "model_type": data.model_type,
+            "appearance": data.appearance or "",
+            "body": data.visual_body or "",
+            "face": data.visual_face or "",
+            "default_outfit": data.visual_default_outfit or "",
+            "style_tags": style_tags,
+            "wardrobe": data.wardrobe,
+            "avatar": old_visual.get("avatar", ""),
+        }
+
+        if data.avatar_url and data.avatar_url != old_visual.get("avatar", ""):
+            try:
+                avatar_path = await save_avatar(data.avatar_url, character_id)
+                visual_data["avatar"] = f"/images/{avatar_path}"
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}, using provider URL")
+                visual_data["avatar"] = data.avatar_url
+
+        scenarios = [
+            {
+                "index": 0,
+                "scenario": data.scenario,
+                "intro": data.first_message,
+            }
+        ]
+        for idx, alt_greeting in enumerate(data.alternate_greetings, start=1):
+            if alt_greeting.strip():
+                scenarios.append({
+                    "index": idx,
+                    "scenario": data.scenario,
+                    "intro": alt_greeting.strip(),
+                })
+
+        character.name = data.name
+        character.short_description = data.short_description or ""
+        character.description = data.description
+        character.personality = data.personality
+        character.visual_data = visual_data
+        character.scenarios = scenarios
+        character.tags = [tag.strip() for tag in data.tags if tag.strip()]
+
+        await db.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    logger.info(f"User {user.telegram_id} updated character '{character_id}'")
+
+    return {"success": True}
+
+
 @router.post("/api/create_character/generate-avatar")
 async def generate_avatar(
     data: dict,

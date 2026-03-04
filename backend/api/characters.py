@@ -74,6 +74,40 @@ async def list_characters(
     return {"characters": result}
 
 
+@router.get("/{character_id}/edit")
+async def get_character_for_edit(
+    character_id: str,
+    user: User = Depends(get_current_user),
+):
+    char = await get_character(character_id)
+    if not char:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
+
+    author = char.get("author", {})
+    if author.get("user_id") != user.telegram_id:
+        raise HTTPException(status_code=403, detail="You can only edit your own characters")
+
+    visual = char.get("visual", {})
+    return {
+        "id": character_id,
+        "name": char["name"],
+        "short_description": char.get("short_description", ""),
+        "description": char["description"],
+        "personality": char["personality"],
+        "scenario": char.get("scenario", ""),
+        "first_message": char.get("first_mes", ""),
+        "alternate_greetings": char.get("alternate_greetings", []),
+        "model_type": char.get("model_type", "anime"),
+        "appearance": char.get("appearance", ""),
+        "visual_body": visual.get("body", ""),
+        "visual_face": visual.get("face", ""),
+        "visual_default_outfit": visual.get("default_outfit", ""),
+        "wardrobe": visual.get("wardrobe", {}),
+        "avatar": char.get("avatar", ""),
+        "tags": char.get("tags", []),
+    }
+
+
 @router.get("/{character_id}")
 async def get_character_detail(character_id: str):
     """Detailed character information"""

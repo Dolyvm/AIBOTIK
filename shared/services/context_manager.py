@@ -148,6 +148,8 @@ class ContextManager:
 
             await message_repo.add(chat.id, "assistant", clean_text)
 
+            photo_history = history + [{"role": "assistant", "content": clean_text}]
+
             image_url = None
             nsfw_level = None
             image_task_id = None
@@ -156,7 +158,7 @@ class ContextManager:
                 if msgs_since_photo >= 4:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
                     photo_result = await self._trigger_photo_generation(
-                        chat, character, world, history, session, allow_nsfw
+                        chat, character, world, photo_history, session, allow_nsfw
                     )
                     if photo_result:
                         if isinstance(photo_result, dict):
@@ -297,7 +299,11 @@ class ContextManager:
                         character_name=content["name"],
                         available_outfits=available_outfits,
                         allow_nsfw=allow_nsfw,
-                        chat_id=chat.id
+                        chat_id=chat.id,
+                        mood=chat.current_mood or "neutral",
+                        affinity=chat.affinity,
+                        arousal=chat.arousal,
+                        current_location=chat.current_location or "",
                     )
 
                     nsfw_level = scene.nsfw_level

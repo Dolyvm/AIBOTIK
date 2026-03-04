@@ -1505,6 +1505,36 @@ body.desktop .grid {
     color: var(--tg-theme-text-color);
 }
 
+/* Гардероб */
+.cc-wardrobe-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.cc-wardrobe-item:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.cc-wardrobe-key-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.cc-wardrobe-key-row .cc-name-input {
+    flex: 1;
+}
+
+.cc-wardrobe-key-row .change-step-button {
+    width: auto;
+}
+
 /* Финальный шаг */
 .final-step-container {
     flex: 1;
