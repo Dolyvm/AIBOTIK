@@ -30,6 +30,16 @@ def character_to_dict(char: Character) -> dict:
     else:
         author_info = { "display_name":"AiKai Team"}
 
+    scenarios_full = [
+        {
+            "index": s.get("index", 0),
+            "scenario": s.get("scenario", ""),
+            "intro": s.get("intro", ""),
+            "heat_level": s.get("heat_level", 0),
+        }
+        for s in scenarios
+    ]
+
     return {
         "id": char.id,
         "name": char.name,
@@ -48,6 +58,7 @@ def character_to_dict(char: Character) -> dict:
         "scenario": scenarios[0].get("scenario", "") if scenarios else "",
         "first_mes": first_mes,
         "alternate_greetings": alternate_greetings,
+        "scenarios_full": scenarios_full,
         "tags": char.tags or [],
         "is_nsfw": char.is_nsfw,
         "author": author_info

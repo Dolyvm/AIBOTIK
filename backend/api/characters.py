@@ -87,6 +87,9 @@ async def get_character_for_edit(
     if author.get("user_id") != user.telegram_id:
         raise HTTPException(status_code=403, detail="You can only edit your own characters")
 
+    scenarios_full = char.get("scenarios_full", [])
+    heat_level = scenarios_full[0].get("heat_level", 0) if scenarios_full else 0
+
     visual = char.get("visual", {})
     return {
         "id": character_id,
@@ -97,6 +100,7 @@ async def get_character_for_edit(
         "scenario": char.get("scenario", ""),
         "first_message": char.get("first_mes", ""),
         "alternate_greetings": char.get("alternate_greetings", []),
+        "heat_level": heat_level,
         "model_type": char.get("model_type", "anime"),
         "appearance": char.get("appearance", ""),
         "visual_body": visual.get("body", ""),
@@ -115,18 +119,21 @@ async def get_character_detail(character_id: str):
     if not char:
         raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
 
-    scenarios = [{
-        "index": 0,
-        "name": "Основной",
-        "preview": char["first_mes"]
-    }]
-
-    for i, alt in enumerate(char.get("alternate_greetings", []), 1):
+    scenarios_full = char.get("scenarios_full", [])
+    scenarios = []
+    for s in scenarios_full:
+        idx = s["index"]
         scenarios.append({
-            "index": i,
-            "name": f"Сценарий {i}",
-            "preview": alt
+            "index": idx,
+            "name": "Основной" if idx == 0 else f"Сценарий {idx}",
+            "preview": s.get("intro", ""),
+            "heat_level": s.get("heat_level", 0),
         })
+
+    if not scenarios:
+        scenarios = [{"index": 0, "name": "Основной", "preview": char.get("first_mes", ""), "heat_level": 0}]
+        for i, alt in enumerate(char.get("alternate_greetings", []), 1):
+            scenarios.append({"index": i, "name": f"Сценарий {i}", "preview": alt, "heat_level": 0})
 
     return {
         "id": character_id,

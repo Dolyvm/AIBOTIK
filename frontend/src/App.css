@@ -627,6 +627,29 @@ body.desktop .grid {
     white-space: nowrap;
 }
 
+.scenario-heat-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.scenario-heat-badge.heat-1 {
+    color: #e67e22;
+    background: rgba(230, 126, 34, 0.15);
+}
+
+.scenario-heat-badge.heat-2 {
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.15);
+}
+
+.scenario-heat-badge.heat-3 {
+    color: #fff;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
 .scenario-preview {
     font-size: 14px;
     line-height: 1.5;

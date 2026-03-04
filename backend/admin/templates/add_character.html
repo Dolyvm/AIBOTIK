@@ -112,6 +112,16 @@
             </div>
 
             <div class="form-group">
+                <label for="heat_level">Уровень откровенности:</label>
+                <select id="heat_level" name="heat_level" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="0">🌱 Медленное развитие (affinity 0, arousal 0)</option>
+                    <option value="1">💋 Флирт (affinity 30, arousal 10)</option>
+                    <option value="2">🔥 Быстро (affinity 60, arousal 40)</option>
+                    <option value="3">🔥🔥🔥 Сразу к делу (affinity 90, arousal 70)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label>Альтернативные приветствия:</label>
                 <div id="alternateПриветствиеsContainer"></div>
                 <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>

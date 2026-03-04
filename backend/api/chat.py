@@ -152,6 +152,27 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
             )
 
             if is_new:
+                # Apply heat_level initial state
+                heat_level = 0
+                if payload.chat_type == "character":
+                    content = await get_character(payload.target_id)
+                    if content:
+                        for s in content.get("scenarios_full", []):
+                            if s["index"] == payload.scenario_index:
+                                heat_level = s.get("heat_level", 0)
+                                break
+
+                if heat_level > 0:
+                    from shared.constants import HEAT_LEVEL_DEFAULTS
+                    defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
+                    await chat_repo.update_metrics(chat.id, {
+                        "affinity": defaults["affinity"],
+                        "arousal": defaults["arousal"],
+                        "state_meta": {"heat_level": heat_level},
+                    })
+                    chat.affinity = defaults["affinity"]
+                    chat.arousal = defaults["arousal"]
+
                 first_message = await get_first_message(
                     chat_type=payload.chat_type,
                     target_id=payload.target_id,

@@ -94,6 +94,16 @@
         </div>
 
         <div class="form-group">
+            <label for="heat_level">Уровень откровенности:</label>
+            <select id="heat_level" name="heat_level" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="0" {% if heat_level == 0 %}selected{% endif %}>🌱 Медленное развитие (affinity 0, arousal 0)</option>
+                <option value="1" {% if heat_level == 1 %}selected{% endif %}>💋 Флирт (affinity 30, arousal 10)</option>
+                <option value="2" {% if heat_level == 2 %}selected{% endif %}>🔥 Быстро (affinity 60, arousal 40)</option>
+                <option value="3" {% if heat_level == 3 %}selected{% endif %}>🔥🔥🔥 Сразу к делу (affinity 90, arousal 70)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
             <label>Альтернативные приветствия:</label>
             <div id="alternateПриветствиеsContainer">
                 {% for greeting in alternate_greetings %}

@@ -1,6 +1,13 @@
 from shared.services.prompt_service import get_prompt
 from shared.services.cache import get_cache
 
+HEAT_LEVEL_DEFAULTS = {
+    0: {"affinity": 0, "arousal": 0},
+    1: {"affinity": 30, "arousal": 10},
+    2: {"affinity": 60, "arousal": 40},
+    3: {"affinity": 90, "arousal": 70},
+}
+
 def _parse_modifier(prompt_value: str) -> dict:
     parts = prompt_value.split("|")
     if len(parts) == 2:

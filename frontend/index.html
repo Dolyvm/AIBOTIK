@@ -491,6 +491,21 @@
                         </div>
 
                         <div class="cc-field">
+                            <label>Уровень откровенности:</label>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button v-for="hl in [{v:0,l:'🌱 Медленно'},{v:1,l:'💋 Флирт'},{v:2,l:'🔥 Быстро'},{v:3,l:'🔥🔥🔥 Сразу'}]"
+                                        :key="hl.v"
+                                        class="change-step-button"
+                                        :class="{ secondary: createCharacterData.heat_level !== hl.v }"
+                                        @click="createCharacterData.heat_level = hl.v"
+                                        type="button"
+                                        style="flex: 1; min-width: 70px; font-size: 12px; padding: 8px 4px;">
+                                    {{ hl.l }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="cc-field">
                             <label>Альтернативные приветствия:</label>
                             <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" style="display: flex; gap: 8px; margin-bottom: 8px;">
                                 <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Альтернативное приветствие..."></textarea>
@@ -764,6 +779,11 @@
                                     {{ scenario.index === 0 ? '🎬' : '🔀' }}
                                 </span>
                                 <span class="scenario-name">{{ scenario.name }}</span>
+                                <span v-if="scenario.heat_level >= 1"
+                                      class="scenario-heat-badge"
+                                      :class="'heat-' + scenario.heat_level">
+                                    {{ scenario.heat_level === 1 ? '💋 Флирт' : scenario.heat_level === 2 ? '🔥 Быстро' : '🔥🔥🔥 Сразу' }}
+                                </span>
                                 <span v-if="existingChatsForCharacter.some(c => c.scenario_index === scenario.index)"
                                       class="scenario-existing-badge">чат уже есть</span>
                             </div>
@@ -877,7 +897,7 @@
                 // Create Character
                 const defaultCreateCharacterData = () => ({
                     name: '', short_description: '', description: '', personality: '',
-                    scenario: '', first_message: '', alternate_greetings: [],
+                    scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
                     avatar_url: null
@@ -1905,6 +1925,7 @@
                             personality: c.personality,
                             scenario: c.scenario,
                             first_message: c.first_message,
+                            heat_level: c.heat_level || 0,
                             alternate_greetings: c.alternate_greetings || [],
                             model_type: c.model_type || 'anime',
                             appearance: c.appearance || '',
@@ -2044,6 +2065,7 @@
                             personality: d.personality,
                             scenario: d.scenario,
                             first_message: d.first_message,
+                            heat_level: d.heat_level || 0,
                             alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
                             model_type: d.model_type,
                             appearance: d.appearance,

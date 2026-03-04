@@ -467,11 +467,14 @@ async def create_character(
         alt_values = form_data.getlist("alternate_greeting")
         alternate_greetings = [v.strip() for v in alt_values if v.strip()]
 
+    heat_level = int(form_data.get("heat_level", "0"))
+
     scenarios = [
         {
             "index": 0,
             "scenario": scenario,
-            "intro": first_message
+            "intro": first_message,
+            "heat_level": heat_level
         }
     ]
 
@@ -479,7 +482,8 @@ async def create_character(
         scenarios.append({
             "index": idx,
             "scenario": scenario,
-            "intro": alt_greeting
+            "intro": alt_greeting,
+            "heat_level": heat_level
         })
 
     author_type = form_data.get("author_type", "aikai")
@@ -545,11 +549,13 @@ async def edit_character_form(
     scenario_text = ""
     first_message = ""
     alternate_greetings = []
+    heat_level = 0
 
     if character.scenarios and len(character.scenarios) > 0:
         first_scenario = character.scenarios[0]
         scenario_text = first_scenario.get("scenario", "")
         first_message = first_scenario.get("intro", "")
+        heat_level = first_scenario.get("heat_level", 0)
 
         for i in range(1, len(character.scenarios)):
             alternate_greetings.append(character.scenarios[i].get("intro", ""))
@@ -566,6 +572,7 @@ async def edit_character_form(
             "scenario_text": scenario_text,
             "first_message": first_message,
             "alternate_greetings": alternate_greetings,
+            "heat_level": heat_level,
             "visual_data_json": visual_data_json,
             "modifiers": modifiers,
             "admin": admin
@@ -633,11 +640,14 @@ async def update_character(
         alt_values = form_data.getlist("alternate_greeting")
         alternate_greetings = [v.strip() for v in alt_values if v.strip()]
 
+    heat_level = int(form_data.get("heat_level", "0"))
+
     scenarios = [
         {
             "index": 0,
             "scenario": scenario,
-            "intro": first_message
+            "intro": first_message,
+            "heat_level": heat_level
         }
     ]
 
@@ -645,7 +655,8 @@ async def update_character(
         scenarios.append({
             "index": idx,
             "scenario": scenario,
-            "intro": alt_greeting
+            "intro": alt_greeting,
+            "heat_level": heat_level
         })
 
     await db.execute(

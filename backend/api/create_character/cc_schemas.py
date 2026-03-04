@@ -9,6 +9,7 @@ class CreateCharacterRequest(BaseModel):
     personality: str
     scenario: str
     first_message: str
+    heat_level: int = 0
     alternate_greetings: list[str] = []
     model_type: Literal["anime", "real"] = "anime"
     appearance: Optional[str] = None

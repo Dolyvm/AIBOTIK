@@ -72,6 +72,7 @@ async def create_character(
                 "index": 0,
                 "scenario": data.scenario,
                 "intro": data.first_message,
+                "heat_level": data.heat_level,
             }
         ]
         for idx, alt_greeting in enumerate(data.alternate_greetings, start=1):
@@ -80,6 +81,7 @@ async def create_character(
                     "index": idx,
                     "scenario": data.scenario,
                     "intro": alt_greeting.strip(),
+                    "heat_level": data.heat_level,
                 })
 
         new_character = Character(
@@ -171,6 +173,7 @@ async def update_character(
                 "index": 0,
                 "scenario": data.scenario,
                 "intro": data.first_message,
+                "heat_level": data.heat_level,
             }
         ]
         for idx, alt_greeting in enumerate(data.alternate_greetings, start=1):
@@ -179,6 +182,7 @@ async def update_character(
                     "index": idx,
                     "scenario": data.scenario,
                     "intro": alt_greeting.strip(),
+                    "heat_level": data.heat_level,
                 })
 
         character.name = data.name
