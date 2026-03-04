@@ -1099,7 +1099,7 @@ body.desktop .grid {
     width: 100%;
     min-height: 120px;
     padding: 12px;
-    border: 1px solid var(--tg-theme-secondary-bg-color);
+    border: 1px solid var(--tg-theme-hint-color);
     border-radius: 12px;
     background: var(--tg-theme-secondary-bg-color);
     color: var(--tg-theme-text-color);
@@ -1436,7 +1436,7 @@ body.desktop .grid {
 .cc-name-input {
     width: 100%;
     padding: 14px 16px;
-    border: 1px solid var(--tg-theme-secondary-bg-color);
+    border: 1px solid var(--tg-theme-hint-color);
     border-radius: 12px;
     background: var(--tg-theme-secondary-bg-color);
     color: var(--tg-theme-text-color);

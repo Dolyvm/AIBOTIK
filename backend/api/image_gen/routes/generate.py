@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from ...create_character.cc_schemas import CreateCharacterRequest, clothes_to_prompt
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -24,7 +23,7 @@ from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.generate import submit_anime, submit_real, build_prompt_from_character
+from ..services.generate import submit_anime, submit_real
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
@@ -213,72 +212,3 @@ async def gen(
     logging.info(f"Returning response: {response}")
     return response
 
-@router.post("/generate_preview")
-async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-    # fixme не забыть убрать эту хуету
-    # rate_limiter = get_rate_limiter()
-    # if rate_limiter:
-    #     allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
-    #     if not allowed:
-    #         limits = RATE_LIMITS["images"]
-    #         raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
-
-    image_url = None
-    char_temp = {
-        "model_type": data.style,
-        "visual": {
-            "wardrobe": {
-                "casual": clothes_to_prompt[data.clothing],
-                "underwear": "black lingerie set",
-                "nude": "nothing, showing her naked body"
-            },
-            "body_type": data.body_type,
-            "model_type": data.style,
-            "nationality": data.nationality,
-            "age": data.age,
-            "ass": data.ass_size,
-            "boobs": data.boobs_size,
-            "hair_color": data.hair_color,
-            "haircut": data.haircut,
-            "eye_color": data.eyes_color,
-        }
-    }
-    if data.style == "real":
-        pos, neg = await build_prompt_from_character(
-            character=char_temp,
-            face_expression="confident and dominant with piercing gaze",
-            location="in modern and sophisticated office lobby",
-            position="standing seductively",
-            nsfw_level=0,
-            outfit_key="casual",
-            close_up=True
-        )
-        image_url = await submit_real(
-            prompt=pos,
-            allow_nsfw=True,
-            nsfw_level=0
-        )
-    elif data.style == "anime":
-        pos, neg = await build_prompt_from_character(
-            character=char_temp,
-            face_expression="confident and dominant with piercing gaze",
-            location="in modern and sophisticated office lobby",
-            position="standing seductively, intimate pose",
-            nsfw_level=0,
-            outfit_key="casual",
-            close_up=True
-        )
-        logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
-        image_url = await submit_anime(pos, neg)
-
-    if image_url:
-        return {"url": image_url}
-
-    raise HTTPException(
-        status_code=500,
-        detail={
-            "error": "generation_failed",
-            "message": "Failed to generate image",
-            "code": "IMAGE_GEN_FAILED"
-        }
-    )
