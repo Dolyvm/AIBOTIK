@@ -1,20 +1,22 @@
+import json
 import logging
 import uuid
+from datetime import datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
 from shared.services.prompt_service import create_or_update_character_modifiers
+from shared.services.image_storage import save_avatar
+from shared.services.redis_client import get_redis
 from shared.constants import invalidate_character_modifiers_cache
 from shared.models import User, Character
 from shared.database import get_session
 from auth.telegram_auth import get_current_user
-from services.image_storage import save_avatar
 from api.image_gen.schemas.generate import Prompt as ImagePrompt
-from api.image_gen.services.generate import submit_anime, submit_real
 
 from .cc_schemas import CreateCharacterRequest
 
@@ -152,18 +154,44 @@ async def generate_avatar(
 
     pos, neg = await prompt.build_prompt(model_type)
 
+    task_id = str(uuid4())
+    task_params = {
+        "model_type": model_type,
+        "positive_prompt": pos,
+        "negative_prompt": neg,
+        "allow_nsfw": False,
+    }
+
+    redis = await get_redis()
+    await redis.set(
+        f"task:{task_id}",
+        json.dumps({
+            "status": "pending",
+            "created_at": datetime.utcnow().isoformat()
+        }),
+        ex=3600
+    )
+
     try:
-        if model_type == "real":
-            image_url = await submit_real(prompt=pos, allow_nsfw=False, nsfw_level=0)
+        from main import app
+        arq_pool = getattr(app.state, "arq_pool", None)
+        if arq_pool:
+            await arq_pool.enqueue_job("generate_avatar_task", task_id, task_params)
+            logger.info(f"Avatar task {task_id} enqueued")
         else:
-            image_url = await submit_anime(pos, neg)
-
-        if not image_url:
-            raise HTTPException(status_code=500, detail="Image generation failed")
-
-        return {"url": image_url}
+            logger.warning("arq pool not configured, executing avatar generation synchronously")
+            from shared.queue.tasks import generate_avatar_task
+            ctx = {"redis": redis, "get_session": get_session}
+            result = await generate_avatar_task(ctx, task_id, task_params)
+            if result.get("status") == "completed":
+                return result.get("result", {})
+            raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
     except RateLimitExceeded:
+        raise
+    except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Avatar generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+    return {"task_id": task_id, "status": "pending"}

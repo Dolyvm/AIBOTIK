@@ -23,6 +23,7 @@ from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
+from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -178,7 +179,11 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
 
+            paths = await collect_chat_image_paths(session, chat_id)
+
             await chat_repo.reset_history(chat_id)
+
+            delete_files(paths)
 
             chat = await chat_repo.get_by_id(chat_id)
 
@@ -310,6 +315,8 @@ async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+        paths = await collect_images_since(session, chat_id, user_msg_created_at)
+
         # Удалить GeneratedImages, созданные после отправки user-сообщения
         await session.execute(
             sa_delete(GeneratedImage)
@@ -317,6 +324,8 @@ async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
             .where(GeneratedImage.created_at >= user_msg_created_at)
         )
         await session.commit()
+
+    delete_files(paths)
 
     cache = get_cache()
     if cache:
@@ -334,8 +343,12 @@ async def delete_chat(
     await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
+        paths = await collect_chat_image_paths(session, chat_id)
+
         chat_repo = ChatRepository(session)
         await chat_repo.delete(chat_id)
+
+    delete_files(paths)
 
     cache = get_cache()
     if cache:

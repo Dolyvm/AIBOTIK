@@ -22,8 +22,8 @@ from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.image_provider import generate_image as provider_generate_image
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.generate import submit_anime, submit_real
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
@@ -48,17 +48,13 @@ async def generate_image(data: GenerateRequest):
     inferred_nsfw = sum(1 for kw in nsfw_keywords if kw in prompt_lower)
     nsfw_level = min(5, inferred_nsfw)
 
-    image_url = None
-    if data.model_type == ModelType.anime:
-        image_url = await submit_anime(
-            data.prompt, data.negative_prompt
-        )
-    elif data.model_type == ModelType.real:
-        image_url = await submit_real(
-            prompt=data.prompt,
-            allow_nsfw=data.allow_nsfw,
-            nsfw_level=nsfw_level
-        )
+    image_url = await provider_generate_image(
+        model_type=data.model_type.value,
+        positive_prompt=data.prompt,
+        negative_prompt=data.negative_prompt or "",
+        allow_nsfw=data.allow_nsfw,
+        nsfw_level=nsfw_level,
+    )
     return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
 @router.post("/{chat_id}/generate")
@@ -120,10 +116,13 @@ async def gen(
                 wardrobe = {}
             available_outfits = ["default_outfit"] + list(wardrobe.keys())
 
+            allow_nsfw = content.get("is_nsfw", True)
+
             scene = await analyzer.analyze(
                 history=history,
                 character_name=content["name"],
                 available_outfits=available_outfits,
+                allow_nsfw=allow_nsfw,
                 chat_id=chat_id
             )
 
@@ -133,17 +132,29 @@ async def gen(
             environment = scene.location
             scene_reasoning = scene.reasoning
             emotion = scene.emotion
+            scene_description = scene.scene_description
 
             logging.info(f"Scene analysis: {scene_reasoning}")
 
         except Exception as e:
 
             logging.warning(f"Scene analysis failed, using fallback: {e}")
+            allow_nsfw = content.get("is_nsfw", True)
             nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+            if not allow_nsfw:
+                nsfw_level = min(nsfw_level, 1)
             outfit_key = outfit
+            if nsfw_level >= 4:
+                outfit_key = "nude"
+            elif nsfw_level >= 2:
+                outfit_key = "underwear"
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
         nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+        if nsfw_level >= 4:
+            outfit_key = "nude"
+        elif nsfw_level >= 2:
+            outfit_key = "underwear"
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     logging.info(f"{nsfw_level=}")
@@ -174,7 +185,7 @@ async def gen(
         "model_type": model_type,
         "positive_prompt": pos,
         "negative_prompt": neg,
-        "allow_nsfw": True,
+        "allow_nsfw": content.get("is_nsfw", True),
         "nsfw_level": nsfw_level,
         "pose": pose,
     }

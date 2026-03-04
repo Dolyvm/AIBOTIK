@@ -1806,10 +1806,25 @@
                             face: createCharacterData.value.visual_face,
                             default_outfit: createCharacterData.value.visual_default_outfit,
                         });
-                        newCharacterPreview.value = res.data.url;
+
+                        if (res.data.task_id) {
+                            pollImageTask(
+                                res.data.task_id,
+                                (result) => {
+                                    newCharacterPreview.value = result.url;
+                                    isGeneratingPreview.value = false;
+                                },
+                                (error) => {
+                                    showToast('Ошибка генерации аватара');
+                                    isGeneratingPreview.value = false;
+                                }
+                            );
+                        } else if (res.data.url) {
+                            newCharacterPreview.value = res.data.url;
+                            isGeneratingPreview.value = false;
+                        }
                     } catch (e) {
                         showToast('Ошибка генерации аватара');
-                    } finally {
                         isGeneratingPreview.value = false;
                     }
                 }

@@ -263,7 +263,6 @@ class ContextManager:
                 sys.path.insert(0, str(backend_path))
 
             from image_gen.schemas.generate import Prompt
-            from image_gen.services.generate import submit_anime, submit_real
             from image_gen.services.scene_analyzer import (
                 SceneAnalyzer,
                 calculate_nsfw_fallback,
@@ -280,6 +279,7 @@ class ContextManager:
             outfit_key = "default_outfit"
             environment = ""
             pose = ""
+            scene_description = ""
 
             if SCENE_ANALYZER_ENABLED and history:
                 try:
@@ -304,6 +304,7 @@ class ContextManager:
                     outfit_key = scene.outfit_key
                     pose = scene.pose
                     environment = scene.location
+                    scene_description = scene.scene_description
 
                     logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
 
@@ -313,12 +314,20 @@ class ContextManager:
                         nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
                     else:
                         nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
+                    if nsfw_level >= 4:
+                        outfit_key = "nude"
+                    elif nsfw_level >= 2:
+                        outfit_key = "underwear"
                     environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
             else:
                 if allow_nsfw:
                     nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
                 else:
                     nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
+                if nsfw_level >= 4:
+                    outfit_key = "nude"
+                elif nsfw_level >= 2:
+                    outfit_key = "underwear"
                 environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
             if not allow_nsfw:
@@ -334,6 +343,7 @@ class ContextManager:
             )
 
             prompt.action = state_meta.get("action") or pose
+            prompt.scene_details = scene_description
             pos, neg = await prompt.build_prompt(content.get("model_type"))
 
             logging.info(f"Auto-photo generation: {pos=}")

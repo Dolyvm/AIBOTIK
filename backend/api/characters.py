@@ -15,6 +15,7 @@ from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
 from shared.services.cache import get_cache
+from shared.services.image_cleanup import collect_character_file_paths, delete_files
 from auth.telegram_auth import get_current_user
 router = APIRouter(prefix="/api/characters", tags=["characters"])
 
@@ -155,6 +156,9 @@ async def delete_character(
         select(Chat).where(Chat.chat_type == "character", Chat.target_id == character_id)
     )
     chats = chats_result.scalars().all()
+    chat_ids = [c.id for c in chats]
+
+    paths = await collect_character_file_paths(db, character_id, chat_ids)
 
     cache = get_cache()
     for chat in chats:
@@ -164,6 +168,9 @@ async def delete_character(
 
     await db.delete(character)
     await db.commit()
+
+    # Delete files AFTER commit
+    delete_files(paths)
 
     if cache:
         await cache.invalidate_character(character_id)

@@ -590,7 +590,15 @@
                 throw new Error(data.detail || 'Generation failed');
             }
 
-            document.getElementById('previewImage').src = data.url;
+            if (data.task_id) {
+                statusDiv.innerHTML = '<span style="color: #2980b9;">Генерация запущена, ожидаем результат...</span>';
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#eaf0f8';
+                const result = await pollAvatarTask(data.task_id);
+                document.getElementById('previewImage').src = result.url;
+            } else {
+                document.getElementById('previewImage').src = data.url;
+            }
             previewDiv.style.display = 'block';
 
             statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар сгенерирован! Нажмите "Использовать как аватар", чтобы сохранить его.</span>';
@@ -605,6 +613,19 @@
             generateBtn.disabled = false;
             spinner.style.display = 'none';
         }
+    }
+
+    async function pollAvatarTask(taskId) {
+        const maxAttempts = 60;
+        for (let i = 0; i < maxAttempts; i++) {
+            const res = await fetch(`/api/tasks/${taskId}`);
+            const data = await res.json();
+            if (data.status === 'completed') return data.result;
+            if (data.status === 'failed') throw new Error(data.error || 'Generation failed');
+            if (data.status === 'not_found') throw new Error('Task not found');
+            await new Promise(r => setTimeout(r, 3000));
+        }
+        throw new Error('Generation timed out');
     }
 
     function useAsAvatar() {

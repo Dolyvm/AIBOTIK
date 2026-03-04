@@ -196,7 +196,6 @@ NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short v
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Be explicit and detailed if nsfw_level is high (3-5)
 - Be as laconic AS POSSIBLE.
-- 
 - This will be used directly in the image generation prompt
 
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
@@ -209,7 +208,13 @@ NSFW Level Guide (choose carefully based on conversation):
 2 = revealing clothing, suggestive, aroused
 3 = topless, partial nudity, exposed breasts
 4 = fully naked, exposed genitals, nude body
-5 = explicit sexual activity, intercourse, sexual contact""",
+5 = explicit sexual activity, intercourse, sexual contact
+
+CONSISTENCY RULES (outfit_key MUST match nsfw_level):
+- nsfw_level 0-1 → clothed outfits only (casual, formal, gym, etc.)
+- nsfw_level 2-3 → revealing allowed (swimwear, sleepwear, underwear)
+- nsfw_level 4-5 → outfit_key MUST be "nude"
+- outfit_key "nude" → nsfw_level MUST be >= 4""",
 
     "player_prompt": """### РОЛЬ ###
 Ты генерируешь следующее действие или реплику игрока ({user_name}) в интерактивном романе-диалоге.
@@ -249,7 +254,7 @@ NSFW Level Guide (choose carefully based on conversation):
     "nsfw_level_1": "sensual, teasing expression, fully clothed",
     "nsfw_level_1_neg": "nudity, sexual act",
     "nsfw_level_2": "aroused, nsfw, sensual, teasing, showing herself, tits peeking",
-    "nsfw_level_2_neg": "nsfw",
+    "nsfw_level_2_neg": "nudity, explicit sex, penetration",
     "nsfw_level_3": "nsfw, taking off her clothes, showing her nude tits, aroused, bottomless",
     "nsfw_level_3_neg": "penetration, explicit sex",
     "nsfw_level_4": "nsfw, naked body, nude pussy, aroused",
@@ -436,27 +441,6 @@ SFW Level Guide (ONLY use 0 or 1):
 0 = fully clothed, public setting, modest, casual
 1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
 
-    "z_image_template": """A captivating, natural film snapshot of an attractive {nationality} woman ({age}) with {skin}.
-
-She has {hair_color} hair with {haircut}, beautiful {eye_color} eyes.
-
-She is wearing a {outfit}{nsfw_modificator}. Her expression is {face_expression}.
-The scene is a candid, {shot_distance} lifestyle shot of the model in a {location}, {position}.
-Her pose perfectly showcasing her {body_type} with {boobs} and {ass}.
-
-Aesthetics and Technique:
-
-Photography: Natural film photography, captured using 35mm film (Kodak Portra 400).
-
-Lighting: Soft natural illumination.
-
-Realism: Authentic skin texture, visible pores, minor imperfections, unretouched (no Photoshop).
-
-Style: Anti-AI style, snapshot aesthetic, high-fidelity detail.""",
-
-    "illustrious_template": "1girl, anime girl, {age_interval}, {outfit}, {eye_color}, {hair_color}, {haircut}, "
-                            "{body_type}, {boobs}, {ass}, {face_expression}, {position}, {location}, "
-                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "create_character_output_schema": {
                 "type": "json_schema",
                 "json_schema": {

@@ -161,6 +161,14 @@ class SceneAnalyzer:
             if not allow_nsfw:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
 
+            # Post-validate outfit_key ↔ nsfw_level consistency
+            if scene.nsfw_level >= 4 and scene.outfit_key not in ("nude", "underwear"):
+                scene.outfit_key = "nude"
+            elif scene.nsfw_level <= 1 and scene.outfit_key == "nude":
+                scene.outfit_key = "default_outfit"
+            elif scene.nsfw_level == 0 and scene.outfit_key == "underwear":
+                scene.outfit_key = "default_outfit"
+
             if cache and chat_id:
                 await cache.set_scene_analysis(chat_id, context_hash, scene.model_dump())
 
