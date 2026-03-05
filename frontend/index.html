@@ -293,13 +293,6 @@
                                 </label>
                             </div>
                             <div class="setting-item">
-                                <span class="setting-label">Язык</span>
-                                <select v-model="profileSettings.language" class="setting-select">
-                                    <option value="ru">Русский</option>
-                                    <option value="en">English</option>
-                                </select>
-                            </div>
-                            <div class="setting-item">
                                 <span class="setting-label">Мой никнейм</span>
                                 <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname">
                                     <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
@@ -321,6 +314,32 @@
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Documents Section -->
+                    <div class="profile-section">
+                        <div class="section-title">Документы</div>
+                        <div class="settings-list">
+                            <div class="setting-item" style="cursor:pointer" @click="openDocument('privacy')">
+                                <span class="setting-label"><i class="fas fa-shield-halved" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Политика конфиденциальности</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
+                            </div>
+                            <div class="setting-item" style="cursor:pointer" @click="openDocument('terms')">
+                                <span class="setting-label"><i class="fas fa-file-contract" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Пользовательское соглашение</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Support Section -->
+                    <div class="profile-section">
+                        <div class="section-title">Помощь</div>
+                        <div class="settings-list">
+                            <div class="setting-item" style="cursor:pointer" @click="openSupport">
+                                <span class="setting-label"><i class="fas fa-headset" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Поддержка</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
                             </div>
                         </div>
                     </div>
@@ -849,6 +868,32 @@
             </div>
         </div>
 
+        <!-- Document Viewer Overlay -->
+        <div v-if="showDocumentOverlay" class="modal-overlay" :class="{'document-overlay-high': showAgeConfirmation}" @click.self="closeDocument">
+            <div class="modal-content">
+                <button class="modal-close" @click="closeDocument"><i class="fas fa-times"></i></button>
+                <div class="modal-body document-viewer" v-html="currentDocument.content"></div>
+            </div>
+        </div>
+
+        <!-- 18+ Age Confirmation Overlay -->
+        <div v-if="showAgeConfirmation" class="age-confirmation-overlay">
+            <div class="age-confirmation-card">
+                <div class="age-badge">18+</div>
+                <h2>Подтверждение возраста</h2>
+                <p>Данное приложение содержит контент, предназначенный исключительно для лиц старше 18 лет.</p>
+                <p>Продолжая использование, вы подтверждаете, что вам исполнилось 18 лет и вы соглашаетесь с условиями:</p>
+                <div class="age-doc-links">
+                    <span class="age-doc-link" @click="openDocument('privacy')">Политика конфиденциальности</span>
+                    <span class="age-doc-link" @click="openDocument('terms')">Пользовательское соглашение</span>
+                </div>
+                <button class="age-confirm-btn" @click="confirmAge" :disabled="isConfirmingAge">
+                    {{ isConfirmingAge ? 'Подтверждение...' : 'Мне есть 18 лет' }}
+                </button>
+                <button class="age-decline-btn" @click="declineAge">Мне нет 18 лет</button>
+            </div>
+        </div>
+
         <!-- Toast Notification -->
         <div v-if="toast.show" class="toast" :class="'toast--' + toast.type">
             {{ toast.message }}
@@ -956,7 +1001,6 @@
                 });
                 const profileSettings = ref({
                     nsfw_blur: true,
-                    language: 'ru',
                     nickname: ''
                 });
                 const isEditingNickname = ref(false);
@@ -967,6 +1011,55 @@
                     { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
                     { id: 3, amount: -50, source: 'image_generated', description: 'Генерация изображения', created_at: new Date(Date.now() - 7200000).toISOString() }
                 ]);
+
+                // Legal documents
+                const legalDocuments = {
+                    privacy: {
+                        title: 'Политика конфиденциальности',
+                        content: '<h2>Политика конфиденциальности</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Сбор данных</h3><p>Мы собираем минимально необходимые данные для работы сервиса: идентификатор Telegram, имя пользователя и данные взаимодействия с приложением.</p><h3>2. Использование данных</h3><p>Данные используются исключительно для предоставления услуг приложения, включая персонализацию контента и обеспечение работоспособности сервиса.</p><h3>3. Хранение данных</h3><p>Все данные хранятся на защищённых серверах. Мы не передаём персональные данные третьим лицам без вашего согласия.</p><h3>4. Удаление данных</h3><p>Вы можете запросить удаление ваших данных, обратившись в поддержку.</p>'
+                    },
+                    terms: {
+                        title: 'Пользовательское соглашение',
+                        content: '<h2>Пользовательское соглашение</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Общие положения</h3><p>Настоящее соглашение регулирует использование приложения AIKAI. Используя приложение, вы соглашаетесь с условиями данного соглашения.</p><h3>2. Возрастные ограничения</h3><p>Приложение предназначено для лиц старше 18 лет. Используя приложение, вы подтверждаете, что достигли совершеннолетия.</p><h3>3. Контент</h3><p>Приложение содержит контент, сгенерированный искусственным интеллектом. Все персонажи являются вымышленными.</p><h3>4. Ответственность</h3><p>Пользователь несёт ответственность за соблюдение применимого законодательства при использовании сервиса.</p>'
+                    }
+                };
+                const showDocumentOverlay = ref(false);
+                const currentDocument = ref({ title: '', content: '' });
+
+                const openDocument = (key) => {
+                    currentDocument.value = legalDocuments[key];
+                    showDocumentOverlay.value = true;
+                };
+
+                const closeDocument = () => {
+                    showDocumentOverlay.value = false;
+                };
+
+                const openSupport = () => {
+                    tg.openTelegramLink('https://t.me/dolyvm');
+                };
+
+                // Age confirmation
+                const showAgeConfirmation = ref(false);
+                const isConfirmingAge = ref(false);
+
+                const confirmAge = async () => {
+                    if (isConfirmingAge.value || !userId.value) return;
+                    try {
+                        isConfirmingAge.value = true;
+                        await axios.patch(`/api/user/${userId.value}/settings`, { age_confirmed: true });
+                        showAgeConfirmation.value = false;
+                    } catch (e) {
+                        console.error('Failed to confirm age:', e);
+                        showToast('Ошибка подтверждения', 'error');
+                    } finally {
+                        isConfirmingAge.value = false;
+                    }
+                };
+
+                const declineAge = () => {
+                    tg.close();
+                };
 
                 // NSFW Blur state
                 const revealedImages = ref(new Set());
@@ -1292,6 +1385,9 @@
                         const res = await axios.get(`/api/user/${userId.value}`);
                         profileSettings.value.nsfw_blur = res.data.nsfw_blur;
                         profileSettings.value.nickname = res.data.nickname || '';
+                        if (!res.data.age_confirmed) {
+                            showAgeConfirmation.value = true;
+                        }
                         await nextTick();
                         isLoadingSettings = false;
                     } catch (e) {
@@ -2297,6 +2393,10 @@
                     userProfile, profileSettings, mockTransactions, loadProfile,
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
+                    // Documents & Support
+                    showDocumentOverlay, currentDocument, openDocument, closeDocument, openSupport,
+                    // Age confirmation
+                    showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur
                     revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
                     generateAutoReply,

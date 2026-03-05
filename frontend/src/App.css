@@ -846,16 +846,6 @@ body.desktop .grid {
     color: var(--tg-theme-text-color);
 }
 
-.setting-select {
-    padding: 6px 12px;
-    border: 1px solid var(--tg-theme-hint-color);
-    border-radius: 8px;
-    background: var(--tg-theme-bg-color);
-    color: var(--tg-theme-text-color);
-    font-size: 14px;
-    cursor: pointer;
-}
-
 /* Nickname setting */
 .nickname-display {
     display: flex;
@@ -1827,3 +1817,151 @@ body.desktop .grid {
 .form-switch input:checked + i { background-color: #4BD763; }
 .form-switch input:checked + i::before { transform: translate3d(18px, 2px, 0) scale3d(0, 0, 0); }
 .form-switch input:checked + i::after { transform: translate3d(22px, 2px, 0); }
+
+/* === Document Viewer === */
+.document-viewer h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--tg-theme-text-color);
+}
+
+.document-viewer h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    color: var(--tg-theme-text-color);
+}
+
+.document-viewer p {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 8px;
+    color: var(--tg-theme-hint-color);
+}
+
+.document-viewer ul {
+    padding-left: 20px;
+    margin-bottom: 8px;
+}
+
+.document-viewer ul li {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--tg-theme-hint-color);
+}
+
+.document-overlay-high {
+    z-index: 2001 !important;
+}
+
+/* === Age Confirmation === */
+.age-confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+    backdrop-filter: blur(8px);
+}
+
+.age-confirmation-card {
+    background: var(--tg-theme-bg-color);
+    border-radius: 20px;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.age-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%);
+    color: white;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 16px;
+}
+
+.age-confirmation-card h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--tg-theme-text-color);
+}
+
+.age-confirmation-card p {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--tg-theme-hint-color);
+    margin-bottom: 8px;
+}
+
+.age-doc-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 12px 0 20px;
+}
+
+.age-doc-link {
+    font-size: 13px;
+    color: var(--tg-theme-link-color);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.age-confirm-btn {
+    width: 100%;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    background: linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%);
+    color: white;
+    margin-bottom: 10px;
+    font-family: inherit;
+    transition: opacity 0.2s;
+}
+
+.age-confirm-btn:active:not(:disabled) {
+    opacity: 0.8;
+}
+
+.age-confirm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.age-decline-btn {
+    width: 100%;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color);
+    color: var(--tg-theme-hint-color);
+    font-family: inherit;
+    transition: opacity 0.2s;
+}
+
+.age-decline-btn:active {
+    opacity: 0.7;
+}

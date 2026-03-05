@@ -61,6 +61,7 @@ class UserSettings(Base):
     nsfw_blur = Column(Boolean, default=True)
     language = Column(String(10), default="ru")
     nickname = Column(String(50), nullable=True, default=None)
+    age_confirmed = Column(Boolean, default=False, server_default="false")
 
     user = relationship("User", back_populates="settings")
 

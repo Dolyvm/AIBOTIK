@@ -89,12 +89,14 @@ class UserRepository(BaseRepository[User]):
 
         return new_balance
 
-    async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None, nickname: Optional[str] = None) -> bool:
+    async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None, nickname: Optional[str] = None, age_confirmed: Optional[bool] = None) -> bool:
         updates = {}
         if nsfw_blur is not None:
             updates["nsfw_blur"] = nsfw_blur
         if nickname is not None:
             updates["nickname"] = nickname.strip()[:50] if nickname.strip() else None
+        if age_confirmed is not None:
+            updates["age_confirmed"] = age_confirmed
 
         if not updates:
             return True
