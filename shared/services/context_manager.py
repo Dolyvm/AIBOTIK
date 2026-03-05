@@ -365,6 +365,8 @@ class ContextManager:
             task_params = {
                 "chat_id": chat.id,
                 "user_id": chat.user_id,
+                "character_id": character.get("id"),
+                "world_id": world.get("id"),
                 "model_type": model_type,
                 "positive_prompt": pos,
                 "negative_prompt": neg,

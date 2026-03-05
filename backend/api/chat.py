@@ -1,9 +1,12 @@
+import datetime
 import logging
 
 from fastapi import APIRouter, HTTPException, Body, Depends
 from pydantic import BaseModel
 import sys
 from pathlib import Path
+
+from shared.services.analytics import AnalyticsService
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -38,13 +41,16 @@ def _get_display_name(user: User) -> str:
 llm_client = LLMClient()
 context_manager = ContextManager(llm_client)
 
+
 class MessageRequest(BaseModel):
     text: str
+
 
 class CreateChatRequest(BaseModel):
     chat_type: str
     target_id: str
     scenario_index: int = 0
+
 
 @router.get("/{chat_id}/history")
 async def get_history(chat_id: int, user: User = Depends(get_current_user)):
@@ -80,9 +86,9 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "location": chat.current_location
         }
 
+
 @router.post("/{chat_id}/send")
 async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: User = Depends(get_current_user)):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
@@ -115,6 +121,19 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
             user_name=user_name,
             allow_nsfw=allow_nsfw,
         )
+        async with get_session() as session:
+            await AnalyticsService.track(
+                session,
+                user_id=user.telegram_id,
+                event_type="message_sent",
+                entity_type="chats",
+                entity_id=str(chat.id),
+                meta={
+                    "character_id": character.get("id") if character else None,
+                    "world_id": world.get("id") if world else None,
+                    "message_length": len(payload.text),
+                }
+            )
 
         return {
             "response": result["text"],
@@ -127,6 +146,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/by-character/{target_id}")
 async def get_chats_for_character(target_id: str, chat_type: str, user: User = Depends(get_current_user)):
     """Return existing chats for a given character/world (one per scenario_index)."""
@@ -134,6 +154,7 @@ async def get_chats_for_character(target_id: str, chat_type: str, user: User = D
         chat_repo = ChatRepository(session)
         chats = await chat_repo.get_chats_for_target(user.telegram_id, target_id, chat_type)
         return [{"chat_id": c.id, "scenario_index": c.scenario_index} for c in chats]
+
 
 @router.post("/create")
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
@@ -183,11 +204,27 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
                 if first_message:
                     await message_repo.add(chat.id, "assistant", first_message)
 
+                if not user.first_interaction_at:
+                    user.first_interaction_at = datetime.datetime.now()
+                await AnalyticsService.track(
+                    session,
+                    user_id=user.telegram_id,
+                    event_type="character_chat_started",
+                    entity_type=payload.chat_type,
+                    entity_id=str(payload.target_id),
+                    meta={
+                        "chat_type": payload.chat_type,
+                        "chat_id": chat.id,
+                        "scenario_index": payload.scenario_index
+                    }
+                )
+
             return {"chat_id": chat.id, "success": True}
 
         except Exception as e:
             logging.error(f"Error creating chat: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
@@ -227,7 +264,6 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
 @router.post("/{chat_id}/auto-continue")
 async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_user)):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_api_rate_limit(
@@ -357,8 +393,8 @@ async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
 
 @router.delete("/{chat_id}")
 async def delete_chat(
-    chat_id: int,
-    user: User = Depends(get_current_user)
+        chat_id: int,
+        user: User = Depends(get_current_user)
 ):
     """Delete a chat and all its messages/images."""
     await verify_chat_ownership(chat_id, user)

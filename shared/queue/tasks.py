@@ -7,6 +7,8 @@ from typing import Any
 from shared.services.image_provider import generate_image
 from shared.services.image_storage import download_and_save_image, save_avatar, ImageStorageError
 
+from shared.services.analytics import AnalyticsService
+
 logger = logging.getLogger(__name__)
 
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")
@@ -29,6 +31,8 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
     params:
         chat_id: int
         user_id: int
+        character_id: Optional[int]
+        world_id: Optional[int]
         model_type: "anime" | "real"
         positive_prompt: str
         negative_prompt: str (optional, for anime)
@@ -40,6 +44,8 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
 
     chat_id = params["chat_id"]
     user_id = params["user_id"]
+    character_id = params["character_id"]
+    world_id = params["world_id"]
     model_type = params["model_type"]
     positive_prompt = params["positive_prompt"]
     negative_prompt = params.get("negative_prompt", "")
@@ -109,6 +115,19 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
                                 chat_id,
                                 {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
                             )
+                    await AnalyticsService.track(
+                        session,
+                        user_id=user_id,
+                        event_type="image_generated",
+                        entity_type="chats",
+                        entity_id=str(chat_id),
+                        meta={
+                            "character_id": str(character_id) if character_id else None,
+                            "model_type": model_type,
+                            "world_id": str(world_id) if world_id else None,
+                            "nsfw_level": nsfw_level
+                        }
+                    )
 
                 logger.info(f"Image metadata saved to DB for chat {chat_id}")
         except Exception as e:

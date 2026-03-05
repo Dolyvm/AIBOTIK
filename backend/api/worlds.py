@@ -6,6 +6,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.database import get_session
+from shared.services.analytics import AnalyticsService
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.models import User, World, Chat, get_async_session
@@ -105,7 +108,7 @@ async def get_world_for_edit(
 
 
 @router.get("/{world_id}")
-async def get_world_detail(world_id: str):
+async def get_world_detail(world_id: str, user: User = Depends(get_current_user)):
     """World details with scenarios"""
     world = await get_world(world_id)
     if not world:
@@ -123,6 +126,19 @@ async def get_world_detail(world_id: str):
             "name": alt.get("title", f"Сценарий {i}"),
             "preview": alt.get("intro", "")
         })
+
+    async with get_session() as session:
+        await AnalyticsService.track(
+            session,
+            user.telegram_id,
+            "world_click",
+            "worlds",
+            world_id,
+            # отслеживать ли тут мету - обсуждаемый вопрос. В создании чата точно надо трекать.
+            # meta={
+            #     "": ""
+            # }
+        )
 
     return {
         **world,

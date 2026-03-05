@@ -13,7 +13,8 @@ from uuid import uuid4
 
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
-from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, get_character_modifiers_from_db
+from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
+    get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
 from shared.services.cache import get_cache
 from shared.services.image_storage import save_avatar, save_world_cover, get_public_url
@@ -21,6 +22,8 @@ from shared.services.image_cleanup import collect_character_file_paths, delete_f
 from shared.services.redis_client import get_redis
 from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
 from telegram_init_data import validate, parse
+
+from shared.services.statistics import StatisticsService
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +40,10 @@ PROMPT_CATEGORIES = {
     "modifiers": "Character Modifiers",
 }
 
+
 async def get_current_user(request: Request) -> Optional[dict]:
     return request.session.get("user")
+
 
 async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_session)) -> dict:
     user = await get_current_user(request)
@@ -58,11 +63,12 @@ async def get_admin_user(request: Request, db: AsyncSession = Depends(get_async_
 
     return user
 
+
 @router.post("/auth")
 async def admin_auth(
-    request: Request,
-    authorization: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_async_session)
+        request: Request,
+        authorization: Optional[str] = Header(None),
+        db: AsyncSession = Depends(get_async_session)
 ):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
@@ -103,6 +109,7 @@ async def admin_auth(
     logger.info(f"Admin {telegram_id} authenticated")
     return {"success": True}
 
+
 @router.post("/logout")
 async def admin_logout(request: Request):
     user = request.session.get("user")
@@ -111,10 +118,11 @@ async def admin_logout(request: Request):
     request.session.clear()
     return {"success": True, "message": "Logged out"}
 
+
 @router.get("/", response_class=HTMLResponse)
 async def admin_index(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session)
+        request: Request,
+        db: AsyncSession = Depends(get_async_session)
 ):
     admin = await get_current_user(request)
 
@@ -152,12 +160,13 @@ async def admin_index(
         }
     )
 
+
 @router.get("/prompts/{key}", response_class=HTMLResponse)
 async def edit_prompt_form(
-    key: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        key: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Prompt).where(Prompt.key == key))
     prompt = result.scalar_one_or_none()
@@ -174,13 +183,14 @@ async def edit_prompt_form(
         }
     )
 
+
 @router.post("/prompts/{key}")
 async def update_prompt(
-    key: str,
-    request: Request,
-    content: str = Form(...),
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        key: str,
+        request: Request,
+        content: str = Form(...),
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Prompt).where(Prompt.key == key))
     prompt = result.scalar_one_or_none()
@@ -203,12 +213,13 @@ async def update_prompt(
 
     return RedirectResponse(url="/admin/", status_code=303)
 
+
 @router.post("/prompts/{key}/reset")
 async def reset_prompt(
-    key: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        key: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     if key not in DEFAULT_PROMPTS:
         raise HTTPException(status_code=404, detail=f"No default value for prompt '{key}'")
@@ -236,10 +247,11 @@ async def reset_prompt(
 
     return RedirectResponse(url=f"/admin/prompts/{key}", status_code=303)
 
+
 @router.get("/characters", response_class=HTMLResponse)
 async def list_characters(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session)
+        request: Request,
+        db: AsyncSession = Depends(get_async_session)
 ):
     admin = await get_current_user(request)
 
@@ -268,11 +280,12 @@ async def list_characters(
         }
     )
 
+
 @router.delete("/api/characters/{character_id}")
 async def admin_delete_character(
-    character_id: str,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        character_id: str,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
@@ -308,28 +321,30 @@ async def admin_delete_character(
 
 @router.get("/api/check-character-id/{character_id}")
 async def check_character_id(
-    character_id: str,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        character_id: str,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
     return {"exists": character is not None}
 
+
 @router.get("/api/check-world-id/{world_id}")
 async def check_world_id(
-    world_id: str,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        world_id: str,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(World).where(World.id == world_id))
     world = result.scalar_one_or_none()
     return {"exists": world is not None}
 
+
 @router.post("/api/generate-avatar")
 async def generate_avatar(
-    request: Request,
-    admin: dict = Depends(get_admin_user)
+        request: Request,
+        admin: dict = Depends(get_admin_user)
 ):
     data = await request.json()
 
@@ -393,8 +408,8 @@ async def generate_avatar(
 
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
-    request: Request,
-    admin: dict = Depends(get_admin_user)
+        request: Request,
+        admin: dict = Depends(get_admin_user)
 ):
     return templates.TemplateResponse(
         "add_character.html",
@@ -404,11 +419,12 @@ async def add_character_form(
         }
     )
 
+
 @router.post("/characters/new")
 async def create_character(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     form_data = await request.form()
 
@@ -426,7 +442,8 @@ async def create_character(
         raise HTTPException(status_code=400, detail="All main fields are required")
 
     if not re.match(r'^[a-z0-9_-]+$', character_id):
-        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+        raise HTTPException(status_code=400,
+                            detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
 
     result = await db.execute(select(Character).where(Character.id == character_id))
     existing = result.scalar_one_or_none()
@@ -533,12 +550,13 @@ async def create_character(
 
     return RedirectResponse(url="/admin/characters", status_code=303)
 
+
 @router.get("/characters/{character_id}", response_class=HTMLResponse)
 async def edit_character_form(
-    character_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        character_id: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
@@ -579,12 +597,13 @@ async def edit_character_form(
         }
     )
 
+
 @router.post("/characters/{character_id}")
 async def update_character(
-    character_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        character_id: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(Character).where(Character.id == character_id))
     character = result.scalar_one_or_none()
@@ -701,10 +720,11 @@ async def update_character(
 
     return RedirectResponse(url="/admin/characters", status_code=303)
 
+
 @router.get("/worlds", response_class=HTMLResponse)
 async def list_worlds(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session)
+        request: Request,
+        db: AsyncSession = Depends(get_async_session)
 ):
     admin = await get_current_user(request)
 
@@ -733,10 +753,11 @@ async def list_worlds(
         }
     )
 
+
 @router.get("/worlds/new", response_class=HTMLResponse)
 async def add_world_form(
-    request: Request,
-    admin: dict = Depends(get_admin_user)
+        request: Request,
+        admin: dict = Depends(get_admin_user)
 ):
     return templates.TemplateResponse(
         "add_world.html",
@@ -746,11 +767,12 @@ async def add_world_form(
         }
     )
 
+
 @router.post("/worlds/new")
 async def create_world(
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     form_data = await request.form()
 
@@ -767,7 +789,8 @@ async def create_world(
         raise HTTPException(status_code=400, detail="ID, name, description, and intro message are required")
 
     if not re.match(r'^[a-z0-9_-]+$', world_id):
-        raise HTTPException(status_code=400, detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
+        raise HTTPException(status_code=400,
+                            detail="ID must contain only lowercase letters, numbers, hyphens and underscores")
 
     result = await db.execute(select(World).where(World.id == world_id))
     existing = result.scalar_one_or_none()
@@ -833,12 +856,13 @@ async def create_world(
 
     return RedirectResponse(url="/admin/worlds", status_code=303)
 
+
 @router.get("/worlds/{world_id}", response_class=HTMLResponse)
 async def edit_world_form(
-    world_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        world_id: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(World).where(World.id == world_id))
     world = result.scalar_one_or_none()
@@ -875,12 +899,13 @@ async def edit_world_form(
         }
     )
 
+
 @router.post("/worlds/{world_id}")
 async def update_world(
-    world_id: str,
-    request: Request,
-    db: AsyncSession = Depends(get_async_session),
-    admin: dict = Depends(get_admin_user)
+        world_id: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
 ):
     result = await db.execute(select(World).where(World.id == world_id))
     world = result.scalar_one_or_none()
@@ -960,3 +985,44 @@ async def update_world(
     logger.info(f"Admin {admin.get('telegram_id')} updated world '{world_id}'")
 
     return RedirectResponse(url="/admin/worlds", status_code=303)
+
+
+@router.get("/stats", response_class=HTMLResponse)
+async def statistics_page(
+        request: Request,
+        db: AsyncSession = Depends(get_async_session)
+):
+    admin = await get_current_user(request)
+
+    if not admin:
+        return templates.TemplateResponse(
+            "stats.html",
+            {
+                "request": request,
+                "admin": None
+            }
+        )
+
+    if admin.get("telegram_id") not in ADMIN_TELEGRAM_IDS:
+        # fixme - оставь так
+        pass
+        # raise HTTPException(status_code=403, detail="Admin access required")
+
+    total_users = await StatisticsService.get_all_users_count(db)
+    users_with_chats = await StatisticsService.get_users_with_chats(db)
+    top_characters = await StatisticsService.get_top_characters_info(db, head=10)
+    top_worlds = await StatisticsService.get_top_worlds_info(db, head=10)
+    churn_summary = await StatisticsService.get_churned_users_summary(db, days_threshold=7)
+
+    return templates.TemplateResponse(
+        "stats.html",
+        {
+            "request": request,
+            "admin": admin,
+            "total_users": total_users,
+            "users_with_chats": users_with_chats,
+            "top_characters": top_characters,
+            "top_worlds": top_worlds,
+            "churn_summary": churn_summary
+        }
+    )

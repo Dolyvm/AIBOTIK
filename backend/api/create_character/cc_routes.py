@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 
+from shared.services.analytics import AnalyticsService
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
 from shared.services.prompt_service import create_or_update_character_modifiers
@@ -112,6 +113,14 @@ async def create_character(
         )
         await db.commit()
         await invalidate_character_modifiers_cache()
+
+        await AnalyticsService.track(
+            db,
+            user_id=user.telegram_id,
+            event_type="create_character",
+            entity_type="characters",
+            entity_id=str(character_id),
+        )
 
     cache = get_cache()
     if cache:

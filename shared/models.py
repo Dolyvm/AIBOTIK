@@ -12,6 +12,7 @@ import enum
 
 Base = declarative_base()
 
+
 async def get_async_session():
     from shared.database import get_db
     async for session in get_db():
@@ -51,6 +52,9 @@ class User(Base):
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
     images = relationship("GeneratedImage", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+
+    # stats
+    first_interaction_at = Column(DateTime, nullable=True)
 
 
 class UserSettings(Base):
@@ -219,3 +223,15 @@ class Prompt(Base):
     name = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)
+    event_type = Column(String(50), nullable=False)
+    entity_type = Column(String(50))
+    entity_id = Column(String(100))
+    meta = Column(JSONB, default=dict)
+    created_at = Column(DateTime, server_default=func.now())
