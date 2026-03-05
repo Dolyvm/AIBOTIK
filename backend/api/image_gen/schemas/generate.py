@@ -182,7 +182,10 @@ class Prompt(BaseModel):
         negative_parts = []
 
         if build_as_type == "anime":
-            prompt_parts.append(await get_anime_base_positive())
+            base_positive = await get_anime_base_positive()
+            if self.nsfw_level > 0:
+                base_positive = base_positive.replace("general, ", "")
+            prompt_parts.append(base_positive)
             negative_parts.append(await get_anime_base_negative())
 
         nsfw_levels = await get_nsfw_levels()
@@ -193,10 +196,21 @@ class Prompt(BaseModel):
                 continue
 
             if field_name == "nsfw_level":
-                            
-                nsfw_level = nsfw_levels[value]
-                prompt_parts.append(nsfw_level.prompt)
-                negative_parts.append(nsfw_level.negative_prompt)
+                # For levels 4-5, try model-type-specific prompts (anime/real)
+                if value >= 4 and build_as_type in ("anime", "real"):
+                    try:
+                        type_prompt = await get_prompt(f"nsfw_level_{value}_{build_as_type}")
+                        type_neg = await get_prompt(f"nsfw_level_{value}_{build_as_type}_neg")
+                        prompt_parts.append(type_prompt)
+                        negative_parts.append(type_neg)
+                    except KeyError:
+                        nsfw_level = nsfw_levels[value]
+                        prompt_parts.append(nsfw_level.prompt)
+                        negative_parts.append(nsfw_level.negative_prompt)
+                else:
+                    nsfw_level = nsfw_levels[value]
+                    prompt_parts.append(nsfw_level.prompt)
+                    negative_parts.append(nsfw_level.negative_prompt)
                 continue
 
             prompt_parts.append(value)

@@ -104,6 +104,7 @@ async def gen(
     scene_reasoning = ""
     pose = ""
     scene_description = ""
+    nsfw_tags = ""
     emotion = "neutral"
     if SCENE_ANALYZER_ENABLED and history:
         try:
@@ -123,7 +124,12 @@ async def gen(
                 character_name=content["name"],
                 available_outfits=available_outfits,
                 allow_nsfw=allow_nsfw,
-                chat_id=chat_id
+                chat_id=chat_id,
+                mood=chat.current_mood or "neutral",
+                affinity=chat.affinity,
+                arousal=chat.arousal,
+                current_location=chat.current_location or "",
+                model_type=content.get("model_type", "anime"),
             )
 
             nsfw_level = scene.nsfw_level
@@ -133,6 +139,7 @@ async def gen(
             scene_reasoning = scene.reasoning
             emotion = scene.emotion
             scene_description = scene.scene_description
+            nsfw_tags = scene.nsfw_tags
 
             logging.info(f"Scene analysis: {scene_reasoning}")
 
@@ -167,8 +174,24 @@ async def gen(
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
-    prompt.scene_details = scene_description
     prompt.facial_expression = emotion
+    # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
+    if nsfw_level >= 4 and nsfw_tags:
+        prompt.body_state = nsfw_tags
+
+    logging.info(f"=== PROMPT COMPONENTS for chat {chat_id} ===")
+    logging.info(f"  outfit_key={outfit_key}")
+    logging.info(f"  clothing={prompt.clothing}")
+    logging.info(f"  nsfw_level={nsfw_level}")
+    logging.info(f"  scene_description={scene_description}")
+    logging.info(f"  nsfw_tags={nsfw_tags}")
+    logging.info(f"  emotion={emotion}")
+    logging.info(f"  pose/action={prompt.action}")
+    logging.info(f"  environment={prompt.environment}")
+    logging.info(f"  character_base={prompt.character_base}")
+    logging.info(f"  scene_reasoning={scene_reasoning}")
+    logging.info(f"=== END COMPONENTS ===")
+
     pos, neg = await prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")

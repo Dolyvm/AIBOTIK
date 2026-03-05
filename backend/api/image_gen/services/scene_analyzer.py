@@ -80,6 +80,7 @@ def normalize_scene_data(data: dict) -> dict:
 
     result['reasoning'] = str(data.get('reasoning', '')) if data.get('reasoning') else ''
     result['scene_description'] = str(data.get('scene_description', '')) if data.get('scene_description') else ''
+    result['nsfw_tags'] = str(data.get('nsfw_tags', '')) if data.get('nsfw_tags') else ''
 
     return result
 
@@ -90,7 +91,74 @@ class SceneAnalysis(BaseModel):
     emotion: str = "neutral"
     nsfw_level: int = 0
     reasoning: str = ""
-    scene_description: str = ""  
+    scene_description: str = ""
+    nsfw_tags: str = ""  # compact NSFW visual tags (max 5-6), filled only at levels 4-5
+
+NSFW_KEYWORD_MAP = {
+    # Bodily fluids
+    "cum on face": "cum on face",
+    "cum on body": "cum on body",
+    "cum on breast": "cum on breasts",
+    "cum on chest": "cum on breasts",
+    "cum drip": "cum dripping",
+    "cum streak": "cum on body",
+    "semen": "cum on body",
+    "facial": "cum on face",
+    "creampie": "creampie",
+    "squirt": "squirting",
+    "saliva": "saliva",
+    "drool": "saliva",
+    # Positions
+    "all fours": "on all fours",
+    "doggy": "doggy style",
+    "missionary": "missionary",
+    "cowgirl": "cowgirl",
+    "riding": "riding",
+    "bent over": "bent over",
+    "spread legs": "spread legs",
+    "legs spread": "spread legs",
+    "kneeling": "kneeling",
+    # Acts
+    "blowjob": "blowjob",
+    "oral": "oral sex",
+    "deepthroat": "deepthroat",
+    "penetrat": "penetration",
+    "intercourse": "sex",
+    "masturbat": "masturbation",
+    "finger": "fingering",
+    # Expressions
+    "ahegao": "ahegao",
+    "tongue out": "tongue out",
+    "eyes rolled": "rolling eyes",
+    "open mouth": "open mouth",
+    "moaning": "moaning expression",
+    # Physical state
+    "sweat": "sweaty skin",
+    "flush": "flushed skin",
+    "tremble": "trembling body",
+    "erect nipple": "erect nipples",
+    "hard nipple": "erect nipples",
+}
+
+
+def extract_nsfw_tags_fallback(scene_description: str, pose: str = "") -> str:
+    """Extract NSFW tags from scene_description when LLM doesn't provide nsfw_tags."""
+    if not scene_description:
+        return ""
+
+    text = (scene_description + " " + pose).lower()
+    found_tags = []
+    seen = set()
+
+    for keyword, tag in NSFW_KEYWORD_MAP.items():
+        if keyword in text and tag not in seen:
+            found_tags.append(tag)
+            seen.add(tag)
+            if len(found_tags) >= 6:
+                break
+
+    return ", ".join(found_tags)
+
 
 def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
     score = arousal * 0.75 + affinity * 0.25
@@ -117,6 +185,7 @@ class SceneAnalyzer:
         affinity: int = 50,
         arousal: int = 0,
         current_location: str = "",
+        model_type: str = "anime",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
@@ -152,13 +221,14 @@ class SceneAnalyzer:
             affinity=affinity,
             arousal=arousal,
             current_location=current_location or "unknown",
+            model_type=model_type,
         )
 
         try:
             response = await self.llm.generate(
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=300,
+                max_tokens=350,
                 temperature=0.1
             )
 
@@ -182,12 +252,25 @@ class SceneAnalyzer:
             elif affinity < 60:
                 scene.nsfw_level = min(scene.nsfw_level, 3)
 
-            if scene.nsfw_level >= 4 and scene.outfit_key not in ("nude", "underwear"):
+            original_outfit = scene.outfit_key
+
+            if scene.nsfw_level >= 4 and scene.outfit_key != "nude":
                 scene.outfit_key = "nude"
-            elif scene.nsfw_level <= 1 and scene.outfit_key == "nude":
+            elif scene.nsfw_level == 3 and scene.outfit_key not in ("nude", "underwear"):
+                scene.outfit_key = "underwear"
+            elif scene.nsfw_level == 2 and scene.outfit_key not in ("underwear", "swimwear", "sleepwear", "nude"):
+                scene.outfit_key = "swimwear"
+            elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
                 scene.outfit_key = "default_outfit"
-            elif scene.nsfw_level == 0 and scene.outfit_key == "underwear":
-                scene.outfit_key = "default_outfit"
+
+            if original_outfit != scene.outfit_key:
+                logger.info(f"Outfit overridden: {original_outfit} -> {scene.outfit_key} (nsfw_level={scene.nsfw_level})")
+
+            # Fallback: extract nsfw_tags from scene_description if LLM didn't provide them
+            if scene.nsfw_level >= 4 and not scene.nsfw_tags:
+                scene.nsfw_tags = extract_nsfw_tags_fallback(scene.scene_description, scene.pose)
+                if scene.nsfw_tags:
+                    logger.info(f"nsfw_tags extracted from scene_description: {scene.nsfw_tags}")
 
             if cache and chat_id:
                 await cache.set_scene_analysis(chat_id, context_hash, scene.model_dump())

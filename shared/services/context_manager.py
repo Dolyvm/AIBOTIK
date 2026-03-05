@@ -155,7 +155,7 @@ class ContextManager:
             image_task_id = None
             if state_updates.get("send_photo", False) and character is not None:
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
-                if msgs_since_photo >= 4:
+                if msgs_since_photo >= 5:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
                     photo_result = await self._trigger_photo_generation(
                         chat, character, world, photo_history, session, allow_nsfw
@@ -282,6 +282,7 @@ class ContextManager:
             environment = ""
             pose = ""
             scene_description = ""
+            nsfw_tags = ""
 
             if SCENE_ANALYZER_ENABLED and history:
                 try:
@@ -304,6 +305,7 @@ class ContextManager:
                         affinity=chat.affinity,
                         arousal=chat.arousal,
                         current_location=chat.current_location or "",
+                        model_type=content.get("model_type", "anime"),
                     )
 
                     nsfw_level = scene.nsfw_level
@@ -311,6 +313,7 @@ class ContextManager:
                     pose = scene.pose
                     environment = scene.location
                     scene_description = scene.scene_description
+                    nsfw_tags = scene.nsfw_tags
 
                     logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
 
@@ -349,7 +352,9 @@ class ContextManager:
             )
 
             prompt.action = state_meta.get("action") or pose
-            prompt.scene_details = scene_description
+            # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
+            if nsfw_level >= 4 and nsfw_tags:
+                prompt.body_state = nsfw_tags
             pos, neg = await prompt.build_prompt(content.get("model_type"))
 
             logging.info(f"Auto-photo generation: {pos=}")
@@ -365,8 +370,8 @@ class ContextManager:
             task_params = {
                 "chat_id": chat.id,
                 "user_id": chat.user_id,
-                "character_id": character.get("id"),
-                "world_id": world.get("id"),
+                "character_id": (character or {}).get("id"),
+                "world_id": (world or {}).get("id"),
                 "model_type": model_type,
                 "positive_prompt": pos,
                 "negative_prompt": neg,

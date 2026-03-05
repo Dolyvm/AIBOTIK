@@ -58,11 +58,12 @@ DEFAULT_PROMPTS = {
 
 **КРИТИЧЕСКИ ВАЖНО:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +10 до +25
-- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -5 до -7
-- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +10 до +25
-- Если ситуация неловкая или отталкивающая — arousal_change может быть -5 до -7
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +5 к affinity.
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +5 до +15
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -5 до -10
+- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +5 до +15
+- Если ситуация неловкая или отталкивающая — arousal_change может быть -5 до -10
+- Нейтральный разговор (приветствие, простые вопросы): affinity_change +2 до +3. Значение 0 допустимо для пассивных реплик ("ок", "ладно", "хм").
+- Значения affinity_change +15 и выше — ТОЛЬКО для исключительных эмоциональных моментов (признание в чувствах, первый поцелуй, спасение, подарок с глубоким смыслом).
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - Меняй `new_location` СТРОГО ТОЛЬКО в том случае, если местоположений персонажей 100% поменялось. Если произошло действие, но оно произошло в той локации, поле new_location оставляй null.
 - Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`.
@@ -73,8 +74,8 @@ DEFAULT_PROMPTS = {
 Формат (СТРОГИЙ ВАЛИДНЫЙ JSON, без звёздочек и других форматирований):
 <meta>
 {
-  "affinity_change": int,   // -10 до +25. ОБЯЗАТЕЛЬНО меняется при любом взаимодействии
-  "arousal_change": int,    // -10 до +25. Меняется при флирте, физическом контакте, романтике
+  "affinity_change": int,   // -10 до +20. Обычно +2..+7 за стандартное взаимодействие
+  "arousal_change": int,    // -10 до +15. Меняется при флирте, физическом контакте, романтике
   "mood": "string",         // neutral, playful, curious, happy, sad, angry, horny, shy, etc
   "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). ВАЛИДНАЯ СТРОКА!
   "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.
@@ -88,7 +89,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Привет, как дела?"
 <meta>
 {
-  "affinity_change": 5,
+  "affinity_change": 3,
   "arousal_change": 0,
   "mood": "neutral",
   "thought": "Обычное приветствие. Нейтрально.",
@@ -100,8 +101,8 @@ DEFAULT_PROMPTS = {
 Игрок: "Ты очень красивая сегодня"
 <meta>
 {
-  "affinity_change": 12,
-  "arousal_change": 5,
+  "affinity_change": 7,
+  "arousal_change": 3,
   "mood": "playful",
   "thought": "Комплимент? Интересно... Немного смутило, но приятно.",
   "new_location": null,
@@ -126,7 +127,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Давай сядем на скамейку?"
 <meta>
 {
-  "affinity_change": 8,
+  "affinity_change": 4,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -139,7 +140,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Вот, держи книгу"
 <meta>
 {
-  "affinity_change": 10,
+  "affinity_change": 5,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -176,6 +177,7 @@ Write in Russian. Output ONLY the summary, no meta-commentary.""",
 
     "scene_analyzer_prompt": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
+Model type: {model_type}
 Chat:
 {formatted_chat}
 
@@ -188,25 +190,33 @@ Character state:
 Outfits: {available_outfits}
 You should make JSON values suitable for use in text to image models.
 You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
-You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
 
 IMPORTANT for "pose":
-- Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
-- NEVER include actions involving another person (e.g., NO "kissing", NO "hugging", NO "pulling someone")
+- If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
+- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from HER perspective only (e.g., "on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"). Still describe only HER body, not the other person.
 - NEVER use plural forms or words implying multiple people
-- Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/state from the conversation.
+- ONLY fill this field when nsfw_level is 4 or 5. If nsfw_level is 0-3, set to empty string "".
+- Maximum 5-6 short tags, comma-separated.
+- Must reflect what is ACTUALLY happening in the last messages (specific position, bodily fluids, penetration type, etc.)
+- If model_type is "anime": use danbooru-style tags. Examples: "cum on face, doggy style, vaginal, from behind, ahegao", "missionary, spread legs, cum in pussy, sweating, tongue out", "blowjob, deepthroat, saliva, kneeling, cum on tongue"
+- If model_type is "real": use short descriptive phrases. Examples: "cum on face, doggy position, penetration from behind, sweaty", "missionary sex, legs spread, orgasm, wet skin", "oral sex, cum dripping, kneeling"
+- Focus on the KEY visual details that make this scene unique — what would differentiate this image from a generic nude
+
+NEW FIELD "scene_description": Write a visual description based on the last 1-2 messages.
 - Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
-- Extract specific visual details from the dialogue (e.g., "lips parted", "flushed cheeks", "arched back", "kneeling on floor")
+- Extract specific visual details from the dialogue
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Be explicit and detailed if nsfw_level is high (3-5)
-- Be as laconic AS POSSIBLE.
-- This will be used directly in the image generation prompt
+
+IMPORTANT — format depends on model_type:
+- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "flushed cheeks, parted lips, on bed, dim lighting, sweat drops"). Max 15 tags.
+- If model_type is "real": use short descriptive phrases (e.g., "young woman with flushed cheeks gazing softly, warm candlelight, lips slightly parted"). Max 30 words.
 
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
 
 CRITICAL RULES (based on character state):
 - "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
@@ -275,6 +285,16 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "nsfw_level_4_neg": "general, clothes",
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
     "nsfw_level_5_neg": "general",
+
+    "nsfw_level_4_anime": "nsfw, nude, completely nude, pussy, nipples, navel, bare skin, uncensored",
+    "nsfw_level_4_anime_neg": "general, clothes, clothed, censored",
+    "nsfw_level_5_anime": "nsfw, explicit, sex, nude, pussy, nipples, sweat, blush, open mouth, spread legs",
+    "nsfw_level_5_anime_neg": "general, clothed, censored, mosaic censoring",
+
+    "nsfw_level_4_real": "nsfw, fully nude body, exposed pussy, erect nipples, naked, aroused, intimate",
+    "nsfw_level_4_real_neg": "general, clothes, dressed, clothed",
+    "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
+    "nsfw_level_5_real_neg": "general, clothed",
 
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
@@ -382,10 +402,10 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 
 **ВАЖНО ДЛЯ ЗНАЧЕНИЙ:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +5 до +15
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +4 до +10
 - Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -3 до -7
-- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +5 до +10 (не более!)
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +3 до +5 к affinity.
+- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +3 до +10 (не более!)
+- Нейтральный разговор: affinity_change +2 до +3. Значение 0 допустимо для пассивных реплик ("ок", "ладно").
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - `new_location` и `new_action` могут быть ТОЛЬКО на английском языке.
 - `send_photo`: установи в true только если персонаж совершает визуально значимое действие. МАКСИМУМ 1 раз на 4-5 сообщений.
@@ -425,6 +445,7 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 
     "scene_analyzer_prompt_sfw": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
+Model type: {model_type}
 Chat:
 {formatted_chat}
 
@@ -445,13 +466,16 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a visual description based on the last 1-2 messages.
 - Focus on visual details: body position, facial expression, lighting, atmosphere
 - Extract specific visual details from the dialogue (e.g., "smiling softly", "blushing cheeks", "gentle gaze")
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Keep descriptions romantic and tasteful, NO explicit content
-- Maximum 50 words
 - This will be used directly in the image generation prompt
+
+IMPORTANT — format depends on model_type:
+- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "soft smile, gentle gaze, warm sunlight, sitting on windowsill"). Max 12 tags.
+- If model_type is "real": use short descriptive phrases (e.g., "young woman smiling gently, soft sunlight on face, warm cozy atmosphere"). Max 25 words.
 
 Select suitable "outfit_key". Character should remain clothed at all times.
 Return ONLY this JSON (no markdown, no nesting):
