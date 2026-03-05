@@ -182,10 +182,20 @@ body.desktop .grid {
     right: 0;
     background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
     color: white;
-    font-size: 13px;
-    padding: 20px 8px 8px;
-    text-align: center;
+    font-size: 15px;
+    padding: 20px 8px 6px;
+    text-align: left;
     font-weight: 500;
+}
+
+.card-subtitle {
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
 }
 
 /* Chats List Style */
@@ -334,15 +344,20 @@ body.desktop .grid {
 
 .message-wrapper {
     display: flex;
+    flex-direction: column;
     margin-bottom: 6px;
 }
 
+.message-wrapper:last-child {
+    margin-bottom: 14px;
+}
+
 .message-wrapper.own {
-    justify-content: flex-end;
+    align-items: flex-end;
 }
 
 .message-wrapper.foreign {
-    justify-content: flex-start;
+    align-items: flex-start;
 }
 
 .message-bubble {
@@ -612,6 +627,29 @@ body.desktop .grid {
     white-space: nowrap;
 }
 
+.scenario-heat-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.scenario-heat-badge.heat-1 {
+    color: #e67e22;
+    background: rgba(230, 126, 34, 0.15);
+}
+
+.scenario-heat-badge.heat-2 {
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.15);
+}
+
+.scenario-heat-badge.heat-3 {
+    color: #fff;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
 .scenario-preview {
     font-size: 14px;
     line-height: 1.5;
@@ -808,14 +846,84 @@ body.desktop .grid {
     color: var(--tg-theme-text-color);
 }
 
-.setting-select {
+/* Nickname setting */
+.nickname-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: var(--tg-theme-bg-color);
+    transition: background-color 0.2s;
+}
+
+.nickname-display:active {
+    opacity: 0.7;
+}
+
+.nickname-value {
+    font-size: 14px;
+    color: var(--tg-theme-text-color);
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nickname-edit-icon {
+    font-size: 12px;
+    color: var(--tg-theme-hint-color);
+}
+
+.nickname-edit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nickname-input {
+    flex: 1;
     padding: 6px 12px;
     border: 1px solid var(--tg-theme-hint-color);
     border-radius: 8px;
     background: var(--tg-theme-bg-color);
     color: var(--tg-theme-text-color);
     font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    max-width: 150px;
+}
+
+.nickname-input:focus {
+    border-color: var(--tg-theme-button-color);
+}
+
+.nickname-input::placeholder {
+    color: var(--tg-theme-hint-color);
+}
+
+.nickname-save-btn,
+.nickname-cancel-btn {
+    border: none;
+    background: transparent;
     cursor: pointer;
+    padding: 6px;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
+.nickname-save-btn {
+    color: var(--tg-theme-link-color);
+}
+
+.nickname-save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.nickname-cancel-btn {
+    color: var(--tg-theme-hint-color);
 }
 
 /* Toggle Switch */
@@ -1004,7 +1112,7 @@ body.desktop .grid {
     width: 100%;
     min-height: 120px;
     padding: 12px;
-    border: 1px solid var(--tg-theme-secondary-bg-color);
+    border: 1px solid var(--tg-theme-hint-color);
     border-radius: 12px;
     background: var(--tg-theme-secondary-bg-color);
     color: var(--tg-theme-text-color);
@@ -1341,7 +1449,7 @@ body.desktop .grid {
 .cc-name-input {
     width: 100%;
     padding: 14px 16px;
-    border: 1px solid var(--tg-theme-secondary-bg-color);
+    border: 1px solid var(--tg-theme-hint-color);
     border-radius: 12px;
     background: var(--tg-theme-secondary-bg-color);
     color: var(--tg-theme-text-color);
@@ -1408,6 +1516,36 @@ body.desktop .grid {
 .change-step-button.secondary {
     background: var(--tg-theme-secondary-bg-color);
     color: var(--tg-theme-text-color);
+}
+
+/* Гардероб */
+.cc-wardrobe-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.cc-wardrobe-item:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.cc-wardrobe-key-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.cc-wardrobe-key-row .cc-name-input {
+    flex: 1;
+}
+
+.cc-wardrobe-key-row .change-step-button {
+    width: auto;
 }
 
 /* Финальный шаг */
@@ -1679,3 +1817,151 @@ body.desktop .grid {
 .form-switch input:checked + i { background-color: #4BD763; }
 .form-switch input:checked + i::before { transform: translate3d(18px, 2px, 0) scale3d(0, 0, 0); }
 .form-switch input:checked + i::after { transform: translate3d(22px, 2px, 0); }
+
+/* === Document Viewer === */
+.document-viewer h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--tg-theme-text-color);
+}
+
+.document-viewer h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    color: var(--tg-theme-text-color);
+}
+
+.document-viewer p {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 8px;
+    color: var(--tg-theme-hint-color);
+}
+
+.document-viewer ul {
+    padding-left: 20px;
+    margin-bottom: 8px;
+}
+
+.document-viewer ul li {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--tg-theme-hint-color);
+}
+
+.document-overlay-high {
+    z-index: 2001 !important;
+}
+
+/* === Age Confirmation === */
+.age-confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+    backdrop-filter: blur(8px);
+}
+
+.age-confirmation-card {
+    background: var(--tg-theme-bg-color);
+    border-radius: 20px;
+    padding: 32px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.age-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%);
+    color: white;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 16px;
+}
+
+.age-confirmation-card h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: var(--tg-theme-text-color);
+}
+
+.age-confirmation-card p {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--tg-theme-hint-color);
+    margin-bottom: 8px;
+}
+
+.age-doc-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 12px 0 20px;
+}
+
+.age-doc-link {
+    font-size: 13px;
+    color: var(--tg-theme-link-color);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.age-confirm-btn {
+    width: 100%;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    background: linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%);
+    color: white;
+    margin-bottom: 10px;
+    font-family: inherit;
+    transition: opacity 0.2s;
+}
+
+.age-confirm-btn:active:not(:disabled) {
+    opacity: 0.8;
+}
+
+.age-confirm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.age-decline-btn {
+    width: 100%;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--tg-theme-secondary-bg-color);
+    color: var(--tg-theme-hint-color);
+    font-family: inherit;
+    transition: opacity 0.2s;
+}
+
+.age-decline-btn:active {
+    opacity: 0.7;
+}

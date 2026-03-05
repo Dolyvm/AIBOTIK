@@ -148,15 +148,17 @@ class ContextManager:
 
             await message_repo.add(chat.id, "assistant", clean_text)
 
+            photo_history = history + [{"role": "assistant", "content": clean_text}]
+
             image_url = None
             nsfw_level = None
             image_task_id = None
             if state_updates.get("send_photo", False) and character is not None:
                 msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
-                if msgs_since_photo >= 4:
+                if msgs_since_photo >= 5:
                     logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
                     photo_result = await self._trigger_photo_generation(
-                        chat, character, world, history, session, allow_nsfw
+                        chat, character, world, photo_history, session, allow_nsfw
                     )
                     if photo_result:
                         if isinstance(photo_result, dict):
@@ -263,7 +265,6 @@ class ContextManager:
                 sys.path.insert(0, str(backend_path))
 
             from image_gen.schemas.generate import Prompt
-            from image_gen.services.generate import submit_anime, submit_real
             from image_gen.services.scene_analyzer import (
                 SceneAnalyzer,
                 calculate_nsfw_fallback,
@@ -280,6 +281,8 @@ class ContextManager:
             outfit_key = "default_outfit"
             environment = ""
             pose = ""
+            scene_description = ""
+            nsfw_tags = ""
 
             if SCENE_ANALYZER_ENABLED and history:
                 try:
@@ -297,13 +300,20 @@ class ContextManager:
                         character_name=content["name"],
                         available_outfits=available_outfits,
                         allow_nsfw=allow_nsfw,
-                        chat_id=chat.id
+                        chat_id=chat.id,
+                        mood=chat.current_mood or "neutral",
+                        affinity=chat.affinity,
+                        arousal=chat.arousal,
+                        current_location=chat.current_location or "",
+                        model_type=content.get("model_type", "anime"),
                     )
 
                     nsfw_level = scene.nsfw_level
                     outfit_key = scene.outfit_key
                     pose = scene.pose
                     environment = scene.location
+                    scene_description = scene.scene_description
+                    nsfw_tags = scene.nsfw_tags
 
                     logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
 
@@ -313,12 +323,20 @@ class ContextManager:
                         nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
                     else:
                         nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
+                    if nsfw_level >= 4:
+                        outfit_key = "nude"
+                    elif nsfw_level >= 2:
+                        outfit_key = "underwear"
                     environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
             else:
                 if allow_nsfw:
                     nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
                 else:
                     nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
+                if nsfw_level >= 4:
+                    outfit_key = "nude"
+                elif nsfw_level >= 2:
+                    outfit_key = "underwear"
                 environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
             if not allow_nsfw:
@@ -334,6 +352,9 @@ class ContextManager:
             )
 
             prompt.action = state_meta.get("action") or pose
+            # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
+            if nsfw_level >= 4 and nsfw_tags:
+                prompt.body_state = nsfw_tags
             pos, neg = await prompt.build_prompt(content.get("model_type"))
 
             logging.info(f"Auto-photo generation: {pos=}")
@@ -349,6 +370,8 @@ class ContextManager:
             task_params = {
                 "chat_id": chat.id,
                 "user_id": chat.user_id,
+                "character_id": (character or {}).get("id"),
+                "world_id": (world or {}).get("id"),
                 "model_type": model_type,
                 "positive_prompt": pos,
                 "negative_prompt": neg,

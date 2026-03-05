@@ -1,9 +1,12 @@
+import datetime
 import logging
 
 from fastapi import APIRouter, HTTPException, Body, Depends
 from pydantic import BaseModel
 import sys
 from pathlib import Path
+
+from shared.services.analytics import AnalyticsService
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,7 +17,8 @@ from shared.database.repositories import (
     MessageRepository,
     GeneratedImageRepository
 )
-from shared.models import Chat, User
+from sqlalchemy import delete as sa_delete
+from shared.models import Chat, User, GeneratedImage
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
@@ -22,19 +26,31 @@ from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.cache import get_cache
+from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def _get_display_name(user: User) -> str:
+    """Get user display name: nickname > username > fallback."""
+    if user.settings and user.settings.nickname:
+        return user.settings.nickname
+    return user.username or "User"
+
 
 llm_client = LLMClient()
 context_manager = ContextManager(llm_client)
 
+
 class MessageRequest(BaseModel):
     text: str
+
 
 class CreateChatRequest(BaseModel):
     chat_type: str
     target_id: str
     scenario_index: int = 0
+
 
 @router.get("/{chat_id}/history")
 async def get_history(chat_id: int, user: User = Depends(get_current_user)):
@@ -70,9 +86,9 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "location": chat.current_location
         }
 
+
 @router.post("/{chat_id}/send")
 async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: User = Depends(get_current_user)):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_llm_rate_limit(user.telegram_id)
@@ -93,7 +109,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         allow_nsfw = character.get("is_nsfw", True) if character else True
 
@@ -105,6 +121,19 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
             user_name=user_name,
             allow_nsfw=allow_nsfw,
         )
+        async with get_session() as session:
+            await AnalyticsService.track(
+                session,
+                user_id=user.telegram_id,
+                event_type="message_sent",
+                entity_type="chats",
+                entity_id=str(chat.id),
+                meta={
+                    "character_id": character.get("id") if character else None,
+                    "world_id": world.get("id") if world else None,
+                    "message_length": len(payload.text),
+                }
+            )
 
         return {
             "response": result["text"],
@@ -117,6 +146,7 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/by-character/{target_id}")
 async def get_chats_for_character(target_id: str, chat_type: str, user: User = Depends(get_current_user)):
     """Return existing chats for a given character/world (one per scenario_index)."""
@@ -125,11 +155,12 @@ async def get_chats_for_character(target_id: str, chat_type: str, user: User = D
         chats = await chat_repo.get_chats_for_target(user.telegram_id, target_id, chat_type)
         return [{"chat_id": c.id, "scenario_index": c.scenario_index} for c in chats]
 
+
 @router.post("/create")
 async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: User = Depends(get_current_user)):
     async with get_session() as session:
         try:
-            user_name = user.username if user.username else "Путешественник"
+            user_name = _get_display_name(user)
 
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
@@ -142,6 +173,27 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
             )
 
             if is_new:
+                # Apply heat_level initial state
+                heat_level = 0
+                if payload.chat_type == "character":
+                    content = await get_character(payload.target_id)
+                    if content:
+                        for s in content.get("scenarios_full", []):
+                            if s["index"] == payload.scenario_index:
+                                heat_level = s.get("heat_level", 0)
+                                break
+
+                if heat_level > 0:
+                    from shared.constants import HEAT_LEVEL_DEFAULTS
+                    defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
+                    await chat_repo.update_metrics(chat.id, {
+                        "affinity": defaults["affinity"],
+                        "arousal": defaults["arousal"],
+                        "state_meta": {"heat_level": heat_level},
+                    })
+                    chat.affinity = defaults["affinity"]
+                    chat.arousal = defaults["arousal"]
+
                 first_message = await get_first_message(
                     chat_type=payload.chat_type,
                     target_id=payload.target_id,
@@ -152,11 +204,27 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
                 if first_message:
                     await message_repo.add(chat.id, "assistant", first_message)
 
+                if not user.first_interaction_at:
+                    user.first_interaction_at = datetime.datetime.now()
+                await AnalyticsService.track(
+                    session,
+                    user_id=user.telegram_id,
+                    event_type="character_chat_started",
+                    entity_type=payload.chat_type,
+                    entity_id=str(payload.target_id),
+                    meta={
+                        "chat_type": payload.chat_type,
+                        "chat_id": chat.id,
+                        "scenario_index": payload.scenario_index
+                    }
+                )
+
             return {"chat_id": chat.id, "success": True}
 
         except Exception as e:
             logging.error(f"Error creating chat: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
@@ -164,12 +232,16 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
     async with get_session() as session:
         try:
-            user_name = user.username if user.username else "Путешественник"
+            user_name = _get_display_name(user)
 
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
 
+            paths = await collect_chat_image_paths(session, chat_id)
+
             await chat_repo.reset_history(chat_id)
+
+            delete_files(paths)
 
             chat = await chat_repo.get_by_id(chat_id)
 
@@ -192,7 +264,6 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
 @router.post("/{chat_id}/auto-continue")
 async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_user)):
-                         
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_api_rate_limit(
@@ -216,7 +287,7 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         allow_nsfw = character.get("is_nsfw", True) if character else True
 
@@ -270,7 +341,7 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        user_name = user.username or "User"
+        user_name = _get_display_name(user)
 
         result = await context_manager.auto_reply_cycle(
             chat=chat,
@@ -289,17 +360,52 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/{chat_id}/undo")
+async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
+    """Удаляет последнюю пару сообщений (user + assistant) и прикреплённые фото."""
+    await verify_chat_ownership(chat_id, user)
+
+    async with get_session() as session:
+        message_repo = MessageRepository(session)
+        try:
+            deleted, user_msg_created_at = await message_repo.delete_last_pair(chat_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        paths = await collect_images_since(session, chat_id, user_msg_created_at)
+
+        # Удалить GeneratedImages, созданные после отправки user-сообщения
+        await session.execute(
+            sa_delete(GeneratedImage)
+            .where(GeneratedImage.chat_id == chat_id)
+            .where(GeneratedImage.created_at >= user_msg_created_at)
+        )
+        await session.commit()
+
+    delete_files(paths)
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_chat_state(chat_id)
+
+    return {"success": True, "deleted": deleted}
+
+
 @router.delete("/{chat_id}")
 async def delete_chat(
-    chat_id: int,
-    user: User = Depends(get_current_user)
+        chat_id: int,
+        user: User = Depends(get_current_user)
 ):
     """Delete a chat and all its messages/images."""
     await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
+        paths = await collect_chat_image_paths(session, chat_id)
+
         chat_repo = ChatRepository(session)
         await chat_repo.delete(chat_id)
+
+    delete_files(paths)
 
     cache = get_cache()
     if cache:

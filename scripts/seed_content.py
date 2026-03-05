@@ -29,18 +29,21 @@ async def load_characters(session, content_dir: Path):
         )
         if existing.scalar_one_or_none():
             continue
+        heat_level = data.get("heat_level", 0)
         scenarios = []
         if data.get("first_mes"):
             scenarios.append({
                 "index": 0,
                 "intro": data["first_mes"],
-                "scenario": data.get("scenario", "")
+                "scenario": data.get("scenario", ""),
+                "heat_level": heat_level
             })
         for i, greeting in enumerate(data.get("alternate_greetings", []), 1):
             scenarios.append({
                 "index": i,
                 "intro": greeting,
-                "scenario": data.get("scenario", "")
+                "scenario": data.get("scenario", ""),
+                "heat_level": heat_level
             })
         visual_data = {
             "model_type": data.get("model_type", "real"),
@@ -53,6 +56,7 @@ async def load_characters(session, content_dir: Path):
             id=char_id,
             is_public=data.get("is_public", True),
             name=data["name"],
+            short_description=data.get("short_description", ""),
             description=data.get("description", ""),
             personality=data.get("personality", ""),
             visual_data=visual_data,
@@ -99,6 +103,7 @@ async def load_worlds(session, content_dir: Path):
         world = World(
             id=world_id,
             name=data["name"],
+            short_description=data.get("short_description", ""),
             description=data.get("description", ""),
             cover_image=data.get("cover_image", ""),
             scenarios=scenarios,

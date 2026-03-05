@@ -37,3 +37,6 @@ class BaseRepository(Generic[T]):
             await self.session.commit()
             return True
         return False
+
+    async def commit(self):
+        await self.session.commit()

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from ...create_character.cc_schemas import CreateCharacterRequest, clothes_to_prompt
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -23,8 +22,8 @@ from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.image_provider import generate_image as provider_generate_image
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.generate import submit_anime, submit_real, build_prompt_from_character
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
@@ -49,17 +48,13 @@ async def generate_image(data: GenerateRequest):
     inferred_nsfw = sum(1 for kw in nsfw_keywords if kw in prompt_lower)
     nsfw_level = min(5, inferred_nsfw)
 
-    image_url = None
-    if data.model_type == ModelType.anime:
-        image_url = await submit_anime(
-            data.prompt, data.negative_prompt
-        )
-    elif data.model_type == ModelType.real:
-        image_url = await submit_real(
-            prompt=data.prompt,
-            allow_nsfw=data.allow_nsfw,
-            nsfw_level=nsfw_level
-        )
+    image_url = await provider_generate_image(
+        model_type=data.model_type.value,
+        positive_prompt=data.prompt,
+        negative_prompt=data.negative_prompt or "",
+        allow_nsfw=data.allow_nsfw,
+        nsfw_level=nsfw_level,
+    )
     return {"url": image_url} if image_url else {"error": "Failed to generate image"}
 
 @router.post("/{chat_id}/generate")
@@ -109,6 +104,7 @@ async def gen(
     scene_reasoning = ""
     pose = ""
     scene_description = ""
+    nsfw_tags = ""
     emotion = "neutral"
     if SCENE_ANALYZER_ENABLED and history:
         try:
@@ -121,11 +117,19 @@ async def gen(
                 wardrobe = {}
             available_outfits = ["default_outfit"] + list(wardrobe.keys())
 
+            allow_nsfw = content.get("is_nsfw", True)
+
             scene = await analyzer.analyze(
                 history=history,
                 character_name=content["name"],
                 available_outfits=available_outfits,
-                chat_id=chat_id
+                allow_nsfw=allow_nsfw,
+                chat_id=chat_id,
+                mood=chat.current_mood or "neutral",
+                affinity=chat.affinity,
+                arousal=chat.arousal,
+                current_location=chat.current_location or "",
+                model_type=content.get("model_type", "anime"),
             )
 
             nsfw_level = scene.nsfw_level
@@ -134,17 +138,30 @@ async def gen(
             environment = scene.location
             scene_reasoning = scene.reasoning
             emotion = scene.emotion
+            scene_description = scene.scene_description
+            nsfw_tags = scene.nsfw_tags
 
             logging.info(f"Scene analysis: {scene_reasoning}")
 
         except Exception as e:
 
             logging.warning(f"Scene analysis failed, using fallback: {e}")
+            allow_nsfw = content.get("is_nsfw", True)
             nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+            if not allow_nsfw:
+                nsfw_level = min(nsfw_level, 1)
             outfit_key = outfit
+            if nsfw_level >= 4:
+                outfit_key = "nude"
+            elif nsfw_level >= 2:
+                outfit_key = "underwear"
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
         nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
+        if nsfw_level >= 4:
+            outfit_key = "nude"
+        elif nsfw_level >= 2:
+            outfit_key = "underwear"
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     logging.info(f"{nsfw_level=}")
@@ -157,8 +174,24 @@ async def gen(
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = state_meta.get("action") or pose
-    prompt.scene_details = scene_description
     prompt.facial_expression = emotion
+    # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
+    if nsfw_level >= 4 and nsfw_tags:
+        prompt.body_state = nsfw_tags
+
+    logging.info(f"=== PROMPT COMPONENTS for chat {chat_id} ===")
+    logging.info(f"  outfit_key={outfit_key}")
+    logging.info(f"  clothing={prompt.clothing}")
+    logging.info(f"  nsfw_level={nsfw_level}")
+    logging.info(f"  scene_description={scene_description}")
+    logging.info(f"  nsfw_tags={nsfw_tags}")
+    logging.info(f"  emotion={emotion}")
+    logging.info(f"  pose/action={prompt.action}")
+    logging.info(f"  environment={prompt.environment}")
+    logging.info(f"  character_base={prompt.character_base}")
+    logging.info(f"  scene_reasoning={scene_reasoning}")
+    logging.info(f"=== END COMPONENTS ===")
+
     pos, neg = await prompt.build_prompt(content.get("model_type"))
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
@@ -172,10 +205,12 @@ async def gen(
     task_params = {
         "chat_id": chat.id,
         "user_id": chat.user_id,
+        "character_id": (character or {}).get("id"),
+        "world_id": (world or {}).get("id"),
         "model_type": model_type,
         "positive_prompt": pos,
         "negative_prompt": neg,
-        "allow_nsfw": True,
+        "allow_nsfw": content.get("is_nsfw", True),
         "nsfw_level": nsfw_level,
         "pose": pose,
     }
@@ -213,72 +248,3 @@ async def gen(
     logging.info(f"Returning response: {response}")
     return response
 
-@router.post("/generate_preview")
-async def generate_char_preview(data: CreateCharacterRequest, user: User = Depends(get_current_user)):
-    # fixme не забыть убрать эту хуету
-    # rate_limiter = get_rate_limiter()
-    # if rate_limiter:
-    #     allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
-    #     if not allowed:
-    #         limits = RATE_LIMITS["images"]
-    #         raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
-
-    image_url = None
-    char_temp = {
-        "model_type": data.style,
-        "visual": {
-            "wardrobe": {
-                "casual": clothes_to_prompt[data.clothing],
-                "underwear": "black lingerie set",
-                "nude": "nothing, showing her naked body"
-            },
-            "body_type": data.body_type,
-            "model_type": data.style,
-            "nationality": data.nationality,
-            "age": data.age,
-            "ass": data.ass_size,
-            "boobs": data.boobs_size,
-            "hair_color": data.hair_color,
-            "haircut": data.haircut,
-            "eye_color": data.eyes_color,
-        }
-    }
-    if data.style == "real":
-        pos, neg = await build_prompt_from_character(
-            character=char_temp,
-            face_expression="confident and dominant with piercing gaze",
-            location="in modern and sophisticated office lobby",
-            position="standing seductively",
-            nsfw_level=0,
-            outfit_key="casual",
-            close_up=True
-        )
-        image_url = await submit_real(
-            prompt=pos,
-            allow_nsfw=True,
-            nsfw_level=0
-        )
-    elif data.style == "anime":
-        pos, neg = await build_prompt_from_character(
-            character=char_temp,
-            face_expression="confident and dominant with piercing gaze",
-            location="in modern and sophisticated office lobby",
-            position="standing seductively, intimate pose",
-            nsfw_level=0,
-            outfit_key="casual",
-            close_up=True
-        )
-        logging.info(f"generate_preview: style={data.style}, pos={pos}, neg={neg}")
-        image_url = await submit_anime(pos, neg)
-
-    if image_url:
-        return {"url": image_url}
-
-    raise HTTPException(
-        status_code=500,
-        detail={
-            "error": "generation_failed",
-            "message": "Failed to generate image",
-            "code": "IMAGE_GEN_FAILED"
-        }
-    )

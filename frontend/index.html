@@ -79,6 +79,38 @@
             cursor: not-allowed;
         }
 
+        .btn-undo-turn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-hint-color, #999);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+            padding: 0;
+            margin-top: 4px;
+            align-self: flex-start;
+            flex-shrink: 0;
+        }
+
+        .btn-undo-turn:active {
+            opacity: 1;
+            background: var(--tg-theme-button-color, #FF2FAE);
+            color: #fff;
+        }
+
+        .btn-undo-turn:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
         .generating-placeholder {
             display: flex;
             flex-direction: column;
@@ -149,7 +181,7 @@
                         <option :value="null">Все теги</option>
                         <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
                     </select>
-                    <select v-model="worldFilters.creator_type">
+                    <select v-model="worldFilters.creator_type" @change="loadWorlds">
                         <option :value="null">Фильтр по создателю</option>
                         <option value="me">Мои миры</option>
                         <option value="public">Миры от сообщества</option>
@@ -177,6 +209,7 @@
                         </div>
                         <div class="card-title">
                             {{ char.name }}
+                            <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                         </div>
                     </div>
                     <div v-if="characters.length === 0" class="empty-state">Персонажи не найдены</div>
@@ -184,6 +217,12 @@
 
                 <!-- Grid Worlds -->
                 <div v-if="tab === 'worlds'" class="grid">
+                    <div class="card" @click="createWorldOnClick()">
+                        <img src="/create-character-cover.png" loading="lazy">
+                        <div class="card-title">
+                            Создать мир
+                        </div>
+                    </div>
                     <div v-for="world in worlds" :key="world.id"
                          class="card"
                          :class="{revealed: isRevealed('card-'+world.id)}"
@@ -195,7 +234,10 @@
                         <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
                             <span class="click-hint">👁</span>
                         </div>
-                        <div class="card-title">{{ world.name }}</div>
+                        <div class="card-title">
+                            {{ world.name }}
+                            <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
+                        </div>
                     </div>
                     <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
                 </div>
@@ -251,11 +293,53 @@
                                 </label>
                             </div>
                             <div class="setting-item">
-                                <span class="setting-label">Язык</span>
-                                <select v-model="profileSettings.language" class="setting-select">
-                                    <option value="ru">Русский</option>
-                                    <option value="en">English</option>
-                                </select>
+                                <span class="setting-label">Мой никнейм</span>
+                                <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname">
+                                    <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
+                                    <i class="fas fa-pen nickname-edit-icon"></i>
+                                </div>
+                                <div v-else class="nickname-edit">
+                                    <input
+                                        type="text"
+                                        v-model="nicknameDraft"
+                                        class="nickname-input"
+                                        maxlength="50"
+                                        placeholder="Введите никнейм"
+                                        @keyup.enter="saveNickname"
+                                    >
+                                    <button class="nickname-save-btn" @click="saveNickname" :disabled="isSavingNickname">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="nickname-cancel-btn" @click="cancelEditNickname">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Documents Section -->
+                    <div class="profile-section">
+                        <div class="section-title">Документы</div>
+                        <div class="settings-list">
+                            <div class="setting-item" style="cursor:pointer" @click="openDocument('privacy')">
+                                <span class="setting-label"><i class="fas fa-shield-halved" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Политика конфиденциальности</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
+                            </div>
+                            <div class="setting-item" style="cursor:pointer" @click="openDocument('terms')">
+                                <span class="setting-label"><i class="fas fa-file-contract" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Пользовательское соглашение</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Support Section -->
+                    <div class="profile-section">
+                        <div class="section-title">Помощь</div>
+                        <div class="settings-list">
+                            <div class="setting-item" style="cursor:pointer" @click="openSupport">
+                                <span class="setting-label"><i class="fas fa-headset" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Поддержка</span>
+                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
                             </div>
                         </div>
                     </div>
@@ -324,6 +408,12 @@
                             </span>
                         </div>
                     </div>
+                    <button v-if="index === undoTargetIndex"
+                            class="btn-undo-turn"
+                            @click.stop="undoLastTurn"
+                            :disabled="isUndoing">
+                        <i class="fas fa-trash-can"></i>
+                    </button>
                 </div>
 
                 <div v-if="isWaitingResponse && !isStreaming" class="message-wrapper foreign">
@@ -360,299 +450,298 @@
             </div>
         </div>
 
-        <!-- View: Create Character-->
-        <div v-if="currentView === 'create-character'" class="create-character-view">
+        <!-- View: Create Character -->
+        <div v-if="currentView === 'create-character'" class="create-character-view" @click="hideKeyboard">
+            <!-- Прогресс-бар -->
+            <div class="create-character-steps">
+                <div v-for="i in 4" :key="i" class="cc-step" :class="{ active: ccStep >= i - 1 }" @click="goToStep(i - 1)"></div>
+            </div>
 
-            <!-- ПРЕД-ШАГ 0: Имя -->
-            <div v-if="preStep === 0" class="steps-container">
-                <div class="create-character-steps">
-                    <div class="cc-step active"></div>
-                    <div class="cc-step"></div>
+            <div class="final-step-container">
+
+                <!-- Шаг 1: Имя и стиль -->
+                <div v-if="ccStep === 0">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Имя и стиль</h3>
+
+                        <div class="cc-field">
+                            <label>Имя персонажа: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <input v-model="createCharacterData.name" type="text" class="cc-name-input" placeholder="Имя персонажа">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Стиль: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'anime' }" @click="createCharacterData.model_type = 'anime'" style="flex: 1;">Anime</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'real' }" @click="createCharacterData.model_type = 'real'" style="flex: 1;">Real</button>
+                            </div>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Короткое описание (макс. 30 символов):</label>
+                            <input v-model="createCharacterData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
+                        </div>
+                    </div>
                 </div>
-                <h3 class="cc-group-title">Основное</h3>
-                <h2>Укажите имя</h2>
-                <div class="name-input-container">
-                    <label>
-                        Ввод имени
-                        <input
-                            v-model="createCharacterData.name"
-                            type="text"
-                            placeholder="Введите имя персонажа"
-                            class="cc-name-input"
+
+                <!-- Шаг 2: Описание и сценарий -->
+                <div v-if="ccStep === 1">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Описание и сценарий</h3>
+
+                        <div class="cc-field">
+                            <label>Описание для AI: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createCharacterData.description" class="scenario-textarea" placeholder="Подробное описание персонажа для AI..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Характер для AI: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createCharacterData.personality" class="scenario-textarea" placeholder="Черты характера, модели поведения, стиль речи..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Сценарий: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createCharacterData.scenario" class="scenario-textarea" placeholder="Контекст или ситуация встречи..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Первое сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createCharacterData.first_message" class="scenario-textarea" placeholder="Первое сообщение персонажа игроку..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Уровень откровенности:</label>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button v-for="hl in [{v:0,l:'🌱 Медленно'},{v:1,l:'💋 Флирт'},{v:2,l:'🔥 Быстро'},{v:3,l:'🔥🔥🔥 Сразу'}]"
+                                        :key="hl.v"
+                                        class="change-step-button"
+                                        :class="{ secondary: createCharacterData.heat_level !== hl.v }"
+                                        @click="createCharacterData.heat_level = hl.v"
+                                        type="button"
+                                        style="flex: 1; min-width: 70px; font-size: 12px; padding: 8px 4px;">
+                                    {{ hl.l }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Альтернативные приветствия:</label>
+                            <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Альтернативное приветствие..."></textarea>
+                                <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeAlternateGreeting(idx)">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateGreeting">
+                                <i class="fas fa-plus"></i> Добавить приветствие
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 3: Внешность и аватар -->
+                <div v-if="ccStep === 2">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Внешность и аватар</h3>
+
+                        <div class="cc-field">
+                            <label>Внешность (EN): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createCharacterData.appearance" class="scenario-textarea" placeholder="young woman, fair skin, delicate features..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Тело (EN):</label>
+                            <textarea v-model="createCharacterData.visual_body" class="scenario-textarea" placeholder="petite slender figure, slim waist..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Лицо (EN):</label>
+                            <textarea v-model="createCharacterData.visual_face" class="scenario-textarea" placeholder="bright green eyes, full lips, long red hair..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Стандартный наряд (EN):</label>
+                            <textarea v-model="createCharacterData.visual_default_outfit" class="scenario-textarea" placeholder="casual outfit, jeans and top..."></textarea>
+                        </div>
+
+                        <!-- Гардероб -->
+                        <div class="cc-field">
+                            <label>Гардероб:</label>
+                            <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" class="cc-wardrobe-item">
+                                <div class="cc-wardrobe-key-row">
+                                    <input :value="key" @change="renameWardrobeKey(key, $event.target.value)" class="cc-name-input" placeholder="Ключ (casual, formal...)">
+                                    <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeWardrobeItem(key)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <input v-model="createCharacterData.wardrobe[key]" class="cc-name-input" placeholder="Описание одежды (EN)">
+                            </div>
+                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addWardrobeItem">
+                                <i class="fas fa-plus"></i> Добавить наряд
+                            </button>
+                        </div>
+
+                        <!-- Аватар -->
+                        <div class="cc-preview-section">
+                            <div v-if="isGeneratingPreview" class="cc-preview-loading">
+                                <div class="cc-spinner"></div>
+                                <span>Генерация аватара...</span>
+                            </div>
+                            <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Avatar">
+                            <div v-else class="cc-preview-placeholder">
+                                <i class="fas fa-user-circle"></i>
+                                <span>Аватар не сгенерирован</span>
+                            </div>
+                            <button class="cc-generate-btn" @click="generateNewCharacterPreview" :disabled="isGeneratingPreview">
+                                <i class="fas fa-image"></i>
+                                {{ isGeneratingPreview ? 'Генерация...' : 'Сгенерировать аватар' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 4: Финал -->
+                <div v-if="ccStep === 3">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Финал</h3>
+
+                        <div v-if="newCharacterPreview" class="cc-preview-section" style="margin-top: 12px;">
+                            <img :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Avatar" style="width: 100px; height: 133px;">
+                        </div>
+
+                        <button
+                            class="create-character-final-btn"
+                            @click="createCharacterFinal"
+                            :disabled="isCreatingCharacter"
                         >
-                    </label>
-                </div>
-                <div class="cc-navigation">
-                    <button class="change-step-button" @click="preStep++" :disabled="!(createCharacterData.name && createCharacterData.name.trim())">Далее</button>
-                    <button class="change-step-button secondary" @click="currentView = 'selection'">Назад</button>
-                </div>
-            </div>
-
-            <!-- ПРЕД-ШАГ 1: Стиль -->
-            <div v-else-if="preStep === 1" class="steps-container">
-                <div class="create-character-steps">
-                    <div class="cc-step active"></div>
-                    <div class="cc-step active"></div>
-                </div>
-                <h3 class="cc-group-title">Основное</h3>
-                <h2>Выберите стиль</h2>
-                <div class="cc-carousel cc-carousel--img">
-                    <div v-for="item in (stepsGroups[0] && stepsGroups[0].steps && stepsGroups[0].steps[1] ? stepsGroups[0].steps[1].items : [])"
-                         :key="item.value"
-                         class="cc-carousel-card"
-                         :class="{ selected: createCharacterData.style === item.value }"
-                         @click="createCharacterData.style = item.value"
-                    >
-                        <img :src="item.img" loading="lazy">
-                        <div class="card-title">{{ item.title }}</div>
-                    </div>
-                </div>
-                <div class="cc-navigation">
-                    <button class="change-step-button" @click="preStep++" :disabled="!createCharacterData.style">Далее</button>
-                    <button class="change-step-button secondary" @click="preStep--">Назад</button>
-                </div>
-            </div>
-
-            <!-- ПРЕД-ШАГ 2: Развилка — конструктор или промт -->
-            <div v-else-if="preStep === 2 && createStrategy === null" class="steps-container">
-                <h2>Как создать персонажа?</h2>
-                <div class="cc-type-btn-container">
-                    <button class="change-step-button" @click="createStrategy = 'manual'; currentCCGroupIndex = 1; currentCCStepIndex = 0">Конструктор</button>
-                    <button class="change-step-button" @click="createStrategy = 'prompt'">Описать текстом</button>
-                </div>
-                <div class="cc-navigation">
-                    <button class="change-step-button secondary" @click="preStep--">Назад</button>
-                </div>
-            </div>
-
-            <!-- ПРОМТ-РЕЖИМ: ввод текстового описания -->
-            <div v-else-if="createStrategy === 'prompt' && currentCCGroupIndex < totalGroups" class="steps-container">
-                <h2>Опишите персонажа:</h2>
-                <div class="cc-field">
-                    <textarea
-                            v-model="createPromptText"
-                            class="scenario-textarea"
-                            placeholder="Опишите своего персонажа..."
-                    ></textarea>
-                </div>
-                <button
-                    class="change-step-button"
-                    @click="createCharacterFromPrompt"
-                    :disabled="isGeneratingFromPrompt"
-                    :style="{margin: '1rem 0 1rem 0', background: 'linear-gradient(135deg, #FF2FAE 0%, #00EAFF 100%)', opacity: isGeneratingFromPrompt ? '0.6' : '1'}"
-                >
-                    <span v-if="isGeneratingFromPrompt">Генерация...</span>
-                    <span v-else>Сгенерировать</span>
-                </button>
-                <div class="cc-navigation">
-                    <button class="change-step-button secondary" @click="createStrategy = null">Назад</button>
-                </div>
-            </div>
-
-            <!-- КОНСТРУКТОР: шаги выбора параметров (группы 1-4, имя и стиль уже заданы) -->
-            <div class="steps-container" ref="stepsContainer" v-if="(createStrategy === 'manual') && currentStep && (currentCCGroupIndex < totalGroups)">
-                <div class="create-character-steps">
-                    <div class="cc-step"
-                         v-for="(group, i) in filteredGroups"
-                         :class="{active: currentCCGroupIndex >= i}"
-                         :key="group.group"
-                         @click="goToGroup(i)"
-                    ></div>
-                    <div class="cc-step" :class="{active: currentCCGroupIndex >= totalGroups}" @click="currentCCGroupIndex = totalGroups; currentCCStepIndex = 0"></div>
-                </div>
-
-                <h3 class="cc-group-title">{{ currentGroup?.title }}</h3>
-                <h2>{{ currentStep.title }}</h2>
-
-                <!-- Ввод имени -->
-                <div v-if="currentStep.type === 'nameInput'" class="name-input-container">
-                    <label>
-                        Ввод имени
-                        <input
-                            v-model="createCharacterData.name"
-                            type="text"
-                            placeholder="Введите имя персонажа"
-                            class="cc-name-input"
-                        >
-                    </label>
-                </div>
-
-                <!-- Выбор с изображениями -->
-                <div v-if="currentStep.type === 'imgSelect'" class="cc-carousel cc-carousel--img">
-                    <div v-for="(item, index) in currentStep.items"
-                        :key="item.value"
-                         class="cc-carousel-card"
-                         :class="{ selected: createCharacterData[currentStep.id] === item.value }"
-                         @click="selectCCItem(index)"
-                    >
-                        <img :src="item.img" loading="lazy">
-                        <div class="card-title">
-                            {{ item.title }}
-                        </div>
-                    </div>
-                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
-                </div>
-
-                <!-- Текстовый выбор -->
-                <div v-if="currentStep.type === 'textSelect'" class="cc-carousel cc-carousel--text">
-                    <div v-for="(item, index) in currentStep.items"
-                         :key="item"
-                         class="cc-carousel-card"
-                         :class="{ selected: createCharacterData[currentStep.id] === item }"
-                         @click="selectCCItem(index)"
-                    >
-                        <div class="card-title">
-                            {{ item }}
-                        </div>
-                    </div>
-                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
-                </div>
-
-                <!-- Мульти-выбор -->
-                <div v-if="currentStep.type === 'textMultiSelect'" class="cc-carousel cc-carousel--text">
-                    <div v-for="(item, index) in currentStep.items"
-                         :key="item"
-                         class="cc-carousel-card"
-                         :class="{ selected: createCharacterData[currentStep.id]?.includes(item) }"
-                         @click="selectCCItem(index)"
-                    >
-                        <div class="card-title">
-                            {{ item }}
-                        </div>
-                        <div v-if="createCharacterData[currentStep.id]?.includes(item)" class="cc-carousel-check">
                             <i class="fas fa-check"></i>
-                        </div>
+                            {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
+                        </button>
                     </div>
-                    <div v-if="currentStep.items.length === 0" class="empty-state">Загружается...</div>
-                </div>
-
-                <!-- Навигационные кнопки -->
-                <div class="cc-navigation">
-                    <button class="change-step-button" @click="changeStep(1)">Далее</button>
-                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
                 </div>
             </div>
 
-            <!-- Финальный шаг: превью и редактирование -->
-            <div v-else-if="currentCCGroupIndex >= totalGroups" class="final-step-container" @click="hideKeyboard">
-                <!-- Резюме выбранных параметров -->
-                <div v-else class="cc-summary-section">
-                    <h3 class="cc-summary-title">Параметры персонажа</h3>
-                    <div class="cc-summary-grid">
-                        <div class="cc-summary-item" @click="goToStep('name')">
-                            <span class="cc-summary-label">Имя:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.name ?? 'Не заполнено'}}</span>
-                        </div>
-                        <div class="cc-summary-item" @click="goToStep('style')">
-                            <span class="cc-summary-label">Стиль:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.style === 'anime' ? 'Аниме' : 'Реалистично' }}</span>
-                        </div>
-                        <div class="cc-summary-item" @click="goToStep('age')">
-                            <span class="cc-summary-label">Возраст:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.age ?? 'Не заполнено'}} лет</span>
-                        </div>
-                        <div class="cc-summary-item" @click="goToStep('nationality')">
-                            <span class="cc-summary-label">Национальность:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.nationality ?? 'Не заполнено' }}</span>
-                        </div>
-                        <div class="cc-summary-item" @click="goToStep('personality')">
-                            <span class="cc-summary-label">Характер:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.personality ?? 'Не заполнено' }}</span>
-                        </div>
-                        <div class="cc-summary-item" @click="goToStep('relationship')">
-                            <span class="cc-summary-label">Отношения:</span>
-                            <span class="cc-summary-value">{{ createCharacterData.relationship ?? 'Не заполнено' }}</span>
-                        </div>
-                        <div class="cc-summary-item cc-summary-full" @click="goToStep('preferences')">
-                            <span class="cc-summary-label">Предпочтения:</span>
-                            <span class="cc-summary-value">{{ createCharacterData?.preferences?.join(', ') ?? 'Не заполнено' }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="cc-summary-section" :style="{ 'display': 'flex', 'alignItems': 'center' }">
-                    <h3 class="cc-summary-title" :style="{ 'marginBottom': '0' }">Публичная модель</h3>
-                    <label class="form-switch">
-                        <input type="checkbox" v-model="createCharacterData.is_public">
-                        <i></i>
-                    </label>
-                </div>
-
-                <div class="cc-preview-section">
-                    <!-- Loader во время генерации -->
-                    <div v-if="isGeneratingPreview" class="cc-preview-loading">
-                        <div class="cc-spinner"></div>
-                        <span>Генерация изображения...</span>
-                    </div>
-                    <!-- Сгенерированное изображение -->
-                    <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Cover">
-                    <!-- Placeholder если нет изображения -->
-                    <div v-else class="cc-preview-placeholder">
-                        <i class="fas fa-user-circle"></i>
-                        <span>Изображение не сгенерировано</span>
-                    </div>
-                    <button class="cc-generate-btn" @click="generateNewCharacterPreview" :disabled="isGeneratingPreview">
-                        <i class="fas fa-image"></i>
-                        {{ isGeneratingPreview ? 'Генерация...' : 'Сгенерировать изображение' }}
-                    </button>
-                </div>
-
-                <div class="cc-fields-section">
-                    <!-- Кнопка генерации всего контента -->
-                    <button class="cc-generate-btn cc-generate-scenario-btn" @click="generateNewCharacterScenario" :disabled="isGeneratingScenario">
-                        <i class="fas fa-magic"></i>
-                        {{ isGeneratingScenario ? 'Генерация...' : 'Сгенерировать сценарий' }}
-                    </button>
-                    <p class="cc-hint">Нажмите для автоматической генерации сценария, первого сообщения и описания через ИИ</p>
-
-                    <!-- Сценарий -->
-                    <div class="cc-field">
-                        <label>Сценарий:</label>
-                        <textarea
-                            v-model="newCharacterScenario"
-                            class="scenario-textarea"
-                            placeholder="Опишите сценарий взаимодействия..."
-                            :disabled="isGeneratingScenario"
-                        ></textarea>
-                    </div>
-
-                    <!-- Первое сообщение -->
-                    <div class="cc-field">
-                        <label>Первое сообщение:</label>
-                        <textarea
-                            v-model="newCharacterFirstMes"
-                            class="scenario-textarea"
-                            placeholder="Первое сообщение персонажа игроку..."
-                            :disabled="isGeneratingScenario"
-                        ></textarea>
-                    </div>
-
-                    <!-- Описание персонажа -->
-                    <div class="cc-field">
-                        <label>Описание персонажа:</label>
-                        <textarea
-                            v-model="newCharacterDescription"
-                            class="scenario-textarea"
-                            placeholder="Внешность, характер, особенности..."
-                            :disabled="isGeneratingScenario"
-                        ></textarea>
-                    </div>
-                </div>
-
-                <!-- Навигация финального шага -->
-                <div class="cc-navigation">
-                    <button
-                        class="create-character-final-btn"
-                        @click="createCharacterFinal"
-                        :disabled="!createCharacterData.name || isCreatingCharacter || isGeneratingScenario || !newCharacterScenario"
-                    >
-                        <i class="fas fa-check"></i>
-                        {{ isCreatingCharacter ? 'Создание...' : 'Создать персонажа' }}
-                    </button>
-                    <button class="change-step-button secondary" @click="changeStep(-1)">Назад</button>
-                </div>
+            <!-- Навигация -->
+            <div class="cc-navigation">
+                <button class="change-step-button" @click="ccNextStep" v-if="ccStep < 3">Далее</button>
+                <button class="change-step-button secondary" @click="ccPrevStep">Назад</button>
             </div>
         </div>
+
+        <!-- View: Create World -->
+        <div v-if="currentView === 'create-world'" class="create-character-view" @click="hideKeyboard">
+            <!-- Прогресс-бар -->
+            <div class="create-character-steps">
+                <div v-for="i in 3" :key="i" class="cc-step" :class="{ active: cwStep >= i - 1 }" @click="cwGoToStep(i - 1)"></div>
+            </div>
+
+            <div class="final-step-container">
+
+                <!-- Шаг 1: Название и описание -->
+                <div v-if="cwStep === 0">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Название и описание</h3>
+
+                        <div class="cc-field">
+                            <label>Название мира: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <input v-model="createWorldData.name" type="text" class="cc-name-input" placeholder="Название мира">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Короткое описание (макс. 30 символов):</label>
+                            <input v-model="createWorldData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Описание (используется в AI промпте): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.description" class="scenario-textarea" placeholder="Подробное описание мира для AI..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Инструкции для ГМ:</label>
+                            <textarea v-model="createWorldData.gm_instructions" class="scenario-textarea" placeholder="Инструкции для AI о том, как вести этот мир..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 2: Сценарий и введение -->
+                <div v-if="cwStep === 1">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Сценарий и введение</h3>
+
+                        <div class="cc-field">
+                            <label>Вступительное сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Вступительное сообщение, когда игрок входит в мир..."></textarea>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Альтернативные сценарии:</label>
+                            <div v-for="(alt, idx) in createWorldData.alternate_scenarios" :key="idx" style="margin-bottom: 16px; padding: 12px; background: var(--tg-theme-secondary-bg-color); border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <strong style="font-size: 13px; color: var(--tg-theme-hint-color);">Сценарий {{ idx + 1 }}</strong>
+                                    <button class="change-step-button secondary" style="padding: 4px 10px; min-width: auto; font-size: 12px;" @click="removeAlternateScenario(idx)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="cc-field" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Название:</label>
+                                    <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название сценария">
+                                </div>
+                                <div class="cc-field" style="margin-bottom: 8px;">
+                                    <label style="font-size: 13px;">Вступление:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Вступительное сообщение сценария..."></textarea>
+                                </div>
+                                <div class="cc-field">
+                                    <label style="font-size: 13px;">Инструкции для ГМ:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].gm_instructions" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Инструкции ГМ для этого сценария..."></textarea>
+                                </div>
+                            </div>
+                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateScenario">
+                                <i class="fas fa-plus"></i> Добавить сценарий
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 3: Обложка, теги и финал -->
+                <div v-if="cwStep === 2">
+                    <div class="cc-summary-section">
+                        <h3 class="cc-summary-title">Обложка и финал</h3>
+
+                        <div class="cc-field">
+                            <label>URL обложки:</label>
+                            <input v-model="createWorldData.cover_image_url" type="url" class="cc-name-input" placeholder="https://example.com/image.jpg">
+                        </div>
+
+                        <div v-if="createWorldData.cover_image_url" class="cc-preview-section" style="margin-top: 8px; margin-bottom: 16px;">
+                            <img :src="createWorldData.cover_image_url" class="modal-character-image cc-preview-image" alt="Cover" style="width: 200px; height: auto; max-height: 200px; object-fit: cover;">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Теги (через запятую):</label>
+                            <input v-model="createWorldData.tags_str" type="text" class="cc-name-input" placeholder="fantasy, medieval, adventure">
+                        </div>
+
+                        <button
+                            class="create-character-final-btn"
+                            @click="createWorldFinal"
+                            :disabled="isCreatingWorld"
+                            style="margin-top: 16px;"
+                        >
+                            <i class="fas fa-check"></i>
+                            {{ isCreatingWorld ? (editingWorldId ? 'Сохранение...' : 'Создание...') : (editingWorldId ? 'Сохранить' : 'Создать мир') }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Навигация -->
+            <div class="cc-navigation">
+                <button class="change-step-button" @click="cwNextStep" v-if="cwStep < 2">Далее</button>
+                <button class="change-step-button secondary" @click="cwPrevStep">Назад</button>
+            </div>
+        </div>
+
         <!-- Modal: Scenario Selection -->
         <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
             <div class="modal-content">
@@ -684,11 +773,17 @@
                         <div class="modal-tags" v-if="selectedCharacter.tags" style="flex:1; margin:0;">
                             <span class="tag-badge" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
                         </div>
-                        <button v-if="selectedCharacter.type === 'character' && selectedCharacter.author && selectedCharacter.author.user_id == userId"
-                                @click="deleteCharacter(selectedCharacter.id)"
-                                style="flex-shrink:0; background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
-                            Удалить
-                        </button>
+                        <div v-if="selectedCharacter.author && selectedCharacter.author.user_id == userId"
+                             style="display:flex; gap:6px; flex-shrink:0;">
+                            <button @click="selectedCharacter.type === 'character' ? editCharacterOnClick(selectedCharacter.id) : editWorldOnClick(selectedCharacter.id)"
+                                    style="background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                Редактировать
+                            </button>
+                            <button @click="selectedCharacter.type === 'character' ? deleteCharacter(selectedCharacter.id) : deleteWorld(selectedCharacter.id)"
+                                    style="background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                Удалить
+                            </button>
+                        </div>
                     </div>
 
                     <div class="modal-scenarios">
@@ -703,6 +798,11 @@
                                     {{ scenario.index === 0 ? '🎬' : '🔀' }}
                                 </span>
                                 <span class="scenario-name">{{ scenario.name }}</span>
+                                <span v-if="scenario.heat_level >= 1"
+                                      class="scenario-heat-badge"
+                                      :class="'heat-' + scenario.heat_level">
+                                    {{ scenario.heat_level === 1 ? '💋 Флирт' : scenario.heat_level === 2 ? '🔥 Быстро' : '🔥🔥🔥 Сразу' }}
+                                </span>
                                 <span v-if="existingChatsForCharacter.some(c => c.scenario_index === scenario.index)"
                                       class="scenario-existing-badge">чат уже есть</span>
                             </div>
@@ -768,6 +868,32 @@
             </div>
         </div>
 
+        <!-- Document Viewer Overlay -->
+        <div v-if="showDocumentOverlay" class="modal-overlay" :class="{'document-overlay-high': showAgeConfirmation}" @click.self="closeDocument">
+            <div class="modal-content">
+                <button class="modal-close" @click="closeDocument"><i class="fas fa-times"></i></button>
+                <div class="modal-body document-viewer" v-html="currentDocument.content"></div>
+            </div>
+        </div>
+
+        <!-- 18+ Age Confirmation Overlay -->
+        <div v-if="showAgeConfirmation" class="age-confirmation-overlay">
+            <div class="age-confirmation-card">
+                <div class="age-badge">18+</div>
+                <h2>Подтверждение возраста</h2>
+                <p>Данное приложение содержит контент, предназначенный исключительно для лиц старше 18 лет.</p>
+                <p>Продолжая использование, вы подтверждаете, что вам исполнилось 18 лет и вы соглашаетесь с условиями:</p>
+                <div class="age-doc-links">
+                    <span class="age-doc-link" @click="openDocument('privacy')">Политика конфиденциальности</span>
+                    <span class="age-doc-link" @click="openDocument('terms')">Пользовательское соглашение</span>
+                </div>
+                <button class="age-confirm-btn" @click="confirmAge" :disabled="isConfirmingAge">
+                    {{ isConfirmingAge ? 'Подтверждение...' : 'Мне есть 18 лет' }}
+                </button>
+                <button class="age-decline-btn" @click="declineAge">Мне нет 18 лет</button>
+            </div>
+        </div>
+
         <!-- Toast Notification -->
         <div v-if="toast.show" class="toast" :class="'toast--' + toast.type">
             {{ toast.message }}
@@ -810,71 +936,44 @@
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
+                const isUndoing = ref(false);
                 const messagesContainer = ref(null);
 
                 // Create Character
-                const createStrategy = ref(null); // "prompt" || "manual"
-                const preStep = ref(0); // 0=имя, 1=стиль, 2=развилка
-                const createPromptText = ref(null);
-                const currentCCGroupIndex = ref(0);
-                const currentCCStepIndex = ref(0);
-                const stepsGroups = ref([])
-                const createCharacterData = ref({name: "", is_public: false})
-                const stepsContainer = ref(null);
+                const defaultCreateCharacterData = () => ({
+                    name: '', short_description: '', description: '', personality: '',
+                    scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
+                    model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
+                    visual_default_outfit: '', wardrobe: {},
+                    avatar_url: null
+                });
+                const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
-                const newCharacterScenario = ref(null);
-                const newCharacterFirstMes = ref(null);
-                const newCharacterDescription = ref(null);
-                const isGeneratingScenario = ref(false);
-                const isGeneratingFromPrompt = ref(false);
+                const ccStep = ref(0);
+                const editingCharacterId = ref(null);
+
+                // Create World
+                const defaultCreateWorldData = () => ({
+                    name: '', short_description: '', description: '', gm_instructions: '',
+                    intro_message: '', alternate_scenarios: [],
+                    cover_image_url: '', tags_str: ''
+                });
+                const createWorldData = ref(defaultCreateWorldData());
+                const cwStep = ref(0);
+                const editingWorldId = ref(null);
+                const isCreatingWorld = ref(false);
+
+                const undoTargetIndex = computed(() => {
+                    if (isWaitingResponse.value || isStreaming.value || isUndoing.value) return -1;
+                    if (!currentChatId.value) return -1;
+                    const h = chatHistory.value;
+                    for (let i = h.length - 1; i >= 1; i--) {
+                        if (h[i].role === 'assistant' && h[i].content && h[i - 1].role === 'user') return i;
+                    }
+                    return -1;
+                });
 
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
-                const filteredGroups = computed(() => {
-                    if (createCharacterData.value.style === 'anime') {
-                        return stepsGroups.value.map(group => ({
-                            ...group,
-                            steps: group.steps.filter(step => step.id !== 'nationality')
-                        }));
-                    }
-                    return stepsGroups.value;
-                });
-
-                // Computed: текущая группа
-                const currentGroup = computed(() => {
-                    return filteredGroups.value[currentCCGroupIndex.value];
-                });
-
-                // Computed: текущий шаг внутри группы
-                const currentStep = computed(() => {
-                    return currentGroup.value?.steps?.[currentCCStepIndex.value];
-                });
-
-                // Computed: общее количество групп
-                const totalGroups = computed(() => {
-                    return filteredGroups.value.length;
-                });
-
-                // Computed: индекс текущего шага в плоском списке (для прогресс-бара)
-                const currentCCStep = computed(() => {
-                    let total = 0;
-                    for (let i = 0; i < currentCCGroupIndex.value; i++) {
-                        total += filteredGroups.value[i]?.steps?.length || 0;
-                    }
-                    return total + currentCCStepIndex.value;
-                });
-
-                // Computed: общее количество шагов
-                const totalSteps = computed(() => {
-                    return filteredGroups.value.reduce((sum, g) => sum + (g.steps?.length || 0), 0);
-                });
-
-                // Для совместимости со старым кодом
-                const stepsList = computed(() => {
-                    return filteredGroups.value.flatMap(g => g.steps || []);
-                });
-
-                const filteredStepsList = stepsList;
-
                 // Modal state
                 const showScenarioModal = ref(false);
                 const selectedCharacter = ref(null);
@@ -902,13 +1001,65 @@
                 });
                 const profileSettings = ref({
                     nsfw_blur: true,
-                    language: 'ru'
+                    nickname: ''
                 });
+                const isEditingNickname = ref(false);
+                const nicknameDraft = ref('');
+                const isSavingNickname = ref(false);
                 const mockTransactions = ref([
                     { id: 1, amount: 100, source: 'daily_bonus', description: 'Ежедневный бонус', created_at: new Date().toISOString() },
                     { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
                     { id: 3, amount: -50, source: 'image_generated', description: 'Генерация изображения', created_at: new Date(Date.now() - 7200000).toISOString() }
                 ]);
+
+                // Legal documents
+                const legalDocuments = {
+                    privacy: {
+                        title: 'Политика конфиденциальности',
+                        content: '<h2>Политика конфиденциальности</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Сбор данных</h3><p>Мы собираем минимально необходимые данные для работы сервиса: идентификатор Telegram, имя пользователя и данные взаимодействия с приложением.</p><h3>2. Использование данных</h3><p>Данные используются исключительно для предоставления услуг приложения, включая персонализацию контента и обеспечение работоспособности сервиса.</p><h3>3. Хранение данных</h3><p>Все данные хранятся на защищённых серверах. Мы не передаём персональные данные третьим лицам без вашего согласия.</p><h3>4. Удаление данных</h3><p>Вы можете запросить удаление ваших данных, обратившись в поддержку.</p>'
+                    },
+                    terms: {
+                        title: 'Пользовательское соглашение',
+                        content: '<h2>Пользовательское соглашение</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Общие положения</h3><p>Настоящее соглашение регулирует использование приложения AIKAI. Используя приложение, вы соглашаетесь с условиями данного соглашения.</p><h3>2. Возрастные ограничения</h3><p>Приложение предназначено для лиц старше 18 лет. Используя приложение, вы подтверждаете, что достигли совершеннолетия.</p><h3>3. Контент</h3><p>Приложение содержит контент, сгенерированный искусственным интеллектом. Все персонажи являются вымышленными.</p><h3>4. Ответственность</h3><p>Пользователь несёт ответственность за соблюдение применимого законодательства при использовании сервиса.</p>'
+                    }
+                };
+                const showDocumentOverlay = ref(false);
+                const currentDocument = ref({ title: '', content: '' });
+
+                const openDocument = (key) => {
+                    currentDocument.value = legalDocuments[key];
+                    showDocumentOverlay.value = true;
+                };
+
+                const closeDocument = () => {
+                    showDocumentOverlay.value = false;
+                };
+
+                const openSupport = () => {
+                    tg.openTelegramLink('https://t.me/dolyvm');
+                };
+
+                // Age confirmation
+                const showAgeConfirmation = ref(false);
+                const isConfirmingAge = ref(false);
+
+                const confirmAge = async () => {
+                    if (isConfirmingAge.value || !userId.value) return;
+                    try {
+                        isConfirmingAge.value = true;
+                        await axios.patch(`/api/user/${userId.value}/settings`, { age_confirmed: true });
+                        showAgeConfirmation.value = false;
+                    } catch (e) {
+                        console.error('Failed to confirm age:', e);
+                        showToast('Ошибка подтверждения', 'error');
+                    } finally {
+                        isConfirmingAge.value = false;
+                    }
+                };
+
+                const declineAge = () => {
+                    tg.close();
+                };
 
                 // NSFW Blur state
                 const revealedImages = ref(new Set());
@@ -944,6 +1095,41 @@
                     } catch (e) {
                         console.error('Failed to save nsfw_blur setting:', e);
                         showToast('Ошибка сохранения настроек', 'error');
+                    }
+                };
+
+                const startEditNickname = () => {
+                    nicknameDraft.value = profileSettings.value.nickname || '';
+                    isEditingNickname.value = true;
+                    nextTick(() => {
+                        const input = document.querySelector('.nickname-input');
+                        if (input) input.focus();
+                    });
+                };
+
+                const cancelEditNickname = () => {
+                    isEditingNickname.value = false;
+                    nicknameDraft.value = '';
+                };
+
+                const saveNickname = async () => {
+                    if (isSavingNickname.value || !userId.value) return;
+                    const trimmed = nicknameDraft.value.trim();
+                    if (trimmed.length > 50) {
+                        showToast('Никнейм слишком длинный (макс. 50 символов)', 'error');
+                        return;
+                    }
+                    try {
+                        isSavingNickname.value = true;
+                        await axios.patch(`/api/user/${userId.value}/settings`, { nickname: trimmed || '' });
+                        profileSettings.value.nickname = trimmed || '';
+                        isEditingNickname.value = false;
+                        showToast('Никнейм сохранён', 'success');
+                    } catch (e) {
+                        console.error('Failed to save nickname:', e);
+                        showToast('Ошибка сохранения никнейма', 'error');
+                    } finally {
+                        isSavingNickname.value = false;
                     }
                 };
 
@@ -1140,17 +1326,10 @@
                         console.warn('No User ID found');
                     }
 
-                    await Promise.all([loadStepsList(), loadCharacters(), loadWorlds(), loadFilterOptions(), loadUserSettings()]);
+                    await Promise.all([loadCharacters(), loadWorlds(), loadFilterOptions(), loadUserSettings()]);
                 });
 
                 // --- LOADERS ---
-                const loadStepsList = async () => {
-                    try {
-                        const res = await axios.get("/api/create_character")
-                        stepsGroups.value = res.data.groups || [];
-                    } catch (e) { console.error(e); }
-                };
-
                 const loadCharacters = async () => {
                     const params = {};
                     if (characterFilters.value.tag) params.tag = characterFilters.value.tag;
@@ -1205,6 +1384,10 @@
                         isLoadingSettings = true;
                         const res = await axios.get(`/api/user/${userId.value}`);
                         profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                        profileSettings.value.nickname = res.data.nickname || '';
+                        if (!res.data.age_confirmed) {
+                            showAgeConfirmation.value = true;
+                        }
                         await nextTick();
                         isLoadingSettings = false;
                     } catch (e) {
@@ -1230,6 +1413,7 @@
                             const res = await axios.get(`/api/user/${userId.value}`);
                             userProfile.value.balance = res.data.balance;
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
+                            profileSettings.value.nickname = res.data.nickname || '';
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -1258,6 +1442,7 @@
 
                     try {
                         const endpoint = type === 'character'
+                            // по этим эндпоинтам берется статистика открытия карточек (просмотров)
                             ? `/api/characters/${item.id}`
                             : `/api/worlds/${item.id}`;
                         const [res, chatsRes] = await Promise.all([
@@ -1619,6 +1804,31 @@
                     } catch (e) { showToast('Ошибка сброса'); }
                 };
 
+                const undoLastTurn = async () => {
+                    const idx = undoTargetIndex.value;
+                    if (idx < 1 || isUndoing.value) return;
+                    if (!confirm('Удалить последние два сообщения?')) return;
+
+                    isUndoing.value = true;
+                    const h = chatHistory.value;
+                    const userIdx = idx - 1;
+                    let endIdx = idx;
+                    while (endIdx + 1 < h.length && h[endIdx + 1].role === 'assistant' && !h[endIdx + 1].content) {
+                        endIdx++;
+                    }
+                    const removed = h.splice(userIdx, endIdx - userIdx + 1);
+
+                    try {
+                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
+                        showToast('Сообщения удалены', 'success');
+                    } catch (e) {
+                        chatHistory.value.splice(userIdx, 0, ...removed);
+                        showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                    } finally {
+                        isUndoing.value = false;
+                    }
+                };
+
                 // --- UTILS ---
                 const typeWriter = async (text) => {
                     const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
@@ -1795,165 +2005,83 @@
                 // --- CREATE CHARACTER ---
                 const createCharacterOnClick = () => {
                     currentView.value = "create-character";
-                    createStrategy.value = null;
-                    preStep.value = 0;
-                    createCharacterData.value = { name: "", is_public: false };
-                    createPromptText.value = null;
-                    currentCCGroupIndex.value = 0;
-                    currentCCStepIndex.value = 0;
+                    createCharacterData.value = defaultCreateCharacterData();
                     newCharacterPreview.value = null;
-                    newCharacterScenario.value = null;
-                    newCharacterFirstMes.value = null;
-                    newCharacterDescription.value = null;
+                    editingCharacterId.value = null;
+                    ccStep.value = 0;
                 }
 
-                const createCharacterFromPrompt = async () => {
-                    if (isGeneratingFromPrompt.value) return;
-                    isGeneratingFromPrompt.value = true;
+                const editCharacterOnClick = async (characterId) => {
                     try {
-                        const res = await axios.post('/api/create_character/create_character_from_prompt', {
-                            user_prompt: createPromptText.value,
-                            user_name: createCharacterData.value.name,
-                            style: createCharacterData.value.style
-                        });
-                        // Сохраняем имя и стиль (бэкенд их учитывает, но дублируем для надёжности)
-                        const existingStyle = createCharacterData.value.style;
-                        const existingName = createCharacterData.value.name;
+                        const res = await axios.get(`/api/characters/${characterId}/edit`);
+                        const c = res.data;
                         createCharacterData.value = {
-                            ...res.data.createCharacterData,
-                            is_public: false,
-                            style: existingStyle,
-                            name: existingName
+                            name: c.name,
+                            short_description: c.short_description || '',
+                            description: c.description,
+                            personality: c.personality,
+                            scenario: c.scenario,
+                            first_message: c.first_message,
+                            heat_level: c.heat_level || 0,
+                            alternate_greetings: c.alternate_greetings || [],
+                            model_type: c.model_type || 'anime',
+                            appearance: c.appearance || '',
+                            visual_body: c.visual_body || '',
+                            visual_face: c.visual_face || '',
+                            visual_default_outfit: c.visual_default_outfit || '',
+                            wardrobe: c.wardrobe || {},
                         };
-                        newCharacterScenario.value = res.data.newCharacterScenario;
-                        newCharacterFirstMes.value = res.data.newCharacterFirstMes;
-                        newCharacterDescription.value = res.data.newCharacterDescription;
-
-                        // Переход на финальный шаг
-                        currentCCGroupIndex.value = totalGroups.value;
-                        currentCCStepIndex.value = 0;
-                        // Автоматически запускаем генерацию превью (стиль уже известен)
-                        if (!newCharacterPreview.value && !isGeneratingPreview.value && createCharacterData.value.style) {
-                            generateNewCharacterPreview();
-                        }
+                        newCharacterPreview.value = c.avatar || null;
+                        editingCharacterId.value = characterId;
+                        ccStep.value = 0;
+                        closeModal();
+                        currentView.value = "create-character";
                     } catch (e) {
-                        showToast('Ошибка генерации персонажа');
-                    } finally {
-                        isGeneratingFromPrompt.value = false;
+                        showToast('Ошибка загрузки данных персонажа');
                     }
                 }
 
-                const goToStep = (stepId) => {
-                    if (stepId === "name") {
-                        currentCCGroupIndex.value = 0;
-                        currentCCStepIndex.value = 0;
-                        return;
-                    }
-
-                    for (let groupIndex = 0; groupIndex < filteredGroups.value.length; groupIndex++) {
-                        const group = filteredGroups.value[groupIndex];
-                        const stepIndex = group.steps.findIndex(step => step.id === stepId);
-
-                        if (stepIndex !== -1) {
-                            currentCCGroupIndex.value = groupIndex;
-                            currentCCStepIndex.value = stepIndex;
+                const ccNextStep = () => {
+                    const d = createCharacterData.value;
+                    if (ccStep.value === 0) {
+                        if (!d.name.trim()) {
+                            showToast('Введите имя персонажа');
+                            return;
+                        }
+                    } else if (ccStep.value === 1) {
+                        if (!d.description.trim() || !d.personality.trim() || !d.scenario.trim() || !d.first_message.trim()) {
+                            showToast('Заполните все обязательные поля');
+                            return;
+                        }
+                    } else if (ccStep.value === 2) {
+                        if (!d.appearance || !d.appearance.trim()) {
+                            showToast('Заполните поле внешности');
+                            return;
+                        }
+                        const cyrillicRe = /[а-яёА-ЯЁ]/;
+                        const visualFields = [d.appearance, d.visual_body, d.visual_face, d.visual_default_outfit];
+                        if (visualFields.some(f => f && cyrillicRe.test(f))) {
+                            showToast('Поля внешности должны быть на английском');
                             return;
                         }
                     }
+                    if (ccStep.value < 3) ccStep.value++;
                 };
 
-                const goToGroup = (groupIndex) => {
-                    console.log(groupIndex);
-                    if (!filteredGroups.value[groupIndex]) return;
-
-                    currentCCGroupIndex.value = groupIndex;
-                    currentCCStepIndex.value = 0; // всегда первый шаг группы
-                };
-
-                const changeStep = async (delta) => {
-                    // Переход назад из первых шагов конструктора → развилка
-                    if (currentCCGroupIndex.value <= 1 && currentCCStepIndex.value === 0 && delta === -1) {
-                        createStrategy.value = null;
-                        return;
-                    }
-
-                    if (delta === 1) {
-                        // Переход вперед
-                        const currentGroupSteps = currentGroup.value?.steps?.length || 0;
-                        if (currentCCStepIndex.value < currentGroupSteps - 1) {
-                            // Следующий шаг в текущей группе
-                            currentCCStepIndex.value++;
-                        } else if (currentCCGroupIndex.value < totalGroups.value - 1) {
-                            // Переход к следующей группе
-                            currentCCGroupIndex.value++;
-                            currentCCStepIndex.value = 0;
-                        } else {
-                            // Переход на финальный шаг (генерация)
-                            currentCCGroupIndex.value = totalGroups.value;
-                            currentCCStepIndex.value = 0;
-                            // Автоматически запускаем генерацию превью
-                            if (!newCharacterPreview.value && !isGeneratingPreview.value) {
-                                generateNewCharacterPreview();
-                            }
-                            // Автоматически генерируем сценарий
-                            if (!newCharacterScenario.value) {
-                                await generateNewCharacterScenario();
-                            }
-                        }
+                const ccPrevStep = () => {
+                    if (ccStep.value === 0) {
+                        editingCharacterId.value = null;
+                        currentView.value = 'selection';
                     } else {
-                        // Переход назад
-                        if (currentCCGroupIndex.value >= totalGroups.value) {
-                            // Возврат с финального шага
-                            currentCCGroupIndex.value = totalGroups.value - 1;
-                            currentCCStepIndex.value = (filteredGroups.value[currentCCGroupIndex.value]?.steps?.length || 1) - 1;
-                        } else if (currentCCStepIndex.value > 0) {
-                            // Предыдущий шаг в текущей группе
-                            currentCCStepIndex.value--;
-                        } else if (currentCCGroupIndex.value > 0) {
-                            // Переход к предыдущей группе
-                            currentCCGroupIndex.value--;
-                            currentCCStepIndex.value = (filteredGroups.value[currentCCGroupIndex.value]?.steps?.length || 1) - 1;
-                        }
+                        ccStep.value--;
                     }
+                };
 
-                    // Скролл к началу контейнера
-                    await nextTick();
-                    if (stepsContainer.value) {
-                        stepsContainer.value.scrollTop = 0;
+                const goToStep = (step) => {
+                    if (step <= ccStep.value) {
+                        ccStep.value = step;
                     }
-                }
-
-                function selectCCItem(itemIndex) {
-                    const step = currentStep.value;
-                    if (!step) return;
-
-                    const item = step.items[itemIndex];
-
-                    if (step.type === 'imgSelect') {
-                        createCharacterData.value[step.id] = item.value;
-                    }
-
-                    else if (step.type === 'textMultiSelect') {
-                        if (!createCharacterData.value.preferences) {
-                            createCharacterData.value.preferences = [];
-                        }
-
-                        const alreadySelected = createCharacterData.value.preferences?.includes(item);
-
-                        if (alreadySelected) {
-                            createCharacterData.value.preferences = createCharacterData.value.preferences?.filter(
-                                i => i !== item
-                            );
-                        }
-                        else if (createCharacterData.value.preferences?.length < 3) {
-                            createCharacterData.value.preferences.push(item);
-                        }
-                    }
-
-                    else if (step.type === 'textSelect'){
-                        createCharacterData.value[step.id] = item;
-                    }
-                }
+                };
 
                 const isGeneratingPreview = ref(false);
 
@@ -1961,86 +2089,279 @@
                     if (isGeneratingPreview.value) return;
                     isGeneratingPreview.value = true;
                     try {
-                        const res = await axios.post('/api/image-gen/generate_preview', createCharacterData.value);
-                        newCharacterPreview.value = res.data.url;
+                        const res = await axios.post('/api/create_character/generate-avatar', {
+                            model_type: createCharacterData.value.model_type,
+                            appearance: createCharacterData.value.appearance,
+                            body: createCharacterData.value.visual_body,
+                            face: createCharacterData.value.visual_face,
+                            default_outfit: createCharacterData.value.visual_default_outfit,
+                        });
+
+                        if (res.data.task_id) {
+                            pollImageTask(
+                                res.data.task_id,
+                                (result) => {
+                                    newCharacterPreview.value = result.url;
+                                    isGeneratingPreview.value = false;
+                                },
+                                (error) => {
+                                    showToast('Ошибка генерации аватара');
+                                    isGeneratingPreview.value = false;
+                                }
+                            );
+                        } else if (res.data.url) {
+                            newCharacterPreview.value = res.data.url;
+                            isGeneratingPreview.value = false;
+                        }
                     } catch (e) {
-                        showToast('Ошибка генерации фото');
-                    } finally {
+                        showToast('Ошибка генерации аватара');
                         isGeneratingPreview.value = false;
                     }
                 }
 
-                const generateNewCharacterScenario = async () => {
-                    if (isGeneratingScenario.value) return;
-                    isGeneratingScenario.value = true;
-                    try {
-                        const res = await axios.post('/api/create_character/scenario', createCharacterData.value);
-                        newCharacterScenario.value = res.data.scenario;
-                        newCharacterFirstMes.value = res.data.first_mes;
-                        newCharacterDescription.value = res.data.description;
-                    } catch (e) {
-                        showToast('Ошибка генерации сценария');
-                    } finally {
-                        isGeneratingScenario.value = false;
-                    }
+                const addAlternateGreeting = () => {
+                    createCharacterData.value.alternate_greetings.push('');
+                }
+
+                const removeAlternateGreeting = (idx) => {
+                    createCharacterData.value.alternate_greetings.splice(idx, 1);
+                }
+
+                const addWardrobeItem = () => {
+                    const key = `outfit_${Object.keys(createCharacterData.value.wardrobe).length + 1}`;
+                    createCharacterData.value.wardrobe[key] = '';
+                }
+
+                const removeWardrobeItem = (key) => {
+                    delete createCharacterData.value.wardrobe[key];
+                }
+
+                const renameWardrobeKey = (oldKey, newKey) => {
+                    newKey = newKey.trim();
+                    if (!newKey || newKey === oldKey) return;
+                    const val = createCharacterData.value.wardrobe[oldKey];
+                    delete createCharacterData.value.wardrobe[oldKey];
+                    createCharacterData.value.wardrobe[newKey] = val;
                 }
 
                 const isCreatingCharacter = ref(false);
 
                 const createCharacterFinal = async () => {
-                    if (!createCharacterData.value.name) {
-                        showToast('Введите имя персонажа');
+                    const d = createCharacterData.value;
+                    if (!d.name || !d.description || !d.personality || !d.scenario || !d.first_message) {
+                        showToast('Заполните все обязательные поля');
                         return;
                     }
 
                     isCreatingCharacter.value = true;
                     try {
                         const payload = {
-                            ...createCharacterData.value,
-                            scenario: newCharacterScenario.value,
-                            first_mes: newCharacterFirstMes.value,
-                            description: newCharacterDescription.value,
-                            avatar_url: newCharacterPreview.value
+                            name: d.name,
+                            short_description: d.short_description,
+                            description: d.description,
+                            personality: d.personality,
+                            scenario: d.scenario,
+                            first_message: d.first_message,
+                            heat_level: d.heat_level || 0,
+                            alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
+                            model_type: d.model_type,
+                            appearance: d.appearance,
+                            visual_body: d.visual_body,
+                            visual_face: d.visual_face,
+                            visual_default_outfit: d.visual_default_outfit,
+                            wardrobe: d.wardrobe,
+                            avatar_url: newCharacterPreview.value,
                         };
-                        // 1. Создаем персонажа
-                        const createRes = await axios.post('/api/create_character', payload);
-                        const characterId = createRes.data.character_id;
 
-                        showToast('Персонаж создан!');
+                        if (editingCharacterId.value) {
+                            await axios.put(`/api/characters/${editingCharacterId.value}`, payload);
+                            showToast('Персонаж обновлён!');
+                            createCharacterData.value = defaultCreateCharacterData();
+                            newCharacterPreview.value = null;
+                            editingCharacterId.value = null;
+                            currentView.value = 'selection';
+                            loadCharacters();
+                        } else {
+                            const createRes = await axios.post('/api/create_character', payload);
+                            const characterId = createRes.data.character_id;
 
-                        // 2. Сохраняем данные для чата
-                        const chatMeta = {
-                            name: createCharacterData.value.name,
-                            avatar: newCharacterPreview.value
-                        };
+                            showToast('Персонаж создан!');
 
-                        // 3. Создаем чат с персонажем
-                        const chatRes = await axios.post('/api/chat/create', {
-                            chat_type: 'character',
-                            target_id: characterId,
-                            scenario_index: 0
-                        });
+                            const chatMeta = {
+                                name: d.name,
+                                avatar: newCharacterPreview.value
+                            };
 
-                        // 4. Очищаем данные создания персонажа
-                        currentCCGroupIndex.value = 0;
-                        currentCCStepIndex.value = 0;
-                        createCharacterData.value = {name: ""};
-                        newCharacterPreview.value = null;
-                        newCharacterScenario.value = null;
-                        newCharacterFirstMes.value = null;
-                        newCharacterDescription.value = null;
+                            const chatRes = await axios.post('/api/chat/create', {
+                                chat_type: 'character',
+                                target_id: characterId,
+                                scenario_index: 0
+                            });
 
-                        // 5. Открываем чат (вместо возврата в selection)
-                        await openChat(chatRes.data.chat_id, chatMeta);
+                            createCharacterData.value = defaultCreateCharacterData();
+                            newCharacterPreview.value = null;
+                            editingCharacterId.value = null;
 
-                        // 6. Перезагружаем списки в фоне
-                        loadCharacters();
-                        loadChats();
+                            await openChat(chatRes.data.chat_id, chatMeta);
+
+                            loadCharacters();
+                            loadChats();
+                        }
                     } catch (e) {
                         console.error(e);
-                        showToast('Ошибка создания персонажа');
+                        showToast(editingCharacterId.value ? 'Ошибка обновления персонажа' : 'Ошибка создания персонажа');
                     } finally {
                         isCreatingCharacter.value = false;
+                    }
+                }
+
+                // --- CREATE WORLD ---
+                const createWorldOnClick = () => {
+                    currentView.value = "create-world";
+                    createWorldData.value = defaultCreateWorldData();
+                    editingWorldId.value = null;
+                    cwStep.value = 0;
+                }
+
+                const editWorldOnClick = async (worldId) => {
+                    try {
+                        const res = await axios.get(`/api/worlds/${worldId}/edit`);
+                        const w = res.data;
+                        createWorldData.value = {
+                            name: w.name,
+                            short_description: w.short_description || '',
+                            description: w.description,
+                            gm_instructions: w.gm_instructions || '',
+                            intro_message: w.intro_message || '',
+                            alternate_scenarios: (w.alternate_scenarios || []).map(a => ({
+                                title: a.title || '', intro: a.intro || '', gm_instructions: a.gm_instructions || ''
+                            })),
+                            cover_image_url: w.cover_image || '',
+                            tags_str: (w.tags || []).join(', ')
+                        };
+                        editingWorldId.value = worldId;
+                        cwStep.value = 0;
+                        closeModal();
+                        currentView.value = "create-world";
+                    } catch (e) {
+                        showToast('Ошибка загрузки данных мира');
+                    }
+                }
+
+                const deleteWorld = async (worldId) => {
+                    if (!confirm('Удалить мир? Это действие нельзя отменить.')) return;
+                    try {
+                        await axios.delete(`/api/worlds/${worldId}`);
+                        closeModal();
+                        await loadWorlds();
+                        showToast('Мир удалён');
+                    } catch (e) {
+                        showToast('Ошибка удаления мира');
+                    }
+                };
+
+                const cwNextStep = () => {
+                    const d = createWorldData.value;
+                    if (cwStep.value === 0) {
+                        if (!d.name.trim()) {
+                            showToast('Введите название мира');
+                            return;
+                        }
+                        if (!d.description.trim()) {
+                            showToast('Введите описание мира');
+                            return;
+                        }
+                    } else if (cwStep.value === 1) {
+                        if (!d.intro_message.trim()) {
+                            showToast('Введите вступительное сообщение');
+                            return;
+                        }
+                    }
+                    if (cwStep.value < 2) cwStep.value++;
+                };
+
+                const cwPrevStep = () => {
+                    if (cwStep.value === 0) {
+                        editingWorldId.value = null;
+                        currentView.value = 'selection';
+                    } else {
+                        cwStep.value--;
+                    }
+                };
+
+                const cwGoToStep = (step) => {
+                    if (step <= cwStep.value) {
+                        cwStep.value = step;
+                    }
+                };
+
+                const addAlternateScenario = () => {
+                    createWorldData.value.alternate_scenarios.push({ title: '', intro: '', gm_instructions: '' });
+                }
+
+                const removeAlternateScenario = (idx) => {
+                    createWorldData.value.alternate_scenarios.splice(idx, 1);
+                }
+
+                const createWorldFinal = async () => {
+                    const d = createWorldData.value;
+                    if (!d.name || !d.description || !d.intro_message) {
+                        showToast('Заполните все обязательные поля');
+                        return;
+                    }
+
+                    isCreatingWorld.value = true;
+                    try {
+                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
+                        const payload = {
+                            name: d.name,
+                            short_description: d.short_description,
+                            description: d.description,
+                            gm_instructions: d.gm_instructions,
+                            intro_message: d.intro_message,
+                            alternate_scenarios: d.alternate_scenarios.filter(a => a.title.trim() || a.intro.trim()),
+                            cover_image_url: d.cover_image_url || null,
+                            tags: tags
+                        };
+
+                        if (editingWorldId.value) {
+                            await axios.put(`/api/worlds/${editingWorldId.value}`, payload);
+                            showToast('Мир обновлён!');
+                            createWorldData.value = defaultCreateWorldData();
+                            editingWorldId.value = null;
+                            currentView.value = 'selection';
+                            loadWorlds();
+                        } else {
+                            const createRes = await axios.post('/api/create_world', payload);
+                            const worldId = createRes.data.world_id;
+
+                            showToast('Мир создан!');
+
+                            const chatMeta = {
+                                name: d.name,
+                                avatar: d.cover_image_url || null,
+                                chat_type: 'world'
+                            };
+
+                            const chatRes = await axios.post('/api/chat/create', {
+                                chat_type: 'world',
+                                target_id: worldId,
+                                scenario_index: 0
+                            });
+
+                            createWorldData.value = defaultCreateWorldData();
+                            editingWorldId.value = null;
+
+                            await openChat(chatRes.data.chat_id, chatMeta);
+
+                            loadWorlds();
+                            loadChats();
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        showToast(editingWorldId.value ? 'Ошибка обновления мира' : 'Ошибка создания мира');
+                    } finally {
+                        isCreatingWorld.value = false;
                     }
                 }
 
@@ -2049,7 +2370,8 @@
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
-                    isWaitingResponse, isStreaming, messagesContainer, inputField,
+                    isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
+                    undoTargetIndex, undoLastTurn,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
@@ -2057,14 +2379,25 @@
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
                     toast, autoContinue, hideKeyboard,
-                    newCharacterScenario, newCharacterFirstMes, newCharacterDescription, generateNewCharacterScenario,
-                    createCharacterOnClick, createStrategy, preStep, createPromptText, selectCCItem, currentCCStep, newCharacterPreview, stepsContainer,
-                    stepsList, filteredStepsList, currentStep, totalSteps, stepsGroups,
-                    filteredGroups, currentGroup, totalGroups, currentCCGroupIndex, currentCCStepIndex, goToStep, goToGroup,
-                    createCharacterData, changeStep, generateNewCharacterPreview, createCharacterFromPrompt,
-                    isCreatingCharacter, createCharacterFinal, isGeneratingScenario, isGeneratingPreview, isGeneratingFromPrompt,
+                    createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
+                    generateNewCharacterPreview, isGeneratingPreview,
+                    ccStep, ccNextStep, ccPrevStep, goToStep,
+                    addAlternateGreeting, removeAlternateGreeting,
+                    addWardrobeItem, removeWardrobeItem, renameWardrobeKey,
+                    isCreatingCharacter, createCharacterFinal,
+                    // World creation
+                    createWorldOnClick, editWorldOnClick, deleteWorld, editingWorldId, createWorldData,
+                    cwStep, cwNextStep, cwPrevStep, cwGoToStep,
+                    addAlternateScenario, removeAlternateScenario,
+                    isCreatingWorld, createWorldFinal,
                     // Profile
                     userProfile, profileSettings, mockTransactions, loadProfile,
+                    isEditingNickname, nicknameDraft, isSavingNickname,
+                    startEditNickname, cancelEditNickname, saveNickname,
+                    // Documents & Support
+                    showDocumentOverlay, currentDocument, openDocument, closeDocument, openSupport,
+                    // Age confirmation
+                    showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur
                     revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
                     generateAutoReply,

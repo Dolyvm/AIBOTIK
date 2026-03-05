@@ -7,6 +7,7 @@ from .base import BaseRepository
 from ..exceptions import EntityNotFoundError, InsufficientBalanceError
 from shared.services.cache import get_cache
 
+
 class UserRepository(BaseRepository[User]):
     model = User
 
@@ -18,7 +19,12 @@ class UserRepository(BaseRepository[User]):
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create(self, telegram_id: int, username: Optional[str] = None) -> User:
+    async def get_or_create(
+            self,
+            telegram_id: int,
+            username: Optional[str] = None,
+            do_commit: bool = True
+    ) -> tuple[User, bool]:
         user = await self.get_by_telegram_id(telegram_id)
 
         if not user:
@@ -31,8 +37,10 @@ class UserRepository(BaseRepository[User]):
 
             settings = UserSettings(user_id=telegram_id)
             self.session.add(settings)
-
-            await self.session.commit()
+            if do_commit:
+                await self.session.commit()
+            else:
+                await self.session.flush()
 
             result = await self.session.execute(
                 select(User)
@@ -41,7 +49,9 @@ class UserRepository(BaseRepository[User]):
             )
             user = result.scalar_one()
 
-        return user
+            return user, True
+
+        return user, False
 
     async def get_balance(self, telegram_id: int) -> int:
         result = await self.session.execute(
@@ -54,7 +64,7 @@ class UserRepository(BaseRepository[User]):
 
     async def update_balance_atomic(self, telegram_id: int, amount: int) -> int:
         if amount < 0:
-                                            
+
             result = await self.session.execute(
                 update(User)
                 .where(
@@ -70,7 +80,7 @@ class UserRepository(BaseRepository[User]):
                 current = await self.get_balance(telegram_id)
                 raise InsufficientBalanceError(current, abs(amount))
         else:
-                        
+
             result = await self.session.execute(
                 update(User)
                 .where(User.telegram_id == telegram_id)
@@ -89,10 +99,14 @@ class UserRepository(BaseRepository[User]):
 
         return new_balance
 
-    async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None) -> bool:
+    async def update_settings(self, telegram_id: int, nsfw_blur: Optional[bool] = None, nickname: Optional[str] = None, age_confirmed: Optional[bool] = None) -> bool:
         updates = {}
         if nsfw_blur is not None:
             updates["nsfw_blur"] = nsfw_blur
+        if nickname is not None:
+            updates["nickname"] = nickname.strip()[:50] if nickname.strip() else None
+        if age_confirmed is not None:
+            updates["age_confirmed"] = age_confirmed
 
         if not updates:
             return True

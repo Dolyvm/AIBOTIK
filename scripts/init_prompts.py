@@ -64,19 +64,6 @@ PROMPT_METADATA = {
         "name": "Scene Analysis for Image Generation"
     },
 
-    "cc_scenario_prompt": {
-        "category": "creation",
-        "name": "Character Scenario Generation"
-    },
-    "cc_description_prompt": {
-        "category": "creation",
-        "name": "Character Description Generation"
-    },
-    "cc_first_mes_prompt": {
-        "category": "creation",
-        "name": "Character First Message Generation"
-    },
-
     "nsfw_level_0": {
         "category": "image",
         "name": "NSFW Level 0 (SFW) - Positive"

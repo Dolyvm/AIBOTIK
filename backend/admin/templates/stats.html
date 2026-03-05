@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Статистика проекта</h2>
+
+    {% if not admin %}
+    <div style="text-align: center; padding: 40px; color: #95a5a6;">
+        <p>🔄 Authenticating...</p>
+        <p style="margin-top: 10px; font-size: 14px;">
+            Please wait while we verify your Telegram credentials.
+        </p>
+    </div>
+    {% else %}
+
+    <!-- Общая статистика -->
+    <div style="margin-bottom: 30px;">
+        <h3>Общие метрики</h3>
+        <table>
+            <tr>
+                <td><strong>Всего пользователей</strong></td>
+                <td>{{ total_users }}</td>
+            </tr>
+            <tr>
+                <td><strong>Пользователи с чатами</strong></td>
+                <td>{{ users_with_chats }}</td>
+            </tr>
+            <tr>
+                <td><strong>Конверсия в чат (%)</strong></td>
+                <td>
+                    {% if total_users > 0 %}
+                        {{ ((users_with_chats / total_users) * 100) | round(1) }}
+                    {% else %}
+                        0
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Топ персонажей -->
+    <div style="margin-bottom: 40px;">
+        <h3>Топ персонажей</h3>
+
+        {% if top_characters %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Персонаж</th>
+                    <th>Просмотры</th>
+                    <th>Чаты</th>
+                    <th>Конверсия (%)</th>
+                    <th>Сообщения</th>
+                    <th>Фотографии</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for character in top_characters %}
+                <tr>
+                    <td><strong>{{ character["Персонаж"] }}</strong></td>
+                    <td>{{ character["Просмотры"] }}</td>
+                    <td>{{ character["Чаты"] }}</td>
+                    <td>{{ character["Конверсия (%)"] }}</td>
+                    <td>{{ character["Сообщения"] }}</td>
+                    <td>{{ character["Фотографии"] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #95a5a6;">Нет данных по персонажам.</p>
+        {% endif %}
+    </div>
+
+    <!-- Топ миров -->
+    <div style="margin-bottom: 40px;">
+        <h3>Топ миров</h3>
+
+        {% if top_worlds %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Мир</th>
+                    <th>Просмотры</th>
+                    <th>Чаты</th>
+                    <th>Конверсия (%)</th>
+                    <th>Сообщения</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for world in top_worlds %}
+                <tr>
+                    <td><strong>{{ world["Мир"] }}</strong></td>
+                    <td>{{ world["Просмотры"] }}</td>
+                    <td>{{ world["Чаты"] }}</td>
+                    <td>{{ world["Конверсия (%)"] }}</td>
+                    <td>{{ world["Сообщения"] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #95a5a6;">Нет данных по мирам.</p>
+        {% endif %}
+    </div>
+
+    <!-- Churn -->
+    <div>
+        <h3>Ушедшие пользователи (Churn)</h3>
+
+        {% if churn_summary %}
+        <table>
+            <tr>
+                <td><strong>Всего ушедших</strong></td>
+                <td>{{ churn_summary["Всего ушедших"] }}</td>
+            </tr>
+            <tr>
+                <td><strong>Процент от всех пользователей</strong></td>
+                <td>{{ churn_summary["Процент от всех пользователей"] }}%</td>
+            </tr>
+            <tr>
+                <td><strong>Среднее дней неактивности</strong></td>
+                <td>{{ churn_summary["Среднее дней неактивности"] }}</td>
+            </tr>
+            <tr>
+                <td><strong>Всего событий от ушедших</strong></td>
+                <td>{{ churn_summary["Всего событий от ушедших"] }}</td>
+            </tr>
+        </table>
+
+        <div style="margin-top: 20px;">
+            <h4>Распределение по последним событиям</h4>
+
+            {% if churn_summary["Распределение по последним событиям"] %}
+                {% for event, count in churn_summary["Распределение по последним событиям"].items() %}
+                    <div style="margin-bottom: 6px;">
+                        <span class="category-badge">{{ event }}</span>
+                        — {{ count }}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: #95a5a6;">Нет данных.</p>
+            {% endif %}
+        </div>
+        {% else %}
+        <p style="color: #95a5a6;">Нет данных по ушедшим пользователям.</p>
+        {% endif %}
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}

@@ -5,16 +5,19 @@ from pathlib import Path
 import sys
 
 from shared.models import User
+from shared.services.analytics import AnalyticsService
 
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from shared.database import get_session
 from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
 from shared.services.cache import get_cache
+from shared.services.image_cleanup import collect_character_file_paths, delete_files
 from auth.telegram_auth import get_current_user
 router = APIRouter(prefix="/api/characters", tags=["characters"])
 
@@ -61,6 +64,7 @@ async def list_characters(
         result.append({
             "id": char_id,
             "name": char["name"],
+            "short_description": char.get("short_description", ""),
             "avatar": char["avatar"],
             "tags": char_tags,
             "model_type": model_type,
@@ -72,25 +76,74 @@ async def list_characters(
     return {"characters": result}
 
 
+@router.get("/{character_id}/edit")
+async def get_character_for_edit(
+    character_id: str,
+    user: User = Depends(get_current_user),
+):
+    char = await get_character(character_id)
+    if not char:
+        raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
+
+    author = char.get("author", {})
+    if author.get("user_id") != user.telegram_id:
+        raise HTTPException(status_code=403, detail="You can only edit your own characters")
+
+    scenarios_full = char.get("scenarios_full", [])
+    heat_level = scenarios_full[0].get("heat_level", 0) if scenarios_full else 0
+
+    visual = char.get("visual", {})
+    return {
+        "id": character_id,
+        "name": char["name"],
+        "short_description": char.get("short_description", ""),
+        "description": char["description"],
+        "personality": char["personality"],
+        "scenario": char.get("scenario", ""),
+        "first_message": char.get("first_mes", ""),
+        "alternate_greetings": char.get("alternate_greetings", []),
+        "heat_level": heat_level,
+        "model_type": char.get("model_type", "anime"),
+        "appearance": char.get("appearance", ""),
+        "visual_body": visual.get("body", ""),
+        "visual_face": visual.get("face", ""),
+        "visual_default_outfit": visual.get("default_outfit", ""),
+        "wardrobe": visual.get("wardrobe", {}),
+        "avatar": char.get("avatar", ""),
+        "tags": char.get("tags", []),
+    }
+
+
 @router.get("/{character_id}")
-async def get_character_detail(character_id: str):
+async def get_character_detail(character_id: str, user: User = Depends(get_current_user)):
     """Detailed character information"""
     char = await get_character(character_id)
     if not char:
         raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
 
-    scenarios = [{
-        "index": 0,
-        "name": "Основной",
-        "preview": char["first_mes"]
-    }]
-
-    for i, alt in enumerate(char.get("alternate_greetings", []), 1):
+    scenarios_full = char.get("scenarios_full", [])
+    scenarios = []
+    for s in scenarios_full:
+        idx = s["index"]
         scenarios.append({
-            "index": i,
-            "name": f"Сценарий {i}",
-            "preview": alt
+            "index": idx,
+            "name": "Основной" if idx == 0 else f"Сценарий {idx}",
+            "preview": s.get("intro", ""),
+            "heat_level": s.get("heat_level", 0),
         })
+    async with get_session() as session:
+        await AnalyticsService.track(
+            session,
+            user.telegram_id,
+            "character_click",
+            "characters",
+            character_id
+        )
+
+    if not scenarios:
+        scenarios = [{"index": 0, "name": "Основной", "preview": char.get("first_mes", ""), "heat_level": 0}]
+        for i, alt in enumerate(char.get("alternate_greetings", []), 1):
+            scenarios.append({"index": i, "name": f"Сценарий {i}", "preview": alt, "heat_level": 0})
 
     return {
         "id": character_id,
@@ -154,6 +207,9 @@ async def delete_character(
         select(Chat).where(Chat.chat_type == "character", Chat.target_id == character_id)
     )
     chats = chats_result.scalars().all()
+    chat_ids = [c.id for c in chats]
+
+    paths = await collect_character_file_paths(db, character_id, chat_ids)
 
     cache = get_cache()
     for chat in chats:
@@ -163,6 +219,9 @@ async def delete_character(
 
     await db.delete(character)
     await db.commit()
+
+    # Delete files AFTER commit
+    delete_files(paths)
 
     if cache:
         await cache.invalidate_character(character_id)

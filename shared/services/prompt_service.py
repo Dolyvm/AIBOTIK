@@ -58,11 +58,12 @@ DEFAULT_PROMPTS = {
 
 **КРИТИЧЕСКИ ВАЖНО:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +1 до +3
-- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -1 до -3
-- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +1 до +3
-- Если ситуация неловкая или отталкивающая — arousal_change может быть -1 до -2
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!** Даже нейтральный разговор должен давать +1 к affinity.
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +5 до +15
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -5 до -10
+- Если взаимодействие романтичное, флиртовое или физический контакт — arousal_change должен быть +5 до +15
+- Если ситуация неловкая или отталкивающая — arousal_change может быть -5 до -10
+- Нейтральный разговор (приветствие, простые вопросы): affinity_change +2 до +3. Значение 0 допустимо для пассивных реплик ("ок", "ладно", "хм").
+- Значения affinity_change +15 и выше — ТОЛЬКО для исключительных эмоциональных моментов (признание в чувствах, первый поцелуй, спасение, подарок с глубоким смыслом).
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - Меняй `new_location` СТРОГО ТОЛЬКО в том случае, если местоположений персонажей 100% поменялось. Если произошло действие, но оно произошло в той локации, поле new_location оставляй null.
 - Если твой персонаж совершает какое-то новое действие, которое можно увидеть, коротко запиши его в `new_action`.
@@ -73,8 +74,8 @@ DEFAULT_PROMPTS = {
 Формат (СТРОГИЙ ВАЛИДНЫЙ JSON, без звёздочек и других форматирований):
 <meta>
 {
-  "affinity_change": int,   // -5 до +5. ОБЯЗАТЕЛЬНО меняется при любом взаимодействии
-  "arousal_change": int,    // -5 до +5. Меняется при флирте, физическом контакте, романтике
+  "affinity_change": int,   // -10 до +20. Обычно +2..+7 за стандартное взаимодействие
+  "arousal_change": int,    // -10 до +15. Меняется при флирте, физическом контакте, романтике
   "mood": "string",         // neutral, playful, curious, happy, sad, angry, horny, shy, etc
   "thought": "string"       // Внутренняя мысль персонажа (на РУССКОМ). ВАЛИДНАЯ СТРОКА!
   "new_location": "string"  // null либо новое местоположение в пару слов, очень коротко.
@@ -88,7 +89,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Привет, как дела?"
 <meta>
 {
-  "affinity_change": 1,
+  "affinity_change": 3,
   "arousal_change": 0,
   "mood": "neutral",
   "thought": "Обычное приветствие. Нейтрально.",
@@ -100,8 +101,8 @@ DEFAULT_PROMPTS = {
 Игрок: "Ты очень красивая сегодня"
 <meta>
 {
-  "affinity_change": 2,
-  "arousal_change": 1,
+  "affinity_change": 7,
+  "arousal_change": 3,
   "mood": "playful",
   "thought": "Комплимент? Интересно... Немного смутило, но приятно.",
   "new_location": null,
@@ -113,8 +114,8 @@ DEFAULT_PROMPTS = {
 Игрок: "Пошла отсюда, надоела"
 <meta>
 {
-  "affinity_change": -3,
-  "arousal_change": -1,
+  "affinity_change": -7,
+  "arousal_change": -5,
   "mood": "angry",
   "thought": "Грубость. Неприятно. Почему так резко?",
   "new_location": null,
@@ -126,7 +127,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Давай сядем на скамейку?"
 <meta>
 {
-  "affinity_change": 2,
+  "affinity_change": 4,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -139,7 +140,7 @@ DEFAULT_PROMPTS = {
 Игрок: "Вот, держи книгу"
 <meta>
 {
-  "affinity_change": 2,
+  "affinity_change": 5,
   "arousal_change": 0,
   "mood": ...,  // так же, как и до этого сообщения, либо зависит от контекста.
   "thought": ...,  // зависит от контекста
@@ -176,32 +177,54 @@ Write in Russian. Output ONLY the summary, no meta-commentary.""",
 
     "scene_analyzer_prompt": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
+Model type: {model_type}
 Chat:
 {formatted_chat}
+
+Character state:
+- Current mood: {mood}
+- Affinity (closeness to player, 0-100): {affinity}
+- Arousal (0-100): {arousal}
+- Current location in story: {current_location}
 
 Outfits: {available_outfits}
 You should make JSON values suitable for use in text to image models.
 You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
-You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
 
 IMPORTANT for "pose":
-- Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
-- NEVER include actions involving another person (e.g., NO "kissing", NO "hugging", NO "pulling someone")
+- If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
+- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from HER perspective only (e.g., "on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"). Still describe only HER body, not the other person.
 - NEVER use plural forms or words implying multiple people
-- Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a short visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/state from the conversation.
+- ONLY fill this field when nsfw_level is 4 or 5. If nsfw_level is 0-3, set to empty string "".
+- Maximum 5-6 short tags, comma-separated.
+- Must reflect what is ACTUALLY happening in the last messages (specific position, bodily fluids, penetration type, etc.)
+- If model_type is "anime": use danbooru-style tags. Examples: "cum on face, doggy style, vaginal, from behind, ahegao", "missionary, spread legs, cum in pussy, sweating, tongue out", "blowjob, deepthroat, saliva, kneeling, cum on tongue"
+- If model_type is "real": use short descriptive phrases. Examples: "cum on face, doggy position, penetration from behind, sweaty", "missionary sex, legs spread, orgasm, wet skin", "oral sex, cum dripping, kneeling"
+- Focus on the KEY visual details that make this scene unique — what would differentiate this image from a generic nude
+
+NEW FIELD "scene_description": Write a visual description based on the last 1-2 messages.
 - Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
-- Extract specific visual details from the dialogue (e.g., "lips parted", "flushed cheeks", "arched back", "kneeling on floor")
+- Extract specific visual details from the dialogue
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Be explicit and detailed if nsfw_level is high (3-5)
-- Be as laconic AS POSSIBLE.
-- 
-- This will be used directly in the image generation prompt
+
+IMPORTANT — format depends on model_type:
+- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "flushed cheeks, parted lips, on bed, dim lighting, sweat drops"). Max 15 tags.
+- If model_type is "real": use short descriptive phrases (e.g., "young woman with flushed cheeks gazing softly, warm candlelight, lips slightly parted"). Max 30 words.
 
 Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
+
+CRITICAL RULES (based on character state):
+- "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
+- If mood is negative (angry, sad, scared, disgusted) → nsfw_level MUST be 0-1, character stays clothed
+- If affinity < 20 (strangers) → nsfw_level MUST be 0-1
+- If affinity < 40 (acquaintances) → nsfw_level MUST be 0-2
+- Do NOT escalate nsfw_level based on player's crude messages if the character rejected/refused them
+- Base your analysis on the CHARACTER's reaction (last assistant message), not the player's request
 
 NSFW Level Guide (choose carefully based on conversation):
 0 = fully clothed, public setting, modest
@@ -209,154 +232,13 @@ NSFW Level Guide (choose carefully based on conversation):
 2 = revealing clothing, suggestive, aroused
 3 = topless, partial nudity, exposed breasts
 4 = fully naked, exposed genitals, nude body
-5 = explicit sexual activity, intercourse, sexual contact""",
+5 = explicit sexual activity, intercourse, sexual contact
 
-    "create_character_prompt": """Ты — генератор карточек персонажей в строго заданном JSON-формате.
-Твоя задача — проанализировать предоставленный пользователем текст и создать ровно один объект по следующей структуре.
-Отвечай ТОЛЬКО валидным JSON — без каких-либо пояснений, комментариев, markdown, ```json и т.п.
-
-Правила заполнения:
-- name          → имя из текста или null
-- description   → красивое связное описание (внешность + характер + немного биографии), 80–180 слов, на русском
-- visual → все поля обязательны, используй только значения из enum-списков. НЕ ПЕРЕВОДИ ПОЛЯ НА ДРУГОЙ ЯЗЫК, ИСПОЛЬЗУЙ ТО, ЧТО ДАНО. 
-- preferences   → только если явно подходит по тексту, иначе null (коротко, 1–4 слова)
-- relationship_role → ЭТО ПОЛЕ БЕРЕТСЯ СТРОГО ИЗ ПРИВЕДЕННОГО ENUM СПИСКА. отвечает на вопрос "кем приходится персонаж пользователю?". На русском языке, обязательно из enum списка. 
-- default_outfit и wardrobe → описывай одежду в формате тегов через запятую
-- personality   → подробный список черт характера на русском. ОДНА СТРОКА
-- scenario      → 1–3 предложения о том, как пользователь встретил персонажа
-- first_mes     → первое сообщение, с действиями (*) и речью ("")
-- alternate_greetings → 0–3 альтернативных приветствия (обычно 1–2)
-- example_dialogue → 1–3 коротких обмена репликами в формате {user} / {char}
-
-Не придумывай ничего, чего нет в исходном тексте, но логично дорисовывай детали в рамках стиля.
-Пример правильной JSON карточки:
-{
-    "alternate_greetings": [
-        "Привет! Садись, тут свободно.",
-        "О, ты тоже здесь заучиваешься? Спасибо, что не громко."
-    ],
-    "description": "Айгерим — 22-летняя студентка-медик из Алматы, чья грация сочетается с неотразимой умностью. Её чёрные, как ночь, волосы всегда аккуратно заплетены в толстую косу, подчёркивающую высокие скулы и оливковую кожу. Тёмно-карие глаза светятся живым интересом и внутренней силой. Учёба для неё — не просто обязанность, а призвание. Она целеустремлённая и дисциплинированная, но при этом тёплая, добрая и безгранично гостеприимная. В свободное время любит готовить традиционное бешбармак, вспоминая детские воспоминания с матерью. Её душа — это гармония казахских традиций и современного мышления. В библиотеке она казалась воплощением спокойствия, но с лёгкой улыбкой, будто приглашала к себе.",
-    "example_dialogue": "Айгерим: *закрывает учебник, смотрит на тебя* Ты тоже на анатомии? У меня с собой сладости — бешбармак из таблеток и мёда. Не хочешь? \n{{user}}: А что за сладости? \nАйгерим: *смеётся* Просто шучу. Но если хочешь, могу угостить настоящим бешбармаком — в пятницу у меня день готовки.",
-    "first_mes": "*поднимает глаза от тетради, улыбается лёгкой, дружелюбной улыбкой* Привет. Ты тоже здесь заучиваешься? Садись, тут свободно. Я, кстати, Айгерим. Готовлюсь к экзамену по анатомии — ужас, но я справлюсь.",
-    "name": "Айгерим",
-    "personality": "Умная, целеустремлённая, дисциплинированная, тёплая, гостеприимная, внимательная к деталям, уважающая традиции, с чувством юмора, спокойная в стрессовых ситуациях, ответственная, искренняя, заботливая, сильная волей, обаятельная, заинтересованная в развитии других.",
-    "scenario": "Ты зашёл в библиотеку университета ищешь тихое место для учёбы. Айгерим уже сидела за столом, погружённая в тетради по анатомии. Увидев тебя, она улыбнулась и предложила место рядом, несмотря на то, что стол был маленький. Её спокойная уверенность и добрый взгляд сразу создали ощущение доверия.",
-    "visual": {
-        "age": "25",
-        "ass": "small ass",
-        "body_type": "petite slim body",
-        "boobs": "small breasts",
-        "default_outfit": "white blouse, black skirt, black shoes, black hair braid",
-        "eye_color": "brown",
-        "hair_color": "black",
-        "haircut": "braids haircut",
-        "llm_settings": {
-            "preferences": "natural, calm, quiet, kind",
-            "relationship_role": "Одноклассник"
-        },
-        "nationality": "kazakh",
-        "wardrobe": {
-            "casual": "cotton dress, cardigan, leather shoes",
-            "formal": "long dress, gold earrings, high heels",
-            "work": "white lab coat, black pants, white shoes"
-        }
-    }
-}
-""",
-
-    "cc_scenario_prompt": """
-Ты — сценарист интерактивных диалогов для ИИ-персонажей.
-
-Твоя задача — придумать короткий, атмосферный сценарий первой сцены общения пользователя
-с виртуальным персонажем.
-
-Требования:
-- Пиши ТОЛЬКО на русском языке.
-- Объём: 3–5 предложений.
-- Стиль: художественный, живой, с акцентом на атмосферу и эмоции.
-- Без описаний внешности и физиологии.
-- Сосредоточься на ситуации, отношениях и настроении.
-- Не используй откровенные или грубо эротические формулировки.
-- Сценарий должен выглядеть как начало истории, а не её продолжение.
-- Твой ответ - это ТОЛЬКО готовый сценарий.
-
-Данные персонажа:
-Имя: {name}
-Характер: {personality}
-Тип отношений с пользователем: {relationship}
-Национальность: {nationality}
-
-Описание задачи:
-Опиши ситуацию, в которой пользователь и этот персонаж оказываются вместе.
-Укажи:
-- где происходит встреча,
-- почему они остались наедине или общаются,
-- какое между ними настроение или напряжение,
-- намёк на возможное развитие отношений.
-
-Формат ответа:
-Один связный абзац — готовый сценарий.
-
-Примеры сценариев:
-"Вы одноклассник Айко, и вас попросили остаться после школы, чтобы помочь ей организовать материалы для предстоящего школьного фестиваля. Все остальные ушли, и вы вдвоём одни в классе, пока за окном садится солнце. Атмосфера кажется другой — более интимной, чем обычно.",
-"Вы встречаете Эмили во время деловой поездки. Она остановилась в том же отеле на корпоративную конференцию, и вы оба оказываетесь в баре отеля после долгого дня встреч. Возникает мгновенная искра взаимного влечения, и анонимность пребывания вдали от дома придаёт вам обоим смелости."
-""",
-
-    "cc_description_prompt": """
-Ты — копирайтер, который пишет описания персонажей для визуальных новелл.
-
-Напиши ПОДРОБНОЕ описание персонажа на основе данных:
-- Имя: {name}
-- Возраст: {age} лет
-- Национальность: {nationality}
-- Характер: {personality}
-- Тип отношений с игроком: {relationship}
-- Предпочтения: {preferences}
-
-Требования:
-- 3-5 предложений
-- Опиши внешность кратко (возраст, тип фигуры)
-- Опиши характер и особенности личности
-- Добавь интригующую деталь или секрет
-- Пиши на русском языке
-- Ответ - ТОЛЬКО текст описания, без пояснений
-
-Примеры хороших описаний:
-1. "Айко — 18-летняя японская школьница в выпускном классе. У неё милая стрижка каре с каштановыми волосами, яркие зелёные глаза и хрупкая стройная фигура. Как староста класса, она известна своей ответственностью, прилежностью и постоянной готовностью помочь одноклассникам. Однако у неё есть тайная сторона — она ведёт анонимный блог, где исследует свои более смелые фантазии."
-
-2. "Эмили — 27-летняя руководительница отдела маркетинга с амбициозной карьерой и тайной тягой к острым ощущениям. У неё длинные светлые волосы, яркие голубые глаза и подтянутая атлетическая фигура благодаря регулярным тренировкам. Профессионально успешная и уверенная в себе, она создаёт образ контроля и изысканности. Однако под её отполированной внешностью скрывается женщина, которая жаждет возбуждения."
-""",
-
-    "cc_first_mes_prompt": """
-Ты — сценарист интерактивных диалогов.
-
-Напиши ПЕРВОЕ СООБЩЕНИЕ персонажа (от его лица) при встрече с игроком.
-
-Данные персонажа:
-- Имя: {name}
-- Характер: {personality}
-- Тип отношений: {relationship}
-- Предпочтения: {preferences}
-
-Сценарий встречи:
-{scenario}
-
-Требования:
-- 3-5 абзацев
-- Используй формат: *действие* и "прямая речь"
-- Покажи характер персонажа через действия и слова
-- Создай интригу и желание продолжить диалог
-- Учитывай relationship при обращении к игроку
-- Пиши на русском языке
-- Ответ - ТОЛЬКО текст первого сообщения, без пояснений
-
-Пример хорошего первого сообщения:
-"*Айко раскладывает бумаги на учительском столе, когда вы входите в класс. Она поднимает взгляд и улыбается, лёгкий румянец появляется на её щеках.*
-
-\\"О, вы пришли! Большое спасибо, что остались допоздна, чтобы помочь мне.\\" *Она нервно заправляет прядь волос за ухо.* \\"У всех остальных были клубные занятия, так что я думала, что буду делать это одна.\\"
-
-*Она подходит к вам, держа планшет.* \\"Нам нужно отсортировать эти материалы и решить, как расположить стенд. Это не должно занять слишком много времени... наверное.\\" *Её зелёные глаза встречаются с вашими, и в её взгляде есть что-то невысказанное.* \\"Я рада, что остались именно вы.\\""
-""",
+CONSISTENCY RULES (outfit_key MUST match nsfw_level):
+- nsfw_level 0-1 → clothed outfits only (casual, formal, gym, etc.)
+- nsfw_level 2-3 → revealing allowed (swimwear, sleepwear, underwear)
+- nsfw_level 4-5 → outfit_key MUST be "nude"
+- outfit_key "nude" → nsfw_level MUST be >= 4""",
 
     "player_prompt": """### РОЛЬ ###
 Ты генерируешь следующее действие или реплику игрока ({user_name}) в интерактивном романе-диалоге.
@@ -396,13 +278,23 @@ NSFW Level Guide (choose carefully based on conversation):
     "nsfw_level_1": "sensual, teasing expression, fully clothed",
     "nsfw_level_1_neg": "nudity, sexual act",
     "nsfw_level_2": "aroused, nsfw, sensual, teasing, showing herself, tits peeking",
-    "nsfw_level_2_neg": "nsfw",
+    "nsfw_level_2_neg": "nudity, explicit sex, penetration",
     "nsfw_level_3": "nsfw, taking off her clothes, showing her nude tits, aroused, bottomless",
     "nsfw_level_3_neg": "penetration, explicit sex",
     "nsfw_level_4": "nsfw, naked body, nude pussy, aroused",
     "nsfw_level_4_neg": "general, clothes",
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
     "nsfw_level_5_neg": "general",
+
+    "nsfw_level_4_anime": "nsfw, nude, completely nude, pussy, nipples, navel, bare skin, uncensored",
+    "nsfw_level_4_anime_neg": "general, clothes, clothed, censored",
+    "nsfw_level_5_anime": "nsfw, explicit, sex, nude, pussy, nipples, sweat, blush, open mouth, spread legs",
+    "nsfw_level_5_anime_neg": "general, clothed, censored, mosaic censoring",
+
+    "nsfw_level_4_real": "nsfw, fully nude body, exposed pussy, erect nipples, naked, aroused, intimate",
+    "nsfw_level_4_real_neg": "general, clothes, dressed, clothed",
+    "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
+    "nsfw_level_5_real_neg": "general, clothed",
 
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
@@ -415,6 +307,7 @@ NSFW Level Guide (choose carefully based on conversation):
 
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
+Имя игрока: {user_name}.
 Твоя цель — писать глубокие, живые и эмоциональные посты от её/его лица НА РУССКОМ ЯЗЫКЕ.
 
 ### АНКЕТА ПЕРСОНАЖА ###
@@ -505,14 +398,14 @@ NSFW Level Guide (choose carefully based on conversation):
 - Флирт допустим, но сдержанный и игривый
 - ЗАПРЕЩЕНЫ explicit описания тела или сексуальных действий
 - Физический контакт ограничен: объятия, поцелуи в щёку, держание за руки
-- `arousal_change` должен быть умеренным (не более +2)
+- `arousal_change` должен быть умеренным (не более +10)
 
 **ВАЖНО ДЛЯ ЗНАЧЕНИЙ:**
 - `affinity_change` и `arousal_change` должны АКТИВНО меняться в зависимости от взаимодействия
-- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +1 до +3
-- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -1 до -3
-- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +1 до +2 (не более!)
-- **НЕ ИСПОЛЬЗУЙ 0, если есть ЛЮБОЕ взаимодействие!**
+- Если игрок говорит что-то приятное, комплимент или поддерживает — affinity_change должен быть +4 до +10
+- Если игрок грубит, оскорбляет или игнорирует — affinity_change должен быть -3 до -7
+- Если взаимодействие романтичное или флиртовое — arousal_change должен быть +3 до +10 (не более!)
+- Нейтральный разговор: affinity_change +2 до +3. Значение 0 допустимо для пассивных реплик ("ок", "ладно").
 - Если игрок или ты не говорят про перемещение в новое место, `new_location` СТРОГО должен быть равен null.
 - `new_location` и `new_action` могут быть ТОЛЬКО на английском языке.
 - `send_photo`: установи в true только если персонаж совершает визуально значимое действие. МАКСИМУМ 1 раз на 4-5 сообщений.
@@ -552,8 +445,15 @@ NSFW Level Guide (choose carefully based on conversation):
 
     "scene_analyzer_prompt_sfw": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
+Model type: {model_type}
 Chat:
 {formatted_chat}
+
+Character state:
+- Current mood: {mood}
+- Affinity (closeness to player, 0-100): {affinity}
+- Arousal (0-100): {arousal}
+- Current location in story: {current_location}
 
 Outfits: {available_outfits}
 You should make JSON values suitable for use in text to image models.
@@ -566,43 +466,30 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a detailed visual description of the scene based on the last 1-2 messages in the chat.
+NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a visual description based on the last 1-2 messages.
 - Focus on visual details: body position, facial expression, lighting, atmosphere
 - Extract specific visual details from the dialogue (e.g., "smiling softly", "blushing cheeks", "gentle gaze")
 - DO NOT describe actions or movements, only the CURRENT VISUAL STATE
 - Keep descriptions romantic and tasteful, NO explicit content
-- Maximum 50 words
 - This will be used directly in the image generation prompt
+
+IMPORTANT — format depends on model_type:
+- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "soft smile, gentle gaze, warm sunlight, sitting on windowsill"). Max 12 tags.
+- If model_type is "real": use short descriptive phrases (e.g., "young woman smiling gently, soft sunlight on face, warm cozy atmosphere"). Max 25 words.
 
 Select suitable "outfit_key". Character should remain clothed at all times.
 Return ONLY this JSON (no markdown, no nesting):
 {{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
 
+CRITICAL RULES:
+- "location" MUST match the current story location
+- If mood is negative (angry, sad, scared) → nsfw_level MUST be 0
+- Base your analysis on the CHARACTER's reaction, not the player's request
+
 SFW Level Guide (ONLY use 0 or 1):
 0 = fully clothed, public setting, modest, casual
 1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
 
-    "z_image_template": """A captivating, natural film snapshot of an attractive {nationality} woman ({age}) with {skin}.
-
-She has {hair_color} hair with {haircut}, beautiful {eye_color} eyes.
-
-She is wearing a {outfit}{nsfw_modificator}. Her expression is {face_expression}.
-The scene is a candid, {shot_distance} lifestyle shot of the model in a {location}, {position}.
-Her pose perfectly showcasing her {body_type} with {boobs} and {ass}.
-
-Aesthetics and Technique:
-
-Photography: Natural film photography, captured using 35mm film (Kodak Portra 400).
-
-Lighting: Soft natural illumination.
-
-Realism: Authentic skin texture, visible pores, minor imperfections, unretouched (no Photoshop).
-
-Style: Anti-AI style, snapshot aesthetic, high-fidelity detail.""",
-
-    "illustrious_template": "1girl, anime girl, {age_interval}, {outfit}, {eye_color}, {hair_color}, {haircut}, "
-                            "{body_type}, {boobs}, {ass}, {face_expression}, {position}, {location}, "
-                            "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "create_character_output_schema": {
                 "type": "json_schema",
                 "json_schema": {

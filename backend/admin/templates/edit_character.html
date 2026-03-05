@@ -37,6 +37,19 @@
         </div>
 
         <div class="form-group">
+            <label for="short_description">Короткое описание (отображается на карточке, макс. 30 символов):</label>
+            <input
+                type="text"
+                id="short_description"
+                name="short_description"
+                value="{{ character.short_description or '' }}"
+                maxlength="30"
+                placeholder="Краткое описание в одну строку..."
+                style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+
+        <div class="form-group">
             <label for="description">Описание (используется в AI промпте):</label>
             <textarea
                 id="description"
@@ -78,6 +91,16 @@
                 required
                 class="auto-resize"
             >{{ first_message }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="heat_level">Уровень откровенности:</label>
+            <select id="heat_level" name="heat_level" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="0" {% if heat_level == 0 %}selected{% endif %}>🌱 Медленное развитие (affinity 0, arousal 0)</option>
+                <option value="1" {% if heat_level == 1 %}selected{% endif %}>💋 Флирт (affinity 30, arousal 10)</option>
+                <option value="2" {% if heat_level == 2 %}selected{% endif %}>🔥 Быстро (affinity 60, arousal 40)</option>
+                <option value="3" {% if heat_level == 3 %}selected{% endif %}>🔥🔥🔥 Сразу к делу (affinity 90, arousal 70)</option>
+            </select>
         </div>
 
         <div class="form-group">
@@ -408,7 +431,15 @@
                 throw new Error(data.detail || 'Generation failed');
             }
 
-            document.getElementById('newPreviewImage').src = data.url;
+            if (data.task_id) {
+                statusDiv.innerHTML = '<span style="color: #2980b9;">Генерация запущена, ожидаем результат...</span>';
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#eaf0f8';
+                const result = await pollAvatarTask(data.task_id);
+                document.getElementById('newPreviewImage').src = result.url;
+            } else {
+                document.getElementById('newPreviewImage').src = data.url;
+            }
             document.getElementById('newAvatarPreview').style.display = 'block';
 
             statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар сгенерирован! Нажмите "Использовать как аватар", чтобы применить его.</span>';
@@ -423,6 +454,19 @@
             btn.disabled = false;
             spinner.style.display = 'none';
         }
+    }
+
+    async function pollAvatarTask(taskId) {
+        const maxAttempts = 60;
+        for (let i = 0; i < maxAttempts; i++) {
+            const res = await fetch(`/api/tasks/${taskId}`);
+            const data = await res.json();
+            if (data.status === 'completed') return data.result;
+            if (data.status === 'failed') throw new Error(data.error || 'Generation failed');
+            if (data.status === 'not_found') throw new Error('Task not found');
+            await new Promise(r => setTimeout(r, 3000));
+        }
+        throw new Error('Generation timed out');
     }
 
     function useAsAvatar() {

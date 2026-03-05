@@ -12,6 +12,7 @@ import enum
 
 Base = declarative_base()
 
+
 async def get_async_session():
     from shared.database import get_db
     async for session in get_db():
@@ -52,6 +53,9 @@ class User(Base):
     images = relationship("GeneratedImage", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
 
+    # stats
+    first_interaction_at = Column(DateTime, nullable=True)
+
 
 class UserSettings(Base):
     """User settings (one-to-one with User)"""
@@ -60,6 +64,8 @@ class UserSettings(Base):
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
     nsfw_blur = Column(Boolean, default=True)
     language = Column(String(10), default="ru")
+    nickname = Column(String(50), nullable=True, default=None)
+    age_confirmed = Column(Boolean, default=False, server_default="false")
 
     user = relationship("User", back_populates="settings")
 
@@ -72,12 +78,13 @@ class Character(Base):
     name = Column(String(255), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=False)
+    short_description = Column(String(30), nullable=True, default="")
     personality = Column(Text, nullable=False)
 
-    visual_data = Column(JSONB, nullable=False) 
+    visual_data = Column(JSONB, nullable=False)
     scenarios = Column(JSONB, default=[])
-    
-    tags = Column(ARRAY(String), default=[]) 
+
+    tags = Column(ARRAY(String), default=[])
     is_nsfw = Column(Boolean, default=False)
     created_by_username_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
     created_by_username = Column(String(255), nullable=True)
@@ -92,6 +99,7 @@ class World(Base):
     id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
+    short_description = Column(String(30), nullable=True, default="")
     cover_image = Column(String(500), nullable=True)
 
     scenarios = Column(JSONB, default=[])
@@ -99,6 +107,8 @@ class World(Base):
 
     tags = Column(ARRAY(String), default=[])
     is_nsfw = Column(Boolean, default=False)
+    created_by_username_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
+    created_by_username = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -213,3 +223,15 @@ class Prompt(Base):
     name = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)
+    event_type = Column(String(50), nullable=False)
+    entity_type = Column(String(50))
+    entity_id = Column(String(100))
+    meta = Column(JSONB, default=dict)
+    created_at = Column(DateTime, server_default=func.now())

@@ -30,9 +30,20 @@ def character_to_dict(char: Character) -> dict:
     else:
         author_info = { "display_name":"AiKai Team"}
 
+    scenarios_full = [
+        {
+            "index": s.get("index", 0),
+            "scenario": s.get("scenario", ""),
+            "intro": s.get("intro", ""),
+            "heat_level": s.get("heat_level", 0),
+        }
+        for s in scenarios
+    ]
+
     return {
         "id": char.id,
         "name": char.name,
+        "short_description": char.short_description or "",
         "is_public": char.is_public,
         "description": char.description,
         "personality": char.personality,
@@ -47,6 +58,7 @@ def character_to_dict(char: Character) -> dict:
         "scenario": scenarios[0].get("scenario", "") if scenarios else "",
         "first_mes": first_mes,
         "alternate_greetings": alternate_greetings,
+        "scenarios_full": scenarios_full,
         "tags": char.tags or [],
         "is_nsfw": char.is_nsfw,
         "author": author_info
@@ -73,9 +85,20 @@ def world_to_dict(world: World) -> dict:
 
     setting = locations[0].get("setting", {}) if locations else {}
 
+    if world.created_by_username_id is not None:
+        username = world.created_by_username
+        if username:
+            display_name = f"@{username}"
+        else:
+            display_name = f"User #{world.created_by_username_id}"
+        author_info = {"user_id": world.created_by_username_id, "username": username, "display_name": display_name}
+    else:
+        author_info = {"display_name": "AiKai Team"}
+
     return {
         "id": world.id,
         "name": world.name,
+        "short_description": world.short_description or "",
         "description": world.description,
         "cover_image": world.cover_image,
         "setting": setting,
@@ -83,7 +106,8 @@ def world_to_dict(world: World) -> dict:
         "gm_instructions": gm_instructions,
         "alternate_scenarios": alternate_scenarios,
         "tags": world.tags or [],
-        "is_nsfw": world.is_nsfw
+        "is_nsfw": world.is_nsfw,
+        "author": author_info
     }
 
 async def get_character(character_id: str) -> Optional[dict]:

@@ -117,6 +117,13 @@ class ChatRepository(BaseRepository[Chat]):
         await self.session.commit()
 
     async def reset_history(self, chat_id: int) -> None:
+        # Read heat_level before reset to restore proper initial state
+        chat = await self.get_by_id(chat_id)
+        heat_level = (chat.state_meta or {}).get("heat_level", 0) if chat else 0
+
+        from shared.constants import HEAT_LEVEL_DEFAULTS
+        defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
+
         await self.session.execute(
             delete(Message).where(Message.chat_id == chat_id)
         )
@@ -127,13 +134,13 @@ class ChatRepository(BaseRepository[Chat]):
             update(Chat)
             .where(Chat.id == chat_id)
             .values(
-                affinity=0,
-                arousal=0,
+                affinity=defaults["affinity"],
+                arousal=defaults["arousal"],
                 current_location=None,
                 current_mood="neutral",
                 summary="",
                 msgs_since_summary=0,
-                state_meta={}
+                state_meta={"heat_level": heat_level} if heat_level > 0 else {}
             )
         )
         await self.session.commit()

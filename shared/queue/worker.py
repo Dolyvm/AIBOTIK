@@ -3,7 +3,7 @@ import logging
 from arq.connections import RedisSettings
 from shared.database import get_session
 from shared.services.redis_client import get_redis
-from shared.queue.tasks import generate_image_task
+from shared.queue.tasks import generate_image_task, generate_avatar_task
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ async def shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = [generate_image_task]
+    functions = [generate_image_task, generate_avatar_task]
 
     redis_settings = RedisSettings.from_dsn(
         os.getenv("REDIS_URL", "redis://localhost:6379/0")
