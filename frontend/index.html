@@ -1237,6 +1237,12 @@
                     // Signal app is ready
                     tg.ready();
 
+                    // WebSocket for close detection — disconnect triggers sticker on backend
+                    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    new WebSocket(
+                        `${wsProto}//${location.host}/api/webapp/ws?initData=${encodeURIComponent(tg.initData)}`
+                    );
+
                     // Apply background theme based on Telegram color scheme
                     const applyTheme = () => {
                         if (tg.colorScheme === 'dark') {
