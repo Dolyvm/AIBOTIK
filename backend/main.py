@@ -11,7 +11,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from api import characters, worlds, user, chat
+from api import characters, worlds, user, chat, webapp
 from api.image_gen.routes.generate import router as image_router
 from api.create_character.cc_routes import router as create_character_router
 from api.create_world.cw_routes import router as create_world_router
@@ -150,6 +150,7 @@ app.include_router(characters.router)
 app.include_router(worlds.router)
 app.include_router(user.router)
 app.include_router(chat.router)
+app.include_router(webapp.router)
 app.include_router(image_router)
 app.include_router(create_character_router)
 app.include_router(create_world_router)
