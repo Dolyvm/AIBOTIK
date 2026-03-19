@@ -1854,9 +1854,20 @@
                 };
 
                 const handleTextareaKey = (e) => {
-                    if (e.key === 'Enter' && e.shiftKey) {
+                    if (e.key === 'Enter') {
                         e.preventDefault();
-                        sendMessage();
+                        if (e.shiftKey) {
+                            sendMessage();
+                        } else {
+                            const ta = e.target;
+                            const start = ta.selectionStart;
+                            const end = ta.selectionEnd;
+                            inputMessage.value = inputMessage.value.substring(0, start) + '\n' + inputMessage.value.substring(end);
+                            nextTick(() => {
+                                ta.selectionStart = ta.selectionEnd = start + 1;
+                                autoResizeTextarea();
+                            });
+                        }
                     }
                 };
 
