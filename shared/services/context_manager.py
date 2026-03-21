@@ -283,6 +283,7 @@ class ContextManager:
             pose = ""
             scene_description = ""
             nsfw_tags = ""
+            emotion = ""
 
             if SCENE_ANALYZER_ENABLED and history:
                 try:
@@ -293,7 +294,9 @@ class ContextManager:
                     wardrobe = visual.get("wardrobe", {})
                     if not isinstance(wardrobe, dict):
                         wardrobe = {}
-                    available_outfits = ["default_outfit"] + list(wardrobe.keys())
+                    available_outfits = {"default_outfit": visual.get("default_outfit", "")}
+                    for key, desc in wardrobe.items():
+                        available_outfits[key] = desc
 
                     scene = await analyzer.analyze(
                         history=history,
@@ -314,6 +317,7 @@ class ContextManager:
                     environment = scene.location
                     scene_description = scene.scene_description
                     nsfw_tags = scene.nsfw_tags
+                    emotion = scene.emotion
 
                     logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
 
@@ -352,6 +356,10 @@ class ContextManager:
             )
 
             prompt.action = state_meta.get("action") or pose
+            if scene_description:
+                prompt.scene_details = scene_description
+            if emotion and emotion != "neutral":
+                prompt.facial_expression = emotion
             # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
             if nsfw_level >= 4 and nsfw_tags:
                 prompt.body_state = nsfw_tags

@@ -112,8 +112,13 @@ class Prompt(BaseModel):
         else:
             wardrobe = visual.get("wardrobe", {})
             clothing = wardrobe.get(outfit_key, visual.get("default_outfit", ""))
+        if clothing:
+            clothing = clothing.strip().rstrip('",').rstrip('"').strip()
 
         appearance = visual.get("appearance", character.get("appearance", ""))
+        # Defensive: strip trailing quotes/commas from user-pasted data
+        if appearance:
+            appearance = appearance.strip().rstrip('",').rstrip('"').strip()
 
         # Если appearance пуст - строим из отдельных полей (пользовательские персонажи)
         if not appearance and visual.get("age"):

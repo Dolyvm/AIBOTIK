@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _clean_visual_field(value: str) -> str:
+    """Strip trailing quotes and commas from user-pasted visual fields."""
+    if not value:
+        return value
+    return value.strip().rstrip('",').rstrip('"').strip()
+
+
 @router.post("/api/create_character")
 async def create_character(
     data: CreateCharacterRequest,
@@ -50,10 +57,10 @@ async def create_character(
 
         visual_data = {
             "model_type": data.model_type,
-            "appearance": data.appearance or "",
-            "body": data.visual_body or "",
-            "face": data.visual_face or "",
-            "default_outfit": data.visual_default_outfit or "",
+            "appearance": _clean_visual_field(data.appearance or ""),
+            "body": _clean_visual_field(data.visual_body or ""),
+            "face": _clean_visual_field(data.visual_face or ""),
+            "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
             "style_tags": style_tags,
             "wardrobe": data.wardrobe,
         }
@@ -160,10 +167,10 @@ async def update_character(
         old_visual = character.visual_data or {}
         visual_data = {
             "model_type": data.model_type,
-            "appearance": data.appearance or "",
-            "body": data.visual_body or "",
-            "face": data.visual_face or "",
-            "default_outfit": data.visual_default_outfit or "",
+            "appearance": _clean_visual_field(data.appearance or ""),
+            "body": _clean_visual_field(data.visual_body or ""),
+            "face": _clean_visual_field(data.visual_face or ""),
+            "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
             "style_tags": style_tags,
             "wardrobe": data.wardrobe,
             "avatar": old_visual.get("avatar", ""),

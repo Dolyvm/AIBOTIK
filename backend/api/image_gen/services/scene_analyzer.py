@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel
 from shared.services.llm import LLMClient
 from shared.services.cache import get_cache
@@ -174,11 +174,20 @@ class SceneAnalyzer:
 
     NEGATIVE_MOODS = {"angry", "furious", "disgusted", "sad", "crying", "scared", "offended", "irritated"}
 
+    @staticmethod
+    def _format_outfits(outfits) -> str:
+        if isinstance(outfits, dict):
+            return "\n".join(
+                f"- {k}: {v}" if v else f"- {k}"
+                for k, v in outfits.items()
+            )
+        return ", ".join(outfits)
+
     async def analyze(
         self,
         history: list[dict],
         character_name: str,
-        available_outfits: list[str],
+        available_outfits: Union[list[str], dict[str, str]],
         allow_nsfw: bool = True,
         chat_id: int = None,
         mood: str = "neutral",
@@ -216,7 +225,7 @@ class SceneAnalyzer:
         prompt = prompt_template.format(
             character_name=character_name,
             formatted_chat=formatted,
-            available_outfits=', '.join(available_outfits),
+            available_outfits=self._format_outfits(available_outfits),
             mood=mood,
             affinity=affinity,
             arousal=arousal,

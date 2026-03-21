@@ -188,7 +188,11 @@ async def init_prompts():
                 continue
 
             if key in existing_prompts:
-                updated_count += 1
+                existing = existing_prompts[key]
+                if existing.content != content:
+                    existing.content = content
+                    updated_count += 1
+                    print(f"  Updated: {key}")
             else:
                 prompt = Prompt(
                     key=key,
