@@ -532,15 +532,18 @@
                         </div>
 
                         <div class="cc-field">
-                            <label>Альтернативные приветствия:</label>
-                            <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" style="display: flex; gap: 8px; margin-bottom: 8px;">
-                                <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Альтернативное приветствие..."></textarea>
-                                <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeAlternateGreeting(idx)">
-                                    <i class="fas fa-trash"></i>
-                                </button>
+                            <label>Альтернативные сценарии:</label>
+                            <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" class="cc-wardrobe-item">
+                                <div class="cc-wardrobe-key-row">
+                                    <span style="font-size: 13px; color: var(--tg-theme-hint-color);">Сценарий {{ idx + 1 }}</span>
+                                    <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeAlternateGreeting(idx)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Альтернативный сценарий..."></textarea>
                             </div>
                             <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateGreeting">
-                                <i class="fas fa-plus"></i> Добавить приветствие
+                                <i class="fas fa-plus"></i> Добавить сценарий
                             </button>
                         </div>
                     </div>
