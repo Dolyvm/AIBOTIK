@@ -309,6 +309,7 @@ class ContextManager:
                         arousal=chat.arousal,
                         current_location=chat.current_location or "",
                         model_type=content.get("model_type", "anime"),
+                        gender=content.get("visual", {}).get("gender", "female"),
                     )
 
                     nsfw_level = scene.nsfw_level
@@ -363,7 +364,8 @@ class ContextManager:
             # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
             if nsfw_level >= 4 and nsfw_tags:
                 prompt.body_state = nsfw_tags
-            pos, neg = await prompt.build_prompt(content.get("model_type"))
+            char_gender = content.get("visual", {}).get("gender", "female")
+            pos, neg = await prompt.build_prompt(content.get("model_type"), gender=char_gender)
 
             logging.info(f"Auto-photo generation: {pos=}")
 

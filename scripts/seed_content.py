@@ -24,11 +24,6 @@ async def load_characters(session, content_dir: Path):
         
         char_id = data.get("id") or json_file.stem
         
-        existing = await session.execute(
-            select(Character).where(Character.id == char_id)
-        )
-        if existing.scalar_one_or_none():
-            continue
         heat_level = data.get("heat_level", 0)
         scenarios = []
         if data.get("first_mes"):
@@ -52,19 +47,39 @@ async def load_characters(session, content_dir: Path):
             "example_dialogue": data.get("example_dialogue", ""),
             **data.get("visual", {})
         }
-        character = Character(
-            id=char_id,
-            is_public=data.get("is_public", True),
-            name=data["name"],
-            short_description=data.get("short_description", ""),
-            description=data.get("description", ""),
-            personality=data.get("personality", ""),
-            visual_data=visual_data,
-            scenarios=scenarios,
-            tags=data.get("tags", []),
-            is_nsfw="NSFW" in data.get("tags", [])
+
+        existing = await session.execute(
+            select(Character).where(Character.id == char_id)
         )
-        session.add(character)
+        existing_char = existing.scalar_one_or_none()
+        if existing_char:
+            # Upsert: обновляем данные из JSON, сохраняя аватар если уже есть
+            old_avatar = (existing_char.visual_data or {}).get("avatar", "")
+            if old_avatar and not visual_data.get("avatar"):
+                visual_data["avatar"] = old_avatar
+            existing_char.name = data["name"]
+            existing_char.short_description = data.get("short_description", "")
+            existing_char.is_public = data.get("is_public", True)
+            existing_char.description = data.get("description", "")
+            existing_char.personality = data.get("personality", "")
+            existing_char.visual_data = visual_data
+            existing_char.scenarios = scenarios
+            existing_char.tags = data.get("tags", [])
+            existing_char.is_nsfw = "NSFW" in data.get("tags", [])
+        else:
+            character = Character(
+                id=char_id,
+                is_public=data.get("is_public", True),
+                name=data["name"],
+                short_description=data.get("short_description", ""),
+                description=data.get("description", ""),
+                personality=data.get("personality", ""),
+                visual_data=visual_data,
+                scenarios=scenarios,
+                tags=data.get("tags", []),
+                is_nsfw="NSFW" in data.get("tags", [])
+            )
+            session.add(character)
     await session.commit()
 
 

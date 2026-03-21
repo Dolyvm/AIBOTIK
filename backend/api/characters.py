@@ -28,6 +28,7 @@ async def list_characters(
     style: str = None,
     creator_type: str = None,  # "all" -> me+public, "me", "public"
     nsfw: str = None,  # "only" — только NSFW, "exclude" — скрыть NSFW
+    gender: str = None,  # "male", "female"
     user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
@@ -37,11 +38,15 @@ async def list_characters(
     for char_id, char in characters.items():
         char_tags = char.get("tags", [])
         model_type = char.get("model_type", "real")
+        char_gender = char.get("visual", {}).get("gender", "female")
 
         # у созданных этот параметр 100% будет, поэтому тут ставим такой дефолт
         is_public = char.get("is_public", True)
 
         if style and style != model_type:
+            continue
+
+        if gender and gender != char_gender:
             continue
 
         if not is_public and char.get("author", {}).get("user_id", 0) != user.telegram_id:
@@ -68,6 +73,7 @@ async def list_characters(
             "avatar": char["avatar"],
             "tags": char_tags,
             "model_type": model_type,
+            "gender": char_gender,
             "scenarios_count": 1 + len(char.get("alternate_greetings", [])),
             "author": char.get("author", {"display_name": "AiKai Team"}),
             "is_nsfw": char.get("is_nsfw", False)
@@ -103,6 +109,7 @@ async def get_character_for_edit(
         "first_message": char.get("first_mes", ""),
         "alternate_greetings": char.get("alternate_greetings", []),
         "heat_level": heat_level,
+        "gender": visual.get("gender", "female"),
         "model_type": char.get("model_type", "anime"),
         "appearance": char.get("appearance", ""),
         "visual_body": visual.get("body", ""),
@@ -166,17 +173,21 @@ async def get_filter_options():
 
     all_tags = set()
     styles = set()
+    genders = set()
 
     for char in characters.values():
         # Собираем уникальные теги
         if "tags" in char:
             all_tags.update(char["tags"])
         # Собираем стили
-        styles.add(char.get("model_type", "real"))  # fixme точно ли надо для model_type ставить дефолтное значение?
+        styles.add(char.get("model_type", "real"))
+        # Собираем пол
+        genders.add(char.get("visual", {}).get("gender", "female"))
 
     return {
         "tags": sorted(list(all_tags)),
-        "styles": sorted(list(styles))
+        "styles": sorted(list(styles)),
+        "genders": sorted(list(genders))
     }
 
 

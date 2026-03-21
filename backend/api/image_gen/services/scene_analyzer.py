@@ -195,6 +195,7 @@ class SceneAnalyzer:
         arousal: int = 0,
         current_location: str = "",
         model_type: str = "anime",
+        gender: str = "female",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
@@ -222,6 +223,15 @@ class SceneAnalyzer:
             logger.warning(f"Prompt '{prompt_key}' not found, falling back to default")
             prompt_template = await get_prompt("scene_analyzer_prompt")
 
+        is_male = gender == "male"
+        gender_possessive = "HIS" if is_male else "HER"
+        if is_male:
+            pose_examples = '"standing dominant position", "lying on back relaxed", "sitting with legs apart", "thrusting from behind", "leaning against wall"'
+            nsfw_level_3_desc = "shirtless, partial nudity, exposed chest"
+        else:
+            pose_examples = '"on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"'
+            nsfw_level_3_desc = "exposed breasts"
+
         prompt = prompt_template.format(
             character_name=character_name,
             formatted_chat=formatted,
@@ -231,6 +241,9 @@ class SceneAnalyzer:
             arousal=arousal,
             current_location=current_location or "unknown",
             model_type=model_type,
+            gender_possessive=gender_possessive,
+            pose_examples=pose_examples,
+            nsfw_level_3_desc=nsfw_level_3_desc,
         )
 
         try:

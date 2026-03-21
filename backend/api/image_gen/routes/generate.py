@@ -38,8 +38,8 @@ logging.basicConfig(
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
 
 @router.post("/build_prompt")
-async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None):
-    return await data.build_prompt(model_type)
+async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None, gender: str = "female"):
+    return await data.build_prompt(model_type, gender=gender)
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
@@ -132,6 +132,7 @@ async def gen(
                 arousal=chat.arousal,
                 current_location=chat.current_location or "",
                 model_type=content.get("model_type", "anime"),
+                gender=content.get("visual", {}).get("gender", "female"),
             )
 
             nsfw_level = scene.nsfw_level
@@ -197,7 +198,8 @@ async def gen(
     logging.info(f"  scene_reasoning={scene_reasoning}")
     logging.info(f"=== END COMPONENTS ===")
 
-    pos, neg = await prompt.build_prompt(content.get("model_type"))
+    char_gender = content.get("visual", {}).get("gender", "female")
+    pos, neg = await prompt.build_prompt(content.get("model_type"), gender=char_gender)
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
     logging.info(f"{content=}")

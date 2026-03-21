@@ -165,8 +165,13 @@
                         </select>
                     </div>
                     <div class="filters">
-                        <select v-model="characterFilters.creator_type" @change="loadCharacters" style="max-width: 60%">
-                            <option :value="null">Фильтр по создателю</option>
+                        <select v-model="characterFilters.gender" @change="loadCharacters">
+                            <option :value="null">Все персонажи</option>
+                            <option value="female">Женские</option>
+                            <option value="male">Мужские</option>
+                        </select>
+                        <select v-model="characterFilters.creator_type" @change="loadCharacters" style="max-width: 45%">
+                            <option :value="null">По создателю</option>
                             <option value="me">Мои персонажи</option>
                             <option value="public">Персонажи сообщества</option>
                         </select>
@@ -474,6 +479,14 @@
                         <div class="cc-field">
                             <label>Имя персонажа: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
                             <input v-model="createCharacterData.name" type="text" class="cc-name-input" placeholder="Имя персонажа">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Пол: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'female' }" @click="createCharacterData.gender = 'female'" style="flex: 1;">Женский</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'male' }" @click="createCharacterData.gender = 'male'" style="flex: 1;">Мужской</button>
+                            </div>
                         </div>
 
                         <div class="cc-field">
@@ -953,7 +966,7 @@
                 const defaultCreateCharacterData = () => ({
                     name: '', short_description: '', description: '', personality: '',
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
-                    model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
+                    gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
                     avatar_url: null
                 });
@@ -997,7 +1010,7 @@
 
                 // Filters
                 const filterOptions = ref({ tags: [], styles: [], worldTags: [] });
-                const characterFilters = ref({ tag: null, style: null, creator_type: null, nsfw: null });
+                const characterFilters = ref({ tag: null, style: null, creator_type: null, nsfw: null, gender: null });
                 const worldFilters = ref({ tag: null, creator_type: null  });
 
                 // Toast
@@ -1352,6 +1365,7 @@
                     if (characterFilters.value.style) params.style = characterFilters.value.style;
                     if (characterFilters.value.creator_type) params.creator_type = characterFilters.value.creator_type;
                     if (characterFilters.value.nsfw) params.nsfw = characterFilters.value.nsfw;
+                    if (characterFilters.value.gender) params.gender = characterFilters.value.gender;
                     try {
                         const res = await axios.get('/api/characters', { params });
                         characters.value = res.data.characters;
@@ -2082,6 +2096,7 @@
                             first_message: c.first_message,
                             heat_level: c.heat_level || 0,
                             alternate_greetings: c.alternate_greetings || [],
+                            gender: c.gender || 'female',
                             model_type: c.model_type || 'anime',
                             appearance: c.appearance || '',
                             visual_body: c.visual_body || '',
@@ -2148,6 +2163,7 @@
                     isGeneratingPreview.value = true;
                     try {
                         const res = await axios.post('/api/create_character/generate-avatar', {
+                            gender: createCharacterData.value.gender,
                             model_type: createCharacterData.value.model_type,
                             appearance: createCharacterData.value.appearance,
                             body: createCharacterData.value.visual_body,
@@ -2222,6 +2238,7 @@
                             first_message: d.first_message,
                             heat_level: d.heat_level || 0,
                             alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
+                            gender: d.gender,
                             model_type: d.model_type,
                             appearance: d.appearance,
                             visual_body: d.visual_body,

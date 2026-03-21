@@ -197,7 +197,7 @@ IMPORTANT: "location" MUST include time of day if known from context (e.g., "par
 
 IMPORTANT for "pose":
 - If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
-- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from HER perspective only (e.g., "on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"). Still describe only HER body, not the other person.
+- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from {gender_possessive} perspective only (e.g., {pose_examples}). Still describe only {gender_possessive} body, not the other person.
 - NEVER use plural forms or words implying multiple people
 
 NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/state from the conversation.
@@ -251,7 +251,7 @@ NSFW Level Guide (choose carefully based on conversation):
 0 = fully clothed, public setting, modest
 1 = sensual/teasing but clothed, flirtatious
 2 = revealing clothing, suggestive, aroused
-3 = topless, partial nudity, exposed breasts
+3 = topless, partial nudity, {nsfw_level_3_desc}
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact
 
@@ -317,6 +317,25 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
     "nsfw_level_5_real_neg": "general, clothed",
 
+    "nsfw_level_2_male": "aroused, nsfw, sensual, teasing, showing himself, muscular torso",
+    "nsfw_level_2_male_neg": "nudity, explicit sex, penetration",
+    "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
+    "nsfw_level_3_male_neg": "penetration, explicit sex",
+    "nsfw_level_4_male": "nsfw, naked body, nude, muscular, aroused",
+    "nsfw_level_4_male_neg": "general, clothes, female, breasts",
+    "nsfw_level_5_male": "extreme erotic, explicit, nsfw, orgasm, extremely aroused",
+    "nsfw_level_5_male_neg": "general, female, breasts",
+
+    "nsfw_level_4_anime_male": "nsfw, nude, completely nude, penis, muscular, navel, bare skin, uncensored",
+    "nsfw_level_4_anime_male_neg": "general, clothes, clothed, censored, female, breasts",
+    "nsfw_level_5_anime_male": "nsfw, explicit, sex, nude, penis, muscular, sweat, blush, open mouth",
+    "nsfw_level_5_anime_male_neg": "general, clothed, censored, mosaic censoring, female, breasts",
+
+    "nsfw_level_4_real_male": "nsfw, fully nude body, muscular physique, naked, aroused, intimate",
+    "nsfw_level_4_real_male_neg": "general, clothes, dressed, clothed, female, breasts",
+    "nsfw_level_5_real_male": "nsfw, explicit sex, nude, muscular body, intimate, intense pleasure, wet skin",
+    "nsfw_level_5_real_male_neg": "general, clothed, female, breasts",
+
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
 
@@ -324,7 +343,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "behavior_affinity_neutral": "- Вы знакомые. Отношение нейтральное. Шутки допустимы, но без интимности.\n",
     "behavior_affinity_warm": "- Вы близкие люди. Проявляй теплоту, касания, заботу.\n",
     "behavior_affinity_love": "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
+    "behavior_affinity_love_male": "- Ты глубоко влюблён/привязан. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high": "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
+    "behavior_arousal_high_male": "- Твоё тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
 
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
@@ -574,7 +595,12 @@ SFW Level Guide (ONLY use 0 or 1):
                                                     "Девушка",
                                                     "Друзья с привилегиями",
                                                     "Жена",
-                                                    "Друг"
+                                                    "Друг",
+                                                    "Парень",
+                                                    "Муж",
+                                                    "Пасынок",
+                                                    "Отчим",
+                                                    "Любовник"
                                                 ],
                                                 "description": "Роль в отношениях с пользователем. Обязательно из списка."
                                             }
@@ -613,22 +639,49 @@ SFW Level Guide (ONLY use 0 or 1):
                                         "description": "Возраст строго из списка (как строка)."
                                     },
                                     "ass": {
-                                        "type": "string",
+                                        "type": ["string", "null"],
                                         "enum": [
                                             "small ass",
                                             "fit ass",
                                             "big round ass",
-                                            "huge round ass"
-                                        ]
+                                            "huge round ass",
+                                            None
+                                        ],
+                                        "description": "Только для женских персонажей. Для мужских — null."
                                     },
                                     "boobs": {
-                                        "type": "string",
+                                        "type": ["string", "null"],
                                         "enum": [
                                             "small breasts",
                                             "beautiful breasts",
                                             "big breasts",
-                                            "huge breasts"
-                                        ]
+                                            "huge breasts",
+                                            None
+                                        ],
+                                        "description": "Только для женских персонажей. Для мужских — null."
+                                    },
+                                    "build": {
+                                        "type": ["string", "null"],
+                                        "enum": [
+                                            "lean build",
+                                            "average build",
+                                            "athletic build",
+                                            "muscular build",
+                                            None
+                                        ],
+                                        "description": "Только для мужских персонажей. Для женских — null."
+                                    },
+                                    "facial_hair": {
+                                        "type": ["string", "null"],
+                                        "enum": [
+                                            "clean shaven",
+                                            "stubble",
+                                            "short beard",
+                                            "full beard",
+                                            "mustache",
+                                            None
+                                        ],
+                                        "description": "Только для мужских персонажей. Для женских — null."
                                     },
                                     "hair_color": {
                                         "type": "string",
@@ -670,7 +723,9 @@ SFW Level Guide (ONLY use 0 or 1):
                                             "petite slim body",
                                             "fit body",
                                             "curvy body",
-                                            "fat body"
+                                            "fat body",
+                                            "athletic body",
+                                            "muscular body"
                                         ]
                                     },
                                     "default_outfit": {
@@ -692,6 +747,8 @@ SFW Level Guide (ONLY use 0 or 1):
                                     "age",
                                     "ass",
                                     "boobs",
+                                    "build",
+                                    "facial_hair",
                                     "hair_color",
                                     "haircut",
                                     "eye_color",

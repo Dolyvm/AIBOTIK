@@ -371,6 +371,7 @@
         try {
             const json = JSON.parse(document.getElementById('visual_data').value);
             return {
+                gender: json.gender || "female",
                 model_type: json.model_type || "anime",
                 appearance: json.appearance || "",
                 body: json.body || "",

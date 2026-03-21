@@ -349,6 +349,7 @@ async def generate_avatar(
     data = await request.json()
 
     model_type = data.get("model_type", "anime")
+    gender = data.get("gender", "female")
     appearance = data.get("appearance", "")
     body = data.get("body", "")
     face = data.get("face", "")
@@ -363,7 +364,7 @@ async def generate_avatar(
         nsfw_level=0
     )
 
-    pos, neg = await prompt.build_prompt(model_type)
+    pos, neg = await prompt.build_prompt(model_type, gender=gender)
 
     task_id = str(uuid4())
     task_params = {
@@ -460,6 +461,7 @@ async def create_character(
 
     visual_data = {
         "model_type": form_data.get("model_type", "anime"),
+        "gender": form_data.get("gender", "female"),
         "appearance": form_data.get("appearance", "").strip(),
         "body": form_data.get("visual_body", "").strip(),
         "face": form_data.get("visual_face", "").strip(),

@@ -57,6 +57,7 @@ async def create_character(
 
         visual_data = {
             "model_type": data.model_type,
+            "gender": data.gender,
             "appearance": _clean_visual_field(data.appearance or ""),
             "body": _clean_visual_field(data.visual_body or ""),
             "face": _clean_visual_field(data.visual_face or ""),
@@ -167,6 +168,7 @@ async def update_character(
         old_visual = character.visual_data or {}
         visual_data = {
             "model_type": data.model_type,
+            "gender": data.gender,
             "appearance": _clean_visual_field(data.appearance or ""),
             "body": _clean_visual_field(data.visual_body or ""),
             "face": _clean_visual_field(data.visual_face or ""),
