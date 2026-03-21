@@ -79,6 +79,13 @@
             cursor: not-allowed;
         }
 
+        .turn-actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+            align-self: flex-start;
+        }
+
         .btn-undo-turn {
             width: 28px;
             height: 28px;
@@ -95,8 +102,6 @@
             transition: opacity 0.2s ease;
             -webkit-tap-highlight-color: transparent;
             padding: 0;
-            margin-top: 4px;
-            align-self: flex-start;
             flex-shrink: 0;
         }
 
@@ -408,12 +413,14 @@
                             </span>
                         </div>
                     </div>
-                    <button v-if="index === undoTargetIndex"
-                            class="btn-undo-turn"
-                            @click.stop="undoLastTurn"
-                            :disabled="isUndoing">
-                        <i class="fas fa-trash-can"></i>
-                    </button>
+                    <div v-if="index === undoTargetIndex" class="turn-actions">
+                        <button class="btn-undo-turn" @click.stop="editLastMessage" :disabled="isUndoing">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button class="btn-undo-turn" @click.stop="undoLastTurn" :disabled="isUndoing">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div v-if="isWaitingResponse && !isStreaming" class="message-wrapper foreign">
@@ -1835,6 +1842,37 @@
                     }
                 };
 
+                const editLastMessage = async () => {
+                    const idx = undoTargetIndex.value;
+                    if (idx < 1 || isUndoing.value) return;
+
+                    const h = chatHistory.value;
+                    const userIdx = idx - 1;
+                    const oldText = h[userIdx].content;
+
+                    isUndoing.value = true;
+                    let endIdx = idx;
+                    while (endIdx + 1 < h.length && h[endIdx + 1].role === 'assistant' && !h[endIdx + 1].content) {
+                        endIdx++;
+                    }
+                    const removed = h.splice(userIdx, endIdx - userIdx + 1);
+
+                    try {
+                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
+                        inputMessage.value = oldText;
+                        await nextTick();
+                        if (inputField.value) {
+                            inputField.value.focus();
+                            autoResizeTextarea();
+                        }
+                    } catch (e) {
+                        chatHistory.value.splice(userIdx, 0, ...removed);
+                        showToast(e.response?.data?.detail || 'Ошибка', 'error');
+                    } finally {
+                        isUndoing.value = false;
+                    }
+                };
+
                 // --- UTILS ---
                 const typeWriter = async (text) => {
                     const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
@@ -2388,7 +2426,7 @@
                     chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
                     isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
-                    undoTargetIndex, undoLastTurn,
+                    undoTargetIndex, undoLastTurn, editLastMessage,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
                     showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
