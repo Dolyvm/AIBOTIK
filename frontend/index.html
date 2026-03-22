@@ -401,7 +401,7 @@
                      class="message-wrapper"
                      :class="msg.role === 'user' ? 'own' : 'foreign'">
                     <div class="message-bubble">
-                        <div class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
+                        <div v-if="msg.content" class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
                         <div v-if="msg.isGenerating" class="photo-container generating">
                             <div class="generating-placeholder">
                                 <i class="fas fa-spinner fa-spin"></i>
@@ -1781,6 +1781,7 @@
                                 nsfw_level: 0
                             }) - 1;
                             scrollToBottom();
+                            isWaitingResponse.value = false;
 
                             // Start polling in background
                             pollImageTask(
