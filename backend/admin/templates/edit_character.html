@@ -104,12 +104,12 @@
         </div>
 
         <div class="form-group">
-            <label>Альтернативные приветствия:</label>
+            <label>Альтернативные сценарии:</label>
             <div id="alternateПриветствиеsContainer">
                 {% for greeting in alternate_greetings %}
                 <div class="alternate-greeting-item" style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="font-size: 13px; color: #7f8c8d;">Приветствие {{ loop.index }}</strong>
+                        <strong style="font-size: 13px; color: #7f8c8d;">Сценарий {{ loop.index }}</strong>
                         <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateПриветствие(this)">Удалить</button>
                     </div>
                     <textarea
@@ -121,7 +121,7 @@
                 </div>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативный сценарий</button>
         </div>
 
         <div class="form-group">
@@ -371,6 +371,7 @@
         try {
             const json = JSON.parse(document.getElementById('visual_data').value);
             return {
+                gender: json.gender || "female",
                 model_type: json.model_type || "anime",
                 appearance: json.appearance || "",
                 body: json.body || "",

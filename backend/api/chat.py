@@ -25,6 +25,8 @@ from shared.services.content_loader import get_character, get_world, get_first_m
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.subscription import get_subscription_service
+from shared.database.exceptions import UsageLimitExceeded
 from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
 
@@ -98,6 +100,12 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
     chat = await verify_chat_ownership(chat_id, user)
 
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "messages", session)
+        if not allowed:
+            raise UsageLimitExceeded("messages", limit)
+
     try:
         if chat.chat_type == "character":
             content = await get_character(chat.target_id)
@@ -121,6 +129,10 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
             user_name=user_name,
             allow_nsfw=allow_nsfw,
         )
+
+        async with get_session() as session:
+            await sub_service.increment_usage(user.telegram_id, "messages", session)
+
         async with get_session() as session:
             await AnalyticsService.track(
                 session,
@@ -142,6 +154,8 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
             "image_task_id": result.get("image_task_id")
         }
 
+    except (UsageLimitExceeded, HTTPException):
+        raise
     except Exception as e:
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -276,6 +290,12 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
 
     chat = await verify_chat_ownership(chat_id, user)
 
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "messages", session)
+        if not allowed:
+            raise UsageLimitExceeded("messages", limit)
+
     try:
         if chat.chat_type == "character":
             content = await get_character(chat.target_id)
@@ -299,6 +319,9 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
             allow_nsfw=allow_nsfw
         )
 
+        async with get_session() as session:
+            await sub_service.increment_usage(user.telegram_id, "messages", session)
+
         return {
             "player_message": result["player_message"],
             "character_response": result["character_response"],
@@ -311,6 +334,8 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
             "location": chat.current_location
         }
 
+    except (UsageLimitExceeded, HTTPException):
+        raise
     except Exception as e:
         logging.error(f"Error in auto_continue_dialogue: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -329,6 +354,12 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
     chat = await verify_chat_ownership(chat_id, user)
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "messages", session)
+        if not allowed:
+            raise UsageLimitExceeded("messages", limit)
 
     try:
         if chat.chat_type == "character":
@@ -351,10 +382,15 @@ async def generate_auto_reply(chat_id: int, user: User = Depends(get_current_use
             only_user_reply=True
         )
 
+        async with get_session() as session:
+            await sub_service.increment_usage(user.telegram_id, "messages", session)
+
         return {
             "player_message": result["player_message"]
         }
 
+    except (UsageLimitExceeded, HTTPException):
+        raise
     except Exception as e:
         logging.error(f"Error in auto_continue_dialogue: {e}")
         raise HTTPException(status_code=500, detail=str(e))

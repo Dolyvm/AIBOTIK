@@ -26,9 +26,10 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 12%;">ID</th>
-                <th style="width: 20%;">Имя</th>
-                <th style="width: 15%;">Создатель</th>
+                <th style="width: 10%;">ID</th>
+                <th style="width: 18%;">Имя</th>
+                <th style="width: 7%;">Пол</th>
+                <th style="width: 12%;">Создатель</th>
                 <th style="width: 33%;">Теги</th>
                 <th style="width: 10%;">NSFW</th>
                 <th style="width: 10%;">Действия</th>
@@ -44,6 +45,10 @@
                 </td>
                 <td>
                     <strong>{{ character.name }}</strong>
+                </td>
+                <td>
+                    {% set gender = character.visual_data.get('gender', 'female') if character.visual_data else 'female' %}
+                    <span style="color: #2c3e50;">{{ 'M' if gender == 'male' else 'F' }}</span>
                 </td>
                 <td>
                     <span style="color: #2c3e50;">{{ character.created_by_username or 'AiKai Team' }}</span>

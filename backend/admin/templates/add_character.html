@@ -122,9 +122,9 @@
             </div>
 
             <div class="form-group">
-                <label>Альтернативные приветствия:</label>
+                <label>Альтернативные сценарии:</label>
                 <div id="alternateПриветствиеsContainer"></div>
-                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативный сценарий</button>
             </div>
         </div>
 
@@ -133,6 +133,18 @@
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
                 Визуальные данные (для генерации изображений)
             </h3>
+
+            <div class="form-group">
+                <label for="gender">Пол персонажа:</label>
+                <select
+                    id="gender"
+                    name="gender"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                >
+                    <option value="female">Женский</option>
+                    <option value="male">Мужской</option>
+                </select>
+            </div>
 
             <div class="form-group">
                 <label for="model_type">Тип модели:</label>
@@ -559,6 +571,7 @@
     // ========== AVATAR GENERATION ==========
     function collectVisualData() {
         return {
+            gender: document.getElementById('gender').value,
             model_type: document.getElementById('model_type').value,
             appearance: document.getElementById('appearance').value,
             body: document.getElementById('visual_body').value,

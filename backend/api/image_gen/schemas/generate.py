@@ -107,18 +107,29 @@ class Prompt(BaseModel):
         visual = character.get("visual", {})
         model_type = character.get("model_type", "real")
 
+        wardrobe = visual.get("wardrobe", {})
         if outfit_key == "default_outfit":
-            clothing = visual.get("default_outfit", "")
+            clothing = visual.get("default_outfit", "") or wardrobe.get("casual", "")
         else:
-            wardrobe = visual.get("wardrobe", {})
-            clothing = wardrobe.get(outfit_key, visual.get("default_outfit", ""))
+            clothing = wardrobe.get(outfit_key, visual.get("default_outfit", "") or wardrobe.get("casual", ""))
+        if clothing:
+            clothing = clothing.strip().rstrip('",').rstrip('"').strip()
 
         appearance = visual.get("appearance", character.get("appearance", ""))
+        # Defensive: strip trailing quotes/commas from user-pasted data
+        if appearance:
+            appearance = appearance.strip().rstrip('",').rstrip('"').strip()
+
+        gender = visual.get("gender", "female")
+        is_male = gender == "male"
 
         # Если appearance пуст - строим из отдельных полей (пользовательские персонажи)
         if not appearance and visual.get("age"):
             if model_type == "anime":
-                parts = ["1girl", "anime girl"]
+                if is_male:
+                    parts = ["1boy", "anime boy"]
+                else:
+                    parts = ["1girl", "anime girl"]
                 age = visual.get("age")
                 if age:
                     parts.append(AGE_INTERVAL_MAP.get(age, f"{age} years old"))
@@ -130,17 +141,23 @@ class Prompt(BaseModel):
                     parts.append(visual["haircut"])
                 if visual.get("body_type"):
                     parts.append(visual["body_type"])
-                if visual.get("boobs"):
-                    parts.append(visual["boobs"])
-                if visual.get("ass"):
-                    parts.append(visual["ass"])
+                if is_male:
+                    if visual.get("build"):
+                        parts.append(visual["build"])
+                    if visual.get("facial_hair"):
+                        parts.append(visual["facial_hair"])
+                else:
+                    if visual.get("boobs"):
+                        parts.append(visual["boobs"])
+                    if visual.get("ass"):
+                        parts.append(visual["ass"])
                 appearance = ", ".join(parts)
             else:
                 # Для real модели строим описание
                 parts = []
                 nationality = visual.get("nationality")
                 if nationality:
-                    parts.append(f"{nationality} woman")
+                    parts.append(f"{nationality} {'man' if is_male else 'woman'}")
                 age = visual.get("age")
                 if age:
                     parts.append(f"({age})")
@@ -151,13 +168,22 @@ class Prompt(BaseModel):
                 elif visual.get("hair_color"):
                     parts.append(f"{visual['hair_color']} hair")
                 if visual.get("eye_color"):
-                    parts.append(f"beautiful {visual['eye_color']} eyes")
+                    if is_male:
+                        parts.append(f"{visual['eye_color']} eyes")
+                    else:
+                        parts.append(f"beautiful {visual['eye_color']} eyes")
                 if visual.get("body_type"):
                     parts.append(visual["body_type"])
-                if visual.get("boobs"):
-                    parts.append(f"with {visual['boobs']}")
-                if visual.get("ass"):
-                    parts.append(f"and {visual['ass']}")
+                if is_male:
+                    if visual.get("build"):
+                        parts.append(visual["build"])
+                    if visual.get("facial_hair"):
+                        parts.append(visual["facial_hair"])
+                else:
+                    if visual.get("boobs"):
+                        parts.append(f"with {visual['boobs']}")
+                    if visual.get("ass"):
+                        parts.append(f"and {visual['ass']}")
                 appearance = ", ".join(parts)
 
         if model_type == "anime":
@@ -177,7 +203,7 @@ class Prompt(BaseModel):
             nsfw_level=nsfw_level
         )
 
-    async def build_prompt(self, build_as_type: ModelType = None) -> tuple[str, str]:
+    async def build_prompt(self, build_as_type: ModelType = None, gender: str = "female") -> tuple[str, str]:
         prompt_parts = []
         negative_parts = []
 
@@ -187,7 +213,6 @@ class Prompt(BaseModel):
                 base_positive = base_positive.replace("general, ", "")
             prompt_parts.append(base_positive)
             negative_parts.append(await get_anime_base_negative())
-
         nsfw_levels = await get_nsfw_levels()
 
         for field_name, _ in self.__class__.model_fields.items():
@@ -196,25 +221,47 @@ class Prompt(BaseModel):
                 continue
 
             if field_name == "nsfw_level":
-                # For levels 4-5, try model-type-specific prompts (anime/real)
-                if value >= 4 and build_as_type in ("anime", "real"):
-                    try:
-                        type_prompt = await get_prompt(f"nsfw_level_{value}_{build_as_type}")
-                        type_neg = await get_prompt(f"nsfw_level_{value}_{build_as_type}_neg")
-                        prompt_parts.append(type_prompt)
-                        negative_parts.append(type_neg)
-                    except KeyError:
-                        nsfw_level = nsfw_levels[value]
-                        prompt_parts.append(nsfw_level.prompt)
-                        negative_parts.append(nsfw_level.negative_prompt)
-                else:
+                resolved = False
+                # Try gender+model-specific prompts first (e.g. nsfw_level_4_anime_male)
+                if value >= 2:
+                    type_key = build_as_type if build_as_type in ("anime", "real") else None
+                    # Priority: model_type+gender > model_type > gender > generic
+                    lookup_keys = []
+                    if type_key and gender == "male":
+                        lookup_keys.append(f"nsfw_level_{value}_{type_key}_male")
+                    if type_key:
+                        lookup_keys.append(f"nsfw_level_{value}_{type_key}")
+                    if gender == "male":
+                        lookup_keys.append(f"nsfw_level_{value}_male")
+
+                    for key in lookup_keys:
+                        try:
+                            type_prompt = await get_prompt(key)
+                            type_neg = await get_prompt(f"{key}_neg")
+                            prompt_parts.append(type_prompt)
+                            negative_parts.append(type_neg)
+                            resolved = True
+                            break
+                        except KeyError:
+                            continue
+
+                if not resolved:
                     nsfw_level = nsfw_levels[value]
                     prompt_parts.append(nsfw_level.prompt)
                     negative_parts.append(nsfw_level.negative_prompt)
                 continue
 
             prompt_parts.append(value)
-        prompt = ", ".join(prompt_parts)
+
+        all_tags = []
+        seen = set()
+        for part in prompt_parts:
+            for tag in part.split(", "):
+                tag_stripped = tag.strip()
+                if tag_stripped and tag_stripped.lower() not in seen:
+                    seen.add(tag_stripped.lower())
+                    all_tags.append(tag_stripped)
+        prompt = ", ".join(all_tags)
         negative_prompt = ", ".join(negative_parts)
 
         return prompt, negative_prompt

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 
 from shared.services.cache import get_cache
+from shared.services.subscription import get_subscription_service
 from shared.services.image_storage import save_world_cover, get_public_url
 from shared.models import User, World
 from shared.database import get_session
@@ -24,6 +25,13 @@ async def create_world(
 ):
     if not data.name or not data.description or not data.intro_message:
         raise HTTPException(status_code=400, detail="Name, description, and intro message are required")
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "worlds_created", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("worlds_created", limit)
 
     world_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
@@ -76,6 +84,8 @@ async def create_world(
         db.add(new_world)
         await db.commit()
 
+        await sub_service.increment_usage(user.telegram_id, "worlds_created", db)
+
     cache = get_cache()
     if cache:
         await cache.invalidate_world(world_id)
@@ -103,6 +113,13 @@ async def update_world(
 
         if not data.name or not data.description or not data.intro_message:
             raise HTTPException(status_code=400, detail="Name, description, and intro message are required")
+
+        sub_service = get_subscription_service()
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "content_edits", db)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("content_edits", limit)
+        await sub_service.increment_usage(user.telegram_id, "content_edits", db)
 
         scenarios = [
             {

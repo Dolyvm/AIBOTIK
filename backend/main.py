@@ -11,7 +11,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from api import characters, worlds, user, chat, webapp
+from api import characters, worlds, user, chat, webapp, subscription
 from api.image_gen.routes.generate import router as image_router
 from api.create_character.cc_routes import router as create_character_router
 from api.create_world.cw_routes import router as create_world_router
@@ -21,12 +21,14 @@ from shared.database import get_session
 from shared.database.exceptions import (
     EntityNotFoundError,
     ValidationError,
-    InsufficientBalanceError
+    InsufficientBalanceError,
+    UsageLimitExceeded,
 )
 from shared.services.prompt_service import init_prompt_cache
 from shared.services.redis_client import get_redis, close_redis
 from shared.services.cache import CacheService, set_cache
 from shared.services.rate_limiter import RateLimiter, set_rate_limiter, RateLimitExceeded
+from shared.services.subscription import get_subscription_service
 from shared.services.llm import LLMClient
 from arq import create_pool
 from arq.connections import RedisSettings
@@ -83,6 +85,19 @@ async def handle_rate_limit(request, exc: RateLimitExceeded):
             "code": "RATE_LIMIT_EXCEEDED"
         },
         headers={"Retry-After": str(exc.retry_after)}
+    )
+
+@app.exception_handler(UsageLimitExceeded)
+async def handle_usage_limit(request, exc: UsageLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "usage_limit_exceeded",
+            "message": exc.message,
+            "usage_type": exc.usage_type,
+            "limit": exc.limit,
+            "code": "USAGE_LIMIT_EXCEEDED"
+        }
     )
 
 @app.exception_handler(RequestValidationError)
@@ -156,6 +171,7 @@ app.include_router(create_character_router)
 app.include_router(create_world_router)
 app.include_router(tasks_router)
 app.include_router(admin_router)
+app.include_router(subscription.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/content", StaticFiles(directory="/app/content"), name="content")

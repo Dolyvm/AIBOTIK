@@ -187,13 +187,17 @@ Character state:
 - Arousal (0-100): {arousal}
 - Current location in story: {current_location}
 
-Outfits: {available_outfits}
+Available outfits (key: visual description):
+{available_outfits}
+Choose "outfit_key" from the keys above. Use visual descriptions to understand what each outfit looks like.
+
 You should make JSON values suitable for use in text to image models.
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
+"location" value should consist of real understandable words and be SHORT. 10 words maximum.
+IMPORTANT: "location" MUST include time of day if known from context (e.g., "park path at night", "bedroom morning light", "city street at sunset"). If the chat mentions night/evening/morning, ALWAYS include it in location.
 
 IMPORTANT for "pose":
 - If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
-- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from HER perspective only (e.g., "on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"). Still describe only HER body, not the other person.
+- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from {gender_possessive} perspective only (e.g., {pose_examples}). Still describe only {gender_possessive} body, not the other person.
 - NEVER use plural forms or words implying multiple people
 
 NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/state from the conversation.
@@ -204,25 +208,41 @@ NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/st
 - If model_type is "real": use short descriptive phrases. Examples: "cum on face, doggy position, penetration from behind, sweaty", "missionary sex, legs spread, orgasm, wet skin", "oral sex, cum dripping, kneeling"
 - Focus on the KEY visual details that make this scene unique — what would differentiate this image from a generic nude
 
-NEW FIELD "scene_description": Write a visual description based on the last 1-2 messages.
-- Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
-- Extract specific visual details from the dialogue
-- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
-- Be explicit and detailed if nsfw_level is high (3-5)
+NEW FIELD "scene_description": Visual ATMOSPHERE tags based on the last 1-2 messages.
+CRITICAL — DO NOT REPEAT other fields:
+- DO NOT describe character appearance (hair, eyes, body — already in character_base)
+- DO NOT describe clothing or outfit (already in clothing field)
+- DO NOT describe pose or body position (already in pose field)
+- DO NOT describe emotion or expression (already in emotion field)
+- ONLY include: lighting, atmosphere, skin details (blush, sweat, goosebumps), environmental textures
+- NEVER include sounds, smells, tastes, or non-visual sensory details (e.g., "soft jazz playing", "faint scent of turpentine", "sound of rain"). ONLY include what a CAMERA can capture: lighting, colors, textures, weather effects, particles
+- MUST include lighting that matches time of day from the conversation:
+  - Night → "night, moonlight, dark sky, dim streetlights" (NOT "pink glow" or "warm light")
+  - Day → "sunlight, bright sky, daylight"
+  - Indoor → "room lighting, lamp light"
+- If nsfw_level 3-5: may include physical state details (sweat, fluids, skin flush)
 
-IMPORTANT — format depends on model_type:
-- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "flushed cheeks, parted lips, on bed, dim lighting, sweat drops"). Max 15 tags.
-- If model_type is "real": use short descriptive phrases (e.g., "young woman with flushed cheeks gazing softly, warm candlelight, lips slightly parted"). Max 30 words.
+Format by model_type:
+- If model_type is "anime": 3-5 short danbooru-style tags ONLY. Example: "night sky, moonlight, flushed skin, wind"
+- If model_type is "real": 1-2 short phrases, max 15 words. Example: "dark night street, moonlit, slightly flushed skin"
 
-Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
+BAD: "young anime girl with blue hair wearing apron" — repeats appearance + clothing
+BAD: "soft pink sakura glow" when scene is AT NIGHT — wrong lighting
+GOOD: "night, moonlight, cold air, faint blush" — correct atmosphere and lighting
+
+Select suitable "outfit_key" from the list above. If person took off clothes, set this value as "underwear" or "nude", based on context.
+
+IMPORTANT for "emotion" — must be SHORT image-generation tags, NOT abstract descriptions:
+- If model_type is "anime": use danbooru tags (e.g., "smile", "blush", "sad expression", "closed eyes", "furrowed brows", "tears")
+- If model_type is "real": use short phrases (e.g., "gentle smile", "serious look", "playful grin", "shy blush")
+- NEVER use compound words like "mixed_sadness_embarrassment" — use comma-separated visual tags instead
+
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"short visual tags","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
 
 CRITICAL RULES (based on character state):
 - "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
 - If mood is negative (angry, sad, scared, disgusted) → nsfw_level MUST be 0-1, character stays clothed
-- If affinity < 20 (strangers) → nsfw_level MUST be 0-1
-- If affinity < 40 (acquaintances) → nsfw_level MUST be 0-2
 - Do NOT escalate nsfw_level based on player's crude messages if the character rejected/refused them
 - Base your analysis on the CHARACTER's reaction (last assistant message), not the player's request
 
@@ -230,7 +250,7 @@ NSFW Level Guide (choose carefully based on conversation):
 0 = fully clothed, public setting, modest
 1 = sensual/teasing but clothed, flirtatious
 2 = revealing clothing, suggestive, aroused
-3 = topless, partial nudity, exposed breasts
+3 = topless, partial nudity, {nsfw_level_3_desc}
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact
 
@@ -273,9 +293,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 Пиши ТОЛЬКО текст действия/реплики. Никаких мета-тегов, пояснений или комментариев.
 """,
 
-    "nsfw_level_0": "general",
+    "nsfw_level_0": "",
     "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
-    "nsfw_level_1": "sensual, teasing expression, fully clothed",
+    "nsfw_level_1": "",
     "nsfw_level_1_neg": "nudity, sexual act",
     "nsfw_level_2": "aroused, nsfw, sensual, teasing, showing herself, tits peeking",
     "nsfw_level_2_neg": "nudity, explicit sex, penetration",
@@ -296,6 +316,25 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
     "nsfw_level_5_real_neg": "general, clothed",
 
+    "nsfw_level_2_male": "aroused, nsfw, sensual, teasing, showing himself, muscular torso",
+    "nsfw_level_2_male_neg": "nudity, explicit sex, penetration",
+    "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
+    "nsfw_level_3_male_neg": "penetration, explicit sex",
+    "nsfw_level_4_male": "nsfw, naked body, nude, muscular, aroused",
+    "nsfw_level_4_male_neg": "general, clothes, female, breasts",
+    "nsfw_level_5_male": "extreme erotic, explicit, nsfw, orgasm, extremely aroused",
+    "nsfw_level_5_male_neg": "general, female, breasts",
+
+    "nsfw_level_4_anime_male": "nsfw, nude, completely nude, penis, muscular, navel, bare skin, uncensored",
+    "nsfw_level_4_anime_male_neg": "general, clothes, clothed, censored, female, breasts",
+    "nsfw_level_5_anime_male": "nsfw, explicit, sex, nude, penis, muscular, sweat, blush, open mouth",
+    "nsfw_level_5_anime_male_neg": "general, clothed, censored, mosaic censoring, female, breasts",
+
+    "nsfw_level_4_real_male": "nsfw, fully nude body, muscular physique, naked, aroused, intimate",
+    "nsfw_level_4_real_male_neg": "general, clothes, dressed, clothed, female, breasts",
+    "nsfw_level_5_real_male": "nsfw, explicit sex, nude, muscular body, intimate, intense pleasure, wet skin",
+    "nsfw_level_5_real_male_neg": "general, clothed, female, breasts",
+
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
 
@@ -303,7 +342,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "behavior_affinity_neutral": "- Вы знакомые. Отношение нейтральное. Шутки допустимы, но без интимности.\n",
     "behavior_affinity_warm": "- Вы близкие люди. Проявляй теплоту, касания, заботу.\n",
     "behavior_affinity_love": "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
+    "behavior_affinity_love_male": "- Ты глубоко влюблён/привязан. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high": "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
+    "behavior_arousal_high_male": "- Твоё тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
 
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
@@ -455,10 +496,14 @@ Character state:
 - Arousal (0-100): {arousal}
 - Current location in story: {current_location}
 
-Outfits: {available_outfits}
+Available outfits (key: visual description):
+{available_outfits}
+Choose "outfit_key" from the keys above. Use visual descriptions to understand what each outfit looks like.
+
 You should make JSON values suitable for use in text to image models.
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
-You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
+"location" value should consist of real understandable words and be SHORT. 10 words maximum.
+IMPORTANT: "location" MUST include time of day if known from context (e.g., "park path at night", "bedroom morning light", "cafe at sunset"). If the chat mentions night/evening/morning, ALWAYS include it in location.
+"pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
 
 IMPORTANT for "pose":
 - Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
@@ -466,20 +511,35 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a visual description based on the last 1-2 messages.
-- Focus on visual details: body position, facial expression, lighting, atmosphere
-- Extract specific visual details from the dialogue (e.g., "smiling softly", "blushing cheeks", "gentle gaze")
-- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
+NEW FIELD "scene_description": Visual ATMOSPHERE tags based on the last 1-2 messages.
+CRITICAL — DO NOT REPEAT other fields:
+- DO NOT describe character appearance (hair, eyes, body — already provided separately)
+- DO NOT describe clothing or outfit (already in clothing field)
+- DO NOT describe pose or body position (already in pose field)
+- DO NOT describe emotion or expression (already in emotion field)
+- ONLY include: lighting, atmosphere, skin details (blush, goosebumps), environmental textures
+- MUST include lighting that matches time of day:
+  - Night → "night, moonlight, dark sky" (NOT "pink glow")
+  - Day → "sunlight, bright sky, daylight"
+  - Indoor → "room lighting, lamp light"
 - Keep descriptions romantic and tasteful, NO explicit content
-- This will be used directly in the image generation prompt
 
-IMPORTANT — format depends on model_type:
-- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "soft smile, gentle gaze, warm sunlight, sitting on windowsill"). Max 12 tags.
-- If model_type is "real": use short descriptive phrases (e.g., "young woman smiling gently, soft sunlight on face, warm cozy atmosphere"). Max 25 words.
+Format by model_type:
+- If model_type is "anime": 5-8 short danbooru-style tags ONLY. Example: "night sky, moonlight, gentle breeze, soft glow"
+- If model_type is "real": 1-2 short phrases, max 15 words. Example: "soft golden hour lighting, warm cozy cafe atmosphere"
 
-Select suitable "outfit_key". Character should remain clothed at all times.
+BAD (DO NOT DO THIS): "young anime girl smiling softly, wearing sweater, sitting on windowsill" — repeats appearance + clothing + pose
+GOOD: "warm sunlight through window, soft glow, cherry blossom petals" — only atmosphere and unique details
+
+Select suitable "outfit_key" from the list above. Character should remain clothed at all times.
+
+IMPORTANT for "emotion" — must be SHORT image-generation tags, NOT abstract descriptions:
+- If model_type is "anime": use danbooru tags (e.g., "smile", "blush", "sad expression", "closed eyes")
+- If model_type is "real": use short phrases (e.g., "gentle smile", "serious look", "shy blush")
+- NEVER use compound words like "mixed_sadness_embarrassment" — use comma-separated visual tags instead
+
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"short visual tags","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
 
 CRITICAL RULES:
 - "location" MUST match the current story location
@@ -534,7 +594,12 @@ SFW Level Guide (ONLY use 0 or 1):
                                                     "Девушка",
                                                     "Друзья с привилегиями",
                                                     "Жена",
-                                                    "Друг"
+                                                    "Друг",
+                                                    "Парень",
+                                                    "Муж",
+                                                    "Пасынок",
+                                                    "Отчим",
+                                                    "Любовник"
                                                 ],
                                                 "description": "Роль в отношениях с пользователем. Обязательно из списка."
                                             }
@@ -573,22 +638,49 @@ SFW Level Guide (ONLY use 0 or 1):
                                         "description": "Возраст строго из списка (как строка)."
                                     },
                                     "ass": {
-                                        "type": "string",
+                                        "type": ["string", "null"],
                                         "enum": [
                                             "small ass",
                                             "fit ass",
                                             "big round ass",
-                                            "huge round ass"
-                                        ]
+                                            "huge round ass",
+                                            None
+                                        ],
+                                        "description": "Только для женских персонажей. Для мужских — null."
                                     },
                                     "boobs": {
-                                        "type": "string",
+                                        "type": ["string", "null"],
                                         "enum": [
                                             "small breasts",
                                             "beautiful breasts",
                                             "big breasts",
-                                            "huge breasts"
-                                        ]
+                                            "huge breasts",
+                                            None
+                                        ],
+                                        "description": "Только для женских персонажей. Для мужских — null."
+                                    },
+                                    "build": {
+                                        "type": ["string", "null"],
+                                        "enum": [
+                                            "lean build",
+                                            "average build",
+                                            "athletic build",
+                                            "muscular build",
+                                            None
+                                        ],
+                                        "description": "Только для мужских персонажей. Для женских — null."
+                                    },
+                                    "facial_hair": {
+                                        "type": ["string", "null"],
+                                        "enum": [
+                                            "clean shaven",
+                                            "stubble",
+                                            "short beard",
+                                            "full beard",
+                                            "mustache",
+                                            None
+                                        ],
+                                        "description": "Только для мужских персонажей. Для женских — null."
                                     },
                                     "hair_color": {
                                         "type": "string",
@@ -630,7 +722,9 @@ SFW Level Guide (ONLY use 0 or 1):
                                             "petite slim body",
                                             "fit body",
                                             "curvy body",
-                                            "fat body"
+                                            "fat body",
+                                            "athletic body",
+                                            "muscular body"
                                         ]
                                     },
                                     "default_outfit": {
@@ -652,6 +746,8 @@ SFW Level Guide (ONLY use 0 or 1):
                                     "age",
                                     "ass",
                                     "boobs",
+                                    "build",
+                                    "facial_hair",
                                     "hair_color",
                                     "haircut",
                                     "eye_color",

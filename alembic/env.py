@@ -16,7 +16,8 @@ from shared.models import Base
 from shared.models import (
     User, UserSettings, Character, World, Chat,
     Message, GeneratedImage, Transaction,
-    MessageRole, TransactionSource, Prompt
+    MessageRole, TransactionSource, SubscriptionPlan, Prompt,
+    MonthlyUsage, SubscriptionPayment, Event
 )
 
 config = context.config

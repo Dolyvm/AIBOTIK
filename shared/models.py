@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Boolean,
-    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger
+    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,13 @@ class MessageRole(enum.Enum):
     SYSTEM = "system"
 
 
+class SubscriptionPlan(enum.Enum):
+    FREE = "free"
+    PLUS_WEEKLY = "plus_weekly"
+    PLUS_MONTHLY = "plus_monthly"
+    PRO = "pro"
+
+
 class TransactionSource(enum.Enum):
     DAILY_BONUS = "daily_bonus"
     PURCHASE = "purchase"
@@ -42,6 +49,12 @@ class User(Base):
     avatar_url = Column(String(500), nullable=True)
     balance = Column(Integer, default=1000)
 
+    subscription_plan = Column(
+        SQLEnum(SubscriptionPlan, values_callable=lambda e: [x.value for x in e]),
+        default=SubscriptionPlan.FREE, nullable=False
+    )
+    subscription_start_date = Column(DateTime, nullable=True)
+    subscription_auto_renew = Column(Boolean, default=False, nullable=False)
     is_subscribed = Column(Boolean, default=False)
     subscription_end_date = Column(DateTime, nullable=True)
 
@@ -52,6 +65,8 @@ class User(Base):
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
     images = relationship("GeneratedImage", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+    monthly_usages = relationship("MonthlyUsage", back_populates="user", cascade="all, delete-orphan")
+    subscription_payments = relationship("SubscriptionPayment", back_populates="user", cascade="all, delete-orphan")
 
     # stats
     first_interaction_at = Column(DateTime, nullable=True)
@@ -211,6 +226,46 @@ class Transaction(Base):
 
     user = relationship("User", back_populates="transactions")
     chat = relationship("Chat", back_populates="transactions")
+
+
+class MonthlyUsage(Base):
+    """Monthly usage tracking per user"""
+    __tablename__ = "monthly_usage"
+    __table_args__ = (
+        UniqueConstraint("user_id", "period", name="uq_monthly_usage_user_period"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    period = Column(String(7), nullable=False)  # "YYYY-MM"
+    messages_sent = Column(Integer, default=0, nullable=False)
+    images_generated = Column(Integer, default=0, nullable=False)
+    characters_created = Column(Integer, default=0, nullable=False)
+    worlds_created = Column(Integer, default=0, nullable=False)
+    content_edits = Column(Integer, default=0, nullable=False)
+    avatar_generations = Column(Integer, default=0, nullable=False)
+
+    user = relationship("User", back_populates="monthly_usages")
+
+
+class SubscriptionPayment(Base):
+    """Subscription payment records"""
+    __tablename__ = "subscription_payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    plan = Column(
+        SQLEnum(SubscriptionPlan, values_callable=lambda e: [x.value for x in e]),
+        nullable=False
+    )
+    amount_stars = Column(Integer, nullable=False)
+    amount_rub = Column(Integer, nullable=False)
+    telegram_payment_charge_id = Column(String(255), nullable=True)
+    status = Column(String(50), default="pending", nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="subscription_payments")
 
 
 class Prompt(Base):
