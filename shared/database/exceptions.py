@@ -28,3 +28,11 @@ class InsufficientBalanceError(DatabaseError):
         self.required = required
         self.message = f"Insufficient balance: {current}, required: {required}"
         super().__init__(self.message)
+
+
+class UsageLimitExceeded(DatabaseError):
+    def __init__(self, usage_type: str, limit: int):
+        self.usage_type = usage_type
+        self.limit = limit
+        self.message = f"Monthly limit exceeded for {usage_type}: {limit}"
+        super().__init__(self.message)

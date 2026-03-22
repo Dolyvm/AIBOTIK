@@ -284,10 +284,59 @@
                         </div>
                         <div class="profile-info">
                             <div class="profile-name">{{ userProfile.username }}</div>
-                            <div class="profile-balance">
-                                <i class="fas fa-coins"></i>
-                                {{ userProfile.balance }}
+                            <div class="plan-badge" :class="'plan-' + (subscription ? subscription.plan : 'free')">
+                                {{ subscription ? subscription.plan_display_name : 'Free' }}
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Subscription Section -->
+                    <div class="profile-section" v-if="subscription">
+                        <div class="section-title">Подписка</div>
+                        <div class="subscription-current">
+                            <span class="plan-badge" :class="'plan-' + subscription.plan">{{ subscription.plan_display_name }}</span>
+                            <span v-if="subscription.subscription_end_date" class="plan-expiry">
+                                до {{ new Date(subscription.subscription_end_date).toLocaleDateString('ru-RU') }}
+                            </span>
+                        </div>
+
+                        <!-- Usage Bars -->
+                        <div class="usage-bars" v-if="subscription.usage">
+                            <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key">
+                                <div class="usage-bar-header">
+                                    <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
+                                    <span class="usage-bar-count">{{ info.used }} / {{ info.limit }}</span>
+                                </div>
+                                <div class="usage-bar-track">
+                                    <div class="usage-bar-fill" :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"
+                                         :class="{ 'usage-bar-warning': info.limit && info.used / info.limit > 0.8, 'usage-bar-full': info.limit && info.used >= info.limit }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Plan Cards -->
+                        <div class="plan-cards" v-if="availablePlans.length">
+                            <div class="plan-card" v-for="p in availablePlans" :key="p.plan"
+                                 :class="{ 'plan-card-active': p.plan === subscription.plan }">
+                                <div class="plan-card-name">{{ p.display_name }}</div>
+                                <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
+                                <div class="plan-card-price" v-else>Бесплатно</div>
+                                <button class="plan-card-btn" v-if="p.plan !== subscription.plan && p.plan !== 'free'"
+                                        @click="purchasePlan(p.plan)">
+                                    Выбрать
+                                </button>
+                                <div class="plan-card-current" v-else-if="p.plan === subscription.plan">Текущий</div>
+                            </div>
+                        </div>
+
+                        <!-- Auto-renew toggle -->
+                        <div class="setting-item" v-if="subscription.plan !== 'free'" style="margin-top: 12px;">
+                            <span class="setting-label">Автопродление</span>
+                            <label class="toggle">
+                                <input type="checkbox" v-model="autoRenew" @change="toggleAutoRenew">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
                     </div>
 
@@ -350,22 +399,6 @@
                             <div class="setting-item" style="cursor:pointer" @click="openSupport">
                                 <span class="setting-label"><i class="fas fa-headset" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Поддержка</span>
                                 <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Transactions Section -->
-                    <div class="profile-section">
-                        <div class="section-title">История транзакций</div>
-                        <div class="transactions-list">
-                            <div v-for="tx in mockTransactions" :key="tx.id" class="transaction-item">
-                                <div class="transaction-info">
-                                    <div class="transaction-desc">{{ tx.description }}</div>
-                                    <div class="transaction-date">{{ formatDate(tx.created_at) }}</div>
-                                </div>
-                                <div class="transaction-amount" :class="tx.amount > 0 ? 'positive' : 'negative'">
-                                    {{ tx.amount > 0 ? '+' : '' }}{{ tx.amount }}
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -615,10 +648,26 @@
                                 <i class="fas fa-user-circle"></i>
                                 <span>Аватар не сгенерирован</span>
                             </div>
-                            <button class="cc-generate-btn" @click="generateNewCharacterPreview" :disabled="isGeneratingPreview">
+
+                            <!-- Avatar Gallery -->
+                            <div v-if="generatedAvatars.length > 1" class="avatar-gallery">
+                                <div v-for="(url, idx) in generatedAvatars" :key="idx"
+                                     class="avatar-thumb" :class="{ selected: idx === selectedAvatarIndex }"
+                                     @click="selectedAvatarIndex = idx; newCharacterPreview = url">
+                                    <img :src="url" alt="Avatar variant">
+                                </div>
+                            </div>
+
+                            <button class="cc-generate-btn" @click="generateNewCharacterPreview"
+                                    :disabled="isGeneratingPreview || avatarGenCount >= avatarGenLimit">
                                 <i class="fas fa-image"></i>
-                                {{ isGeneratingPreview ? 'Генерация...' : 'Сгенерировать аватар' }}
+                                <template v-if="isGeneratingPreview">Генерация...</template>
+                                <template v-else-if="avatarGenCount >= avatarGenLimit">Лимит исчерпан</template>
+                                <template v-else>Сгенерировать аватар ({{ avatarGenCount }}/{{ avatarGenLimit }})</template>
                             </button>
+                            <div v-if="avatarGenCount >= avatarGenLimit" class="cc-limit-hint">
+                                Лимит генераций аватара исчерпан
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -972,6 +1021,10 @@
                 });
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
+                const generatedAvatars = ref([]);
+                const selectedAvatarIndex = ref(0);
+                const avatarGenCount = ref(0);
+                const avatarGenLimit = ref(2);
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
 
@@ -1029,11 +1082,63 @@
                 const isEditingNickname = ref(false);
                 const nicknameDraft = ref('');
                 const isSavingNickname = ref(false);
-                const mockTransactions = ref([
-                    { id: 1, amount: 100, source: 'daily_bonus', description: 'Ежедневный бонус', created_at: new Date().toISOString() },
-                    { id: 2, amount: -10, source: 'message_sent', description: 'Отправка сообщения', created_at: new Date(Date.now() - 3600000).toISOString() },
-                    { id: 3, amount: -50, source: 'image_generated', description: 'Генерация изображения', created_at: new Date(Date.now() - 7200000).toISOString() }
-                ]);
+                // Subscription
+                const subscription = ref(null);
+                const availablePlans = ref([]);
+                const autoRenew = ref(false);
+                const usageLabels = {
+                    messages: 'Сообщения',
+                    images: 'Изображения',
+                    characters_created: 'Создание персонажей',
+                    worlds_created: 'Создание вселенных',
+                    content_edits: 'Редактирование',
+                    avatar_generations: 'Генерации аватара',
+                };
+
+                const loadSubscription = async () => {
+                    try {
+                        const [statusRes, plansRes] = await Promise.all([
+                            axios.get('/api/subscription/status'),
+                            axios.get('/api/subscription/plans'),
+                        ]);
+                        subscription.value = statusRes.data;
+                        availablePlans.value = plansRes.data.plans;
+                        autoRenew.value = false; // will be set from user data if needed
+                    } catch (e) {
+                        console.error('Failed to load subscription:', e);
+                    }
+                };
+
+                const purchasePlan = async (planId) => {
+                    try {
+                        const res = await axios.post('/api/subscription/purchase', { plan: planId });
+                        tg.openInvoice(res.data.invoice_url, (status) => {
+                            if (status === 'paid') {
+                                showToast('Подписка активирована!', 'success');
+                                loadSubscription();
+                                loadProfile();
+                            }
+                        });
+                    } catch (e) {
+                        console.error('Purchase failed:', e);
+                        showToast(e.response?.data?.detail || 'Ошибка покупки', 'error');
+                    }
+                };
+
+                const toggleAutoRenew = async () => {
+                    try {
+                        if (!autoRenew.value) {
+                            await axios.post('/api/subscription/cancel');
+                            showToast('Автопродление отключено', 'success');
+                        } else {
+                            await axios.post('/api/subscription/auto-renew');
+                            showToast('Автопродление включено', 'success');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        autoRenew.value = !autoRenew.value;
+                    }
+                };
 
                 // Legal documents
                 const legalDocuments = {
@@ -1193,6 +1298,22 @@
                             console.error('[AUTH ERROR]', errorDetail);
                         } else if (error.response?.status === 403) {
                             showToast('Доступ запрещен', 'error');
+                        } else if (error.response?.status === 429) {
+                            const data = error.response?.data;
+                            if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
+                                const labels = {
+                                    messages: 'сообщений', images: 'изображений',
+                                    characters_created: 'создания персонажей', worlds_created: 'создания вселенных',
+                                    content_edits: 'редактирования', avatar_generations: 'генерации аватаров',
+                                };
+                                const label = labels[data.usage_type] || data.usage_type;
+                                showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
+                                currentView.value = 'selection';
+                                tab.value = 'profile';
+                                loadSubscription();
+                            } else if (data?.code === 'RATE_LIMIT_EXCEEDED') {
+                                showToast('Слишком много запросов, подождите немного', 'error');
+                            }
                         }
                         return Promise.reject(error);
                     }
@@ -1355,7 +1476,7 @@
                         console.warn('No User ID found');
                     }
 
-                    await Promise.all([loadCharacters(), loadWorlds(), loadFilterOptions(), loadUserSettings()]);
+                    await Promise.all([loadCharacters(), loadWorlds(), loadFilterOptions(), loadUserSettings(), loadSubscription()]);
                 });
 
                 // --- LOADERS ---
@@ -1444,6 +1565,8 @@
                             userProfile.value.balance = res.data.balance;
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
                             profileSettings.value.nickname = res.data.nickname || '';
+                            autoRenew.value = res.data.subscription?.auto_renew || false;
+                            avatarGenLimit.value = res.data.subscription?.avatar_gen_limit || 2;
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -1451,6 +1574,7 @@
                             isLoadingSettings = false;
                             console.error(e);
                         }
+                        await loadSubscription();
                     }
                 };
 
@@ -1728,7 +1852,9 @@
                             scrollToBottom();
                         }
                     } catch (e) {
-                        chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                        if (e.response?.status !== 429) {
+                            chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                        }
                     } finally {
                         isWaitingResponse.value = false;
                         isStreaming.value = false;
@@ -1817,7 +1943,9 @@
                             isWaitingResponse.value = false;
                         }
                     } catch (e) {
-                        showToast('Не удалось создать фото');
+                        if (e.response?.status !== 429) {
+                            showToast('Не удалось создать фото');
+                        }
                         isWaitingResponse.value = false;
                     }
                 };
@@ -2075,16 +2203,46 @@
                     }
                 };
 
+                // --- USAGE LIMIT HELPERS ---
+                const checkUsageRemaining = (usageType) => {
+                    const usage = subscription.value?.usage?.[usageType];
+                    if (!usage) return true; // no data = allow
+                    return usage.remaining > 0;
+                };
+
+                const usageLimitLabels = {
+                    characters_created: 'создания персонажей',
+                    worlds_created: 'создания вселенных',
+                    content_edits: 'редактирования',
+                };
+
+                const blockIfLimitReached = (usageType) => {
+                    if (!checkUsageRemaining(usageType)) {
+                        const label = usageLimitLabels[usageType] || usageType;
+                        showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
+                        currentView.value = 'selection';
+                        tab.value = 'profile';
+                        loadSubscription();
+                        return true;
+                    }
+                    return false;
+                };
+
                 // --- CREATE CHARACTER ---
                 const createCharacterOnClick = () => {
+                    if (blockIfLimitReached('characters_created')) return;
                     currentView.value = "create-character";
                     createCharacterData.value = defaultCreateCharacterData();
                     newCharacterPreview.value = null;
+                    generatedAvatars.value = [];
+                    selectedAvatarIndex.value = 0;
+                    avatarGenCount.value = 0;
                     editingCharacterId.value = null;
                     ccStep.value = 0;
                 }
 
                 const editCharacterOnClick = async (characterId) => {
+                    if (blockIfLimitReached('content_edits')) return;
                     try {
                         const res = await axios.get(`/api/characters/${characterId}/edit`);
                         const c = res.data;
@@ -2106,6 +2264,9 @@
                             wardrobe: c.wardrobe || {},
                         };
                         newCharacterPreview.value = c.avatar || null;
+                        generatedAvatars.value = c.avatar ? [c.avatar] : [];
+                        selectedAvatarIndex.value = 0;
+                        avatarGenCount.value = 0;
                         editingCharacterId.value = characterId;
                         ccStep.value = 0;
                         closeModal();
@@ -2172,21 +2333,25 @@
                             default_outfit: createCharacterData.value.visual_default_outfit,
                         });
 
+                        const onAvatarGenerated = (url) => {
+                            generatedAvatars.value.push(url);
+                            selectedAvatarIndex.value = generatedAvatars.value.length - 1;
+                            newCharacterPreview.value = url;
+                            avatarGenCount.value++;
+                            isGeneratingPreview.value = false;
+                        };
+
                         if (res.data.task_id) {
                             pollImageTask(
                                 res.data.task_id,
-                                (result) => {
-                                    newCharacterPreview.value = result.url;
-                                    isGeneratingPreview.value = false;
-                                },
+                                (result) => onAvatarGenerated(result.url),
                                 (error) => {
                                     showToast('Ошибка генерации аватара');
                                     isGeneratingPreview.value = false;
                                 }
                             );
                         } else if (res.data.url) {
-                            newCharacterPreview.value = res.data.url;
-                            isGeneratingPreview.value = false;
+                            onAvatarGenerated(res.data.url);
                         }
                     } catch (e) {
                         showToast('Ошибка генерации аватара');
@@ -2285,7 +2450,9 @@
                         }
                     } catch (e) {
                         console.error(e);
-                        showToast(editingCharacterId.value ? 'Ошибка обновления персонажа' : 'Ошибка создания персонажа');
+                        if (e.response?.status !== 429) {
+                            showToast(editingCharacterId.value ? 'Ошибка обновления персонажа' : 'Ошибка создания персонажа');
+                        }
                     } finally {
                         isCreatingCharacter.value = false;
                     }
@@ -2293,6 +2460,7 @@
 
                 // --- CREATE WORLD ---
                 const createWorldOnClick = () => {
+                    if (blockIfLimitReached('worlds_created')) return;
                     currentView.value = "create-world";
                     createWorldData.value = defaultCreateWorldData();
                     editingWorldId.value = null;
@@ -2300,6 +2468,7 @@
                 }
 
                 const editWorldOnClick = async (worldId) => {
+                    if (blockIfLimitReached('content_edits')) return;
                     try {
                         const res = await axios.get(`/api/worlds/${worldId}/edit`);
                         const w = res.data;
@@ -2435,7 +2604,9 @@
                         }
                     } catch (e) {
                         console.error(e);
-                        showToast(editingWorldId.value ? 'Ошибка обновления мира' : 'Ошибка создания мира');
+                        if (e.response?.status !== 429) {
+                            showToast(editingWorldId.value ? 'Ошибка обновления мира' : 'Ошибка создания мира');
+                        }
                     } finally {
                         isCreatingWorld.value = false;
                     }
@@ -2457,6 +2628,7 @@
                     toast, autoContinue, hideKeyboard,
                     createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
                     generateNewCharacterPreview, isGeneratingPreview,
+                    generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenLimit,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     addAlternateGreeting, removeAlternateGreeting,
                     addWardrobeItem, removeWardrobeItem, renameWardrobeKey,
@@ -2467,7 +2639,10 @@
                     addAlternateScenario, removeAlternateScenario,
                     isCreatingWorld, createWorldFinal,
                     // Profile
-                    userProfile, profileSettings, mockTransactions, loadProfile,
+                    userProfile, profileSettings, loadProfile,
+                    // Subscription
+                    subscription, availablePlans, autoRenew, usageLabels,
+                    purchasePlan, toggleAutoRenew, loadSubscription,
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
                     // Documents & Support

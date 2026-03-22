@@ -12,7 +12,7 @@ from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from handlers import commands, messages, webapp
+from handlers import commands, messages, payments, webapp
 import config
 from shared.database import engine
 from shared.services.llm import LLMClient
@@ -94,6 +94,7 @@ async def main():
     webapp_url = os.getenv("WEBAPP_URL")
 
     dp.include_router(commands.router)
+    dp.include_router(payments.router)
     dp.include_router(webapp.router)
     dp.include_router(messages.router)
 

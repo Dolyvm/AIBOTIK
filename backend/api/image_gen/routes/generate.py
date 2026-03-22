@@ -22,6 +22,7 @@ from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.subscription import get_subscription_service
 from shared.services.image_provider import generate_image as provider_generate_image
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
@@ -70,6 +71,13 @@ async def gen(
         if not allowed:
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "images", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("images", limit)
 
     chat = await verify_chat_ownership(chat_id, user)
 
@@ -245,11 +253,16 @@ async def gen(
             ctx = {"redis": redis, "get_session": get_session}
             result = await generate_image_task(ctx, task_id, task_params)
             if result.get("status") == "completed":
+                async with get_session() as session:
+                    await sub_service.increment_usage(user.telegram_id, "images", session)
                 return result.get("result", {})
             raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
     except Exception as e:
         logging.error(f"Failed to enqueue task: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start generation: {e}")
+
+    async with get_session() as session:
+        await sub_service.increment_usage(user.telegram_id, "images", session)
 
     response = {"task_id": task_id, "status": "pending"}
     logging.info(f"Returning response: {response}")

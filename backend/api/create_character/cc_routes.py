@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from shared.services.analytics import AnalyticsService
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
 from shared.services.prompt_service import create_or_update_character_modifiers
 from shared.services.image_storage import save_avatar
@@ -40,6 +41,13 @@ async def create_character(
 ):
     if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "characters_created", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("characters_created", limit)
 
     character_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
 
@@ -111,6 +119,8 @@ async def create_character(
         db.add(new_character)
         await db.commit()
 
+        await sub_service.increment_usage(user.telegram_id, "characters_created", db)
+
         modifiers = {1: "", 2: "", 3: "", 4: ""}
         await create_or_update_character_modifiers(
             character_id=character_id,
@@ -157,6 +167,13 @@ async def update_character(
 
         if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
             raise HTTPException(status_code=400, detail="All main fields are required")
+
+        sub_service = get_subscription_service()
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "content_edits", db)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("content_edits", limit)
+        await sub_service.increment_usage(user.telegram_id, "content_edits", db)
 
         style_tags = data.visual_style_tags or ""
         if not style_tags.strip():
@@ -233,6 +250,14 @@ async def generate_avatar(
         if not allowed:
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "avatar_generations", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("avatar_generations", limit)
+        await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
 
     model_type = data.get("model_type", "anime")
     appearance = data.get("appearance", "")

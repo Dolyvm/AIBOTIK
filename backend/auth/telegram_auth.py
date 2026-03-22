@@ -24,7 +24,10 @@ def user_to_dict(user: User) -> dict:
         "avatar_url": user.avatar_url,
         "balance": user.balance,
         "is_subscribed": user.is_subscribed,
+        "subscription_plan": user.subscription_plan.value if user.subscription_plan else "free",
+        "subscription_start_date": user.subscription_start_date.isoformat() if user.subscription_start_date else None,
         "subscription_end_date": user.subscription_end_date.isoformat() if user.subscription_end_date else None,
+        "subscription_auto_renew": user.subscription_auto_renew,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "last_active_at": user.last_active_at.isoformat() if user.last_active_at else None,
         "settings": {
@@ -35,14 +38,25 @@ def user_to_dict(user: User) -> dict:
     }
 
 def dict_to_user(data: dict) -> User:
+    from shared.models import SubscriptionPlan
+    plan_value = data.get("subscription_plan", "free")
+    try:
+        plan = SubscriptionPlan(plan_value)
+    except ValueError:
+        plan = SubscriptionPlan.FREE
+
     user = User(
         telegram_id=data["telegram_id"],
         username=data.get("username"),
         avatar_url=data.get("avatar_url"),
         balance=data.get("balance", 1000),
         is_subscribed=data.get("is_subscribed", False),
+        subscription_plan=plan,
+        subscription_auto_renew=data.get("subscription_auto_renew", False),
     )
 
+    if data.get("subscription_start_date"):
+        user.subscription_start_date = datetime.fromisoformat(data["subscription_start_date"])
     if data.get("subscription_end_date"):
         user.subscription_end_date = datetime.fromisoformat(data["subscription_end_date"])
     if data.get("created_at"):

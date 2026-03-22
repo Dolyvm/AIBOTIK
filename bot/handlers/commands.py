@@ -29,9 +29,13 @@ async def cmd_start(message: Message):
             await AnalyticsService.track(session, user.telegram_id, "bot_enter")
         await user_repo.commit()
 
+    from shared.subscription_plans import PLAN_LIMITS
+    plan_config = PLAN_LIMITS.get(user.subscription_plan, {})
+    plan_name = plan_config.get("display_name", "Free")
+
     await message.answer(
         f"Привет, {message.from_user.first_name}!\n\n"
-        f"Твой баланс: {user.balance} токенов\n\n"
+        f"Твой план: {plan_name}\n\n"
         "Нажми кнопку меню внизу, чтобы выбрать персонажа или вселенную."
     )
 
