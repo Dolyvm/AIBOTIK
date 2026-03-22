@@ -12,10 +12,11 @@ async def generate_image(
     negative_prompt: str = "",
     allow_nsfw: bool = True,
     nsfw_level: int = 0,
+    seed: int = -1,
 ) -> str | None:
     """Generate an image and return the provider URL (or None on failure)."""
     if model_type == "anime":
-        return await _submit_anime(positive_prompt, negative_prompt)
+        return await _submit_anime(positive_prompt, negative_prompt, seed=seed)
     elif model_type == "real":
         return await _submit_real(positive_prompt, allow_nsfw, nsfw_level)
     else:
@@ -23,7 +24,7 @@ async def generate_image(
         return None
 
 
-async def _submit_anime(positive_prompt: str, negative_prompt: str) -> str | None:
+async def _submit_anime(positive_prompt: str, negative_prompt: str, seed: int = -1) -> str | None:
     model_version = (
         "aisha-ai-official/wai-nsfw-illustrious-v12:"
         "0fc0fa9885b284901a6f9c0b4d67701fd7647d157b88371427d63f8089ce140e"
@@ -34,7 +35,7 @@ async def _submit_anime(positive_prompt: str, negative_prompt: str) -> str | Non
             "prompt": positive_prompt,
             "negative_prompt": negative_prompt,
             "vae": "default",
-            "seed": -1,
+            "seed": seed,
             "cfg_scale": 5,
             "pag_scale": 5,
             "scheduler": "Euler a",

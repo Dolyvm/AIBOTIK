@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import re
@@ -356,7 +357,7 @@ class ContextManager:
                 environment=environment,
             )
 
-            prompt.action = state_meta.get("action") or pose
+            prompt.action = pose or state_meta.get("action", "")
             if scene_description:
                 prompt.scene_details = scene_description
             if emotion and emotion != "neutral":
@@ -377,6 +378,9 @@ class ContextManager:
             # Create task and enqueue for background processing
             task_id = str(uuid4())
 
+            char_id = (character or {}).get("id") or content.get("name", "")
+            seed = int(hashlib.md5(str(char_id).encode()).hexdigest()[:8], 16) % (2**31)
+
             task_params = {
                 "chat_id": chat.id,
                 "user_id": chat.user_id,
@@ -388,6 +392,7 @@ class ContextManager:
                 "allow_nsfw": allow_nsfw,
                 "nsfw_level": nsfw_level,
                 "pose": pose,
+                "seed": seed,
             }
 
             # Store initial task status in Redis

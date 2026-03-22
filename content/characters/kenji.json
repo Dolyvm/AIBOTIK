@@ -2,7 +2,7 @@
   "name": "Кенджи",
   "short_description": "Студент-художник",
   "is_public": true,
-  "appearance": "1boy, anime boy, tall lean build, messy black hair, sharp dark eyes, angular jawline, confident smirk",
+  "appearance": "1boy, anime boy, solo, tall lean build, fair skin, messy black hair, medium hair, sharp dark brown eyes, narrow eyes, angular jawline, confident smirk, handsome, long legs, broad shoulders",
   "visual": {
     "llm_settings": {
       "preferences": null,
@@ -17,6 +17,7 @@
     "hair_color": "black",
     "haircut": "straight haircut",
     "eye_color": "brown",
+    "default_outfit": "black hoodie, ripped jeans, sneakers",
     "wardrobe": {
       "casual": "black hoodie, ripped jeans, sneakers",
       "formal": "dark slim-fit suit, white shirt, no tie",

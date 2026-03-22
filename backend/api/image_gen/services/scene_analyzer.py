@@ -199,7 +199,7 @@ class SceneAnalyzer:
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
-        recent_messages = history[-5:] if len(history) > 5 else history
+        recent_messages = history[-2:] if len(history) > 2 else history
 
         context_str = f"{character_name}:{allow_nsfw}:{recent_messages}"
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
@@ -212,7 +212,7 @@ class SceneAnalyzer:
                 return SceneAnalysis(**cached)
 
         formatted = "\n".join([
-            f"{m['role'].upper()}: {m['content'][:200]}"
+            f"{m['role'].upper()}: {m['content']}"
             for m in recent_messages
         ])
 
@@ -266,13 +266,6 @@ class SceneAnalyzer:
             if mood.lower() in self.NEGATIVE_MOODS:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
                 logger.info(f"nsfw_level capped to {scene.nsfw_level} due to negative mood '{mood}'")
-
-            if affinity < 20:
-                scene.nsfw_level = min(scene.nsfw_level, 1)
-            elif affinity < 40:
-                scene.nsfw_level = min(scene.nsfw_level, 2)
-            elif affinity < 60:
-                scene.nsfw_level = min(scene.nsfw_level, 3)
 
             original_outfit = scene.outfit_key
 

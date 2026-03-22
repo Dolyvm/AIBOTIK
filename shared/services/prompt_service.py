@@ -215,6 +215,7 @@ CRITICAL — DO NOT REPEAT other fields:
 - DO NOT describe pose or body position (already in pose field)
 - DO NOT describe emotion or expression (already in emotion field)
 - ONLY include: lighting, atmosphere, skin details (blush, sweat, goosebumps), environmental textures
+- NEVER include sounds, smells, tastes, or non-visual sensory details (e.g., "soft jazz playing", "faint scent of turpentine", "sound of rain"). ONLY include what a CAMERA can capture: lighting, colors, textures, weather effects, particles
 - MUST include lighting that matches time of day from the conversation:
   - Night → "night, moonlight, dark sky, dim streetlights" (NOT "pink glow" or "warm light")
   - Day → "sunlight, bright sky, daylight"
@@ -222,7 +223,7 @@ CRITICAL — DO NOT REPEAT other fields:
 - If nsfw_level 3-5: may include physical state details (sweat, fluids, skin flush)
 
 Format by model_type:
-- If model_type is "anime": 5-8 short danbooru-style tags ONLY. Example: "night sky, moonlight, flushed skin, wind"
+- If model_type is "anime": 3-5 short danbooru-style tags ONLY. Example: "night sky, moonlight, flushed skin, wind"
 - If model_type is "real": 1-2 short phrases, max 15 words. Example: "dark night street, moonlit, slightly flushed skin"
 
 BAD: "young anime girl with blue hair wearing apron" — repeats appearance + clothing
@@ -242,8 +243,6 @@ Return ONLY this JSON (no markdown, no nesting):
 CRITICAL RULES (based on character state):
 - "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
 - If mood is negative (angry, sad, scared, disgusted) → nsfw_level MUST be 0-1, character stays clothed
-- If affinity < 20 (strangers) → nsfw_level MUST be 0-1
-- If affinity < 40 (acquaintances) → nsfw_level MUST be 0-2
 - Do NOT escalate nsfw_level based on player's crude messages if the character rejected/refused them
 - Base your analysis on the CHARACTER's reaction (last assistant message), not the player's request
 

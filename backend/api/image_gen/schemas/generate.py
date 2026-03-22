@@ -107,11 +107,11 @@ class Prompt(BaseModel):
         visual = character.get("visual", {})
         model_type = character.get("model_type", "real")
 
+        wardrobe = visual.get("wardrobe", {})
         if outfit_key == "default_outfit":
-            clothing = visual.get("default_outfit", "")
+            clothing = visual.get("default_outfit", "") or wardrobe.get("casual", "")
         else:
-            wardrobe = visual.get("wardrobe", {})
-            clothing = wardrobe.get(outfit_key, visual.get("default_outfit", ""))
+            clothing = wardrobe.get(outfit_key, visual.get("default_outfit", "") or wardrobe.get("casual", ""))
         if clothing:
             clothing = clothing.strip().rstrip('",').rstrip('"').strip()
 
@@ -252,7 +252,16 @@ class Prompt(BaseModel):
                 continue
 
             prompt_parts.append(value)
-        prompt = ", ".join(prompt_parts)
+
+        all_tags = []
+        seen = set()
+        for part in prompt_parts:
+            for tag in part.split(", "):
+                tag_stripped = tag.strip()
+                if tag_stripped and tag_stripped.lower() not in seen:
+                    seen.add(tag_stripped.lower())
+                    all_tags.append(tag_stripped)
+        prompt = ", ".join(all_tags)
         negative_prompt = ", ".join(negative_parts)
 
         return prompt, negative_prompt

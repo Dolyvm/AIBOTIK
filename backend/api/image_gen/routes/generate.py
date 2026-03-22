@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import sys
@@ -184,7 +185,7 @@ async def gen(
         environment=environment,
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
-    prompt.action = state_meta.get("action") or pose
+    prompt.action = pose or state_meta.get("action", "")
     if scene_description:
         prompt.scene_details = scene_description
     if emotion and emotion != "neutral":
@@ -217,6 +218,9 @@ async def gen(
         raise HTTPException(status_code=400, detail="Unsupported model type")
     task_id = str(uuid4())
 
+    char_id = (character or {}).get("id") or content.get("name", "")
+    seed = int(hashlib.md5(str(char_id).encode()).hexdigest()[:8], 16) % (2**31)
+
     task_params = {
         "chat_id": chat.id,
         "user_id": chat.user_id,
@@ -228,6 +232,7 @@ async def gen(
         "allow_nsfw": content.get("is_nsfw", True),
         "nsfw_level": nsfw_level,
         "pose": pose,
+        "seed": seed,
     }
 
     redis = await get_redis()

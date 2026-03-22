@@ -54,6 +54,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
     allow_nsfw = params.get("allow_nsfw", True)
     nsfw_level = params.get("nsfw_level", 0)
     pose = params.get("pose")
+    seed = params.get("seed", -1)
 
     logger.info(f"Starting image generation task {task_id} for chat {chat_id}")
 
@@ -68,6 +69,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
             negative_prompt=negative_prompt,
             allow_nsfw=allow_nsfw,
             nsfw_level=nsfw_level,
+            seed=seed,
         )
 
         if not image_url:
