@@ -458,6 +458,14 @@ async def create_character(
         for k, v in zip(wardrobe_keys, wardrobe_values)
         if k.strip()
     }
+    # Auto-add required wardrobe keys if missing
+    gender = form_data.get("gender", "female")
+    if gender == "male":
+        wardrobe.setdefault("nude", "nothing, showing his naked body")
+        wardrobe.setdefault("underwear", "black boxer briefs")
+    else:
+        wardrobe.setdefault("nude", "nothing, showing her naked body")
+        wardrobe.setdefault("underwear", "white bra, white panties")
 
     visual_data = {
         "model_type": form_data.get("model_type", "anime"),

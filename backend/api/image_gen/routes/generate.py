@@ -186,8 +186,9 @@ async def gen(
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
     prompt.action = pose or state_meta.get("action", "")
-    if scene_description:
-        prompt.scene_details = scene_description
+    # scene_description убран из промпта — дублирует environment и перегружает CLIP
+    # if scene_description:
+    #     prompt.scene_details = scene_description
     if emotion and emotion != "neutral":
         prompt.facial_expression = emotion
     # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
