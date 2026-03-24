@@ -195,6 +195,19 @@ class Prompt(BaseModel):
             style = visual.get("style_tags", "")
             character_base = ", ".join(filter(None, [appearance, body, face]))
 
+        # Принудительно добавить гендерный тег в начало, если его нет
+        cb_lower = character_base.lower()
+        if model_type == "anime":
+            if is_male and "1boy" not in cb_lower:
+                character_base = "1boy, " + character_base
+            elif not is_male and "1girl" not in cb_lower:
+                character_base = "1girl, " + character_base
+        else:
+            if is_male and "man" not in cb_lower and "male" not in cb_lower:
+                character_base = "male, " + character_base
+            elif not is_male and "woman" not in cb_lower and "female" not in cb_lower:
+                character_base = "female, " + character_base
+
         return cls(
             character_base=character_base,
             clothing=clothing,
@@ -222,15 +235,13 @@ class Prompt(BaseModel):
 
             if field_name == "nsfw_level":
                 resolved = False
-                # Try gender+model-specific prompts first (e.g. nsfw_level_4_anime_male)
                 if value >= 2:
                     type_key = build_as_type if build_as_type in ("anime", "real") else None
-                    # Priority: model_type+gender > model_type > gender > generic
+                    # Priority: model_type+gender specific → generic fallback
                     lookup_keys = []
-                    if type_key and gender == "male":
-                        lookup_keys.append(f"nsfw_level_{value}_{type_key}_male")
+                    gender_suffix = "_male" if gender == "male" else ""
                     if type_key:
-                        lookup_keys.append(f"nsfw_level_{value}_{type_key}")
+                        lookup_keys.append(f"nsfw_level_{value}_{type_key}{gender_suffix}")
                     if gender == "male":
                         lookup_keys.append(f"nsfw_level_{value}_male")
 
@@ -252,6 +263,12 @@ class Prompt(BaseModel):
                 continue
 
             prompt_parts.append(value)
+
+        # Гендерные ограничения в negative_prompt
+        if gender == "male":
+            negative_parts.append("female, breasts, 1girl, woman")
+        else:
+            negative_parts.append("1boy, male, penis")
 
         all_tags = []
         seen = set()

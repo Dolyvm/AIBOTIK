@@ -170,7 +170,7 @@
                             <option value="female">Женские</option>
                             <option value="male">Мужские</option>
                         </select>
-                        <select v-model="characterFilters.creator_type" @change="loadCharacters" style="max-width: 45%">
+                        <select v-model="characterFilters.creator_type" @change="loadCharacters">
                             <option :value="null">По создателю</option>
                             <option value="me">Мои персонажи</option>
                             <option value="public">Персонажи сообщества</option>
@@ -302,7 +302,7 @@
 
                         <!-- Usage Bars -->
                         <div class="usage-bars" v-if="subscription.usage">
-                            <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key">
+                            <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'avatar_generations'">
                                 <div class="usage-bar-header">
                                     <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
                                     <span class="usage-bar-count">{{ info.used }} / {{ info.limit }}</span>
@@ -318,16 +318,29 @@
                         <!-- Plan Cards -->
                         <div class="plan-cards" v-if="availablePlans.length">
                             <div class="plan-card" v-for="p in availablePlans" :key="p.plan"
-                                 :class="{ 'plan-card-active': p.plan === subscription.plan }">
+                                 :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
+                                 @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
                                 <div class="plan-card-name">{{ p.display_name }}</div>
                                 <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
                                 <div class="plan-card-price" v-else>Бесплатно</div>
-                                <button class="plan-card-btn" v-if="p.plan !== subscription.plan && p.plan !== 'free'"
-                                        @click="purchasePlan(p.plan)">
-                                    Выбрать
-                                </button>
-                                <div class="plan-card-current" v-else-if="p.plan === subscription.plan">Текущий</div>
+                                <div class="plan-card-current" v-if="p.plan === subscription.plan">Текущий</div>
                             </div>
+                        </div>
+
+                        <!-- Plan Preview -->
+                        <div class="plan-preview" v-if="previewPlanData">
+                            <div class="plan-preview-title">{{ previewPlanData.display_name }} — лимиты:</div>
+                            <div class="plan-preview-limits">
+                                <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
+                                    <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
+                                    <span class="plan-preview-value">{{ val }}</span>
+                                </div>
+                            </div>
+                            <button class="plan-card-btn plan-preview-buy"
+                                    v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'"
+                                    @click="purchasePlan(previewPlanData.plan)">
+                                Купить
+                            </button>
                         </div>
 
                         <!-- Auto-renew toggle -->
@@ -663,10 +676,10 @@
                                 <i class="fas fa-image"></i>
                                 <template v-if="isGeneratingPreview">Генерация...</template>
                                 <template v-else-if="avatarGenCount >= avatarGenLimit">Лимит исчерпан</template>
-                                <template v-else>Сгенерировать аватар ({{ avatarGenCount }}/{{ avatarGenLimit }})</template>
+                                <template v-else>Сгенерировать аватар</template>
                             </button>
                             <div v-if="avatarGenCount >= avatarGenLimit" class="cc-limit-hint">
-                                Лимит генераций аватара исчерпан
+                                Лимит генераций аватара исчерпан (максимум {{ avatarGenLimit }})
                             </div>
                         </div>
                     </div>
@@ -1024,7 +1037,7 @@
                 const generatedAvatars = ref([]);
                 const selectedAvatarIndex = ref(0);
                 const avatarGenCount = ref(0);
-                const avatarGenLimit = ref(2);
+                const avatarGenLimit = 10;
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
 
@@ -1086,6 +1099,11 @@
                 const subscription = ref(null);
                 const availablePlans = ref([]);
                 const autoRenew = ref(false);
+                const selectedPlanPreview = ref(null);
+                const previewPlanData = computed(() => {
+                    if (!selectedPlanPreview.value) return null;
+                    return availablePlans.value.find(p => p.plan === selectedPlanPreview.value) || null;
+                });
                 const usageLabels = {
                     messages: 'Сообщения',
                     images: 'Изображения',
@@ -1566,7 +1584,7 @@
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
                             profileSettings.value.nickname = res.data.nickname || '';
                             autoRenew.value = res.data.subscription?.auto_renew || false;
-                            avatarGenLimit.value = res.data.subscription?.avatar_gen_limit || 2;
+                            // avatarGenLimit is a per-session constant (10), not loaded from server
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -2642,6 +2660,7 @@
                     userProfile, profileSettings, loadProfile,
                     // Subscription
                     subscription, availablePlans, autoRenew, usageLabels,
+                    selectedPlanPreview, previewPlanData,
                     purchasePlan, toggleAutoRenew, loadSubscription,
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,

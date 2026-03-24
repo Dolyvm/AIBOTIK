@@ -268,13 +268,16 @@ class SceneAnalyzer:
                 logger.info(f"nsfw_level capped to {scene.nsfw_level} due to negative mood '{mood}'")
 
             original_outfit = scene.outfit_key
+            outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
 
-            if scene.nsfw_level >= 4 and scene.outfit_key != "nude":
+            if scene.nsfw_level >= 4 and scene.outfit_key != "nude" and "nude" in outfit_keys:
                 scene.outfit_key = "nude"
             elif scene.nsfw_level == 3 and scene.outfit_key not in ("nude", "underwear"):
-                scene.outfit_key = "underwear"
+                if "underwear" in outfit_keys:
+                    scene.outfit_key = "underwear"
             elif scene.nsfw_level == 2 and scene.outfit_key not in ("underwear", "swimwear", "sleepwear", "nude"):
-                scene.outfit_key = "swimwear"
+                if "swimwear" in outfit_keys:
+                    scene.outfit_key = "swimwear"
             elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
                 scene.outfit_key = "default_outfit"
 

@@ -63,6 +63,15 @@ async def create_character(
             else:
                 style_tags = "soft natural lighting, film photography, warm tones"
 
+        wardrobe = data.wardrobe or {}
+        # Auto-add required wardrobe keys if missing
+        if data.gender == "male":
+            wardrobe.setdefault("nude", "nothing, showing his naked body")
+            wardrobe.setdefault("underwear", "black boxer briefs")
+        else:
+            wardrobe.setdefault("nude", "nothing, showing her naked body")
+            wardrobe.setdefault("underwear", "white bra, white panties")
+
         visual_data = {
             "model_type": data.model_type,
             "gender": data.gender,
@@ -71,7 +80,7 @@ async def create_character(
             "face": _clean_visual_field(data.visual_face or ""),
             "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
             "style_tags": style_tags,
-            "wardrobe": data.wardrobe,
+            "wardrobe": wardrobe,
         }
 
         if data.avatar_url:
@@ -250,14 +259,6 @@ async def generate_avatar(
         if not allowed:
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
-
-    sub_service = get_subscription_service()
-    async with get_session() as session:
-        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "avatar_generations", session)
-        if not allowed:
-            from shared.database.exceptions import UsageLimitExceeded
-            raise UsageLimitExceeded("avatar_generations", limit)
-        await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
 
     model_type = data.get("model_type", "anime")
     appearance = data.get("appearance", "")

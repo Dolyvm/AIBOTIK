@@ -192,8 +192,8 @@ Available outfits (key: visual description):
 Choose "outfit_key" from the keys above. Use visual descriptions to understand what each outfit looks like.
 
 You should make JSON values suitable for use in text to image models.
-"location" value should consist of real understandable words and be SHORT. 10 words maximum.
-IMPORTANT: "location" MUST include time of day if known from context (e.g., "park path at night", "bedroom morning light", "city street at sunset"). If the chat mentions night/evening/morning, ALWAYS include it in location.
+"location": MAXIMUM 4 words. Format: "[place] at [time]". Examples: "road at night", "bedroom evening", "park daytime", "cafe indoor".
+NEVER add adjectives like "abandoned", "dim", "cozy", "warm" — just the place and time of day.
 
 IMPORTANT for "pose":
 - If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
@@ -208,27 +208,27 @@ NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/st
 - If model_type is "real": use short descriptive phrases. Examples: "cum on face, doggy position, penetration from behind, sweaty", "missionary sex, legs spread, orgasm, wet skin", "oral sex, cum dripping, kneeling"
 - Focus on the KEY visual details that make this scene unique — what would differentiate this image from a generic nude
 
-NEW FIELD "scene_description": Visual ATMOSPHERE tags based on the last 1-2 messages.
-CRITICAL — DO NOT REPEAT other fields:
-- DO NOT describe character appearance (hair, eyes, body — already in character_base)
-- DO NOT describe clothing or outfit (already in clothing field)
-- DO NOT describe pose or body position (already in pose field)
-- DO NOT describe emotion or expression (already in emotion field)
-- ONLY include: lighting, atmosphere, skin details (blush, sweat, goosebumps), environmental textures
-- NEVER include sounds, smells, tastes, or non-visual sensory details (e.g., "soft jazz playing", "faint scent of turpentine", "sound of rain"). ONLY include what a CAMERA can capture: lighting, colors, textures, weather effects, particles
-- MUST include lighting that matches time of day from the conversation:
-  - Night → "night, moonlight, dark sky, dim streetlights" (NOT "pink glow" or "warm light")
+NEW FIELD "scene_description": ONLY lighting and weather tags. Max 3-4 tags.
+STRICT RULES:
+- ONLY lighting, time of day, weather, color temperature
+- NEVER describe character body state (NO: grease-stained hands, sweat on forehead, flushed skin, dirty hands, wet hair)
+- NEVER describe objects or props (NO: engine parts, books, cups, furniture details)
+- NEVER repeat appearance, clothing, pose, or emotion
+- MUST match time of day from conversation:
+  - Night → "night, moonlight, dim streetlights"
   - Day → "sunlight, bright sky, daylight"
-  - Indoor → "room lighting, lamp light"
-- If nsfw_level 3-5: may include physical state details (sweat, fluids, skin flush)
+  - Indoor → "room lighting, warm lamp light"
+  - Dusk → "sunset, warm orange sky"
+- If nsfw_level 3-5: may add "flushed skin" or "sweat" ONLY
 
-Format by model_type:
-- If model_type is "anime": 3-5 short danbooru-style tags ONLY. Example: "night sky, moonlight, flushed skin, wind"
-- If model_type is "real": 1-2 short phrases, max 15 words. Example: "dark night street, moonlit, slightly flushed skin"
+Format: 2-4 short tags maximum.
+- Anime example: "night, moonlight, cold air"
+- Real example: "dim evening light, warm tones"
 
-BAD: "young anime girl with blue hair wearing apron" — repeats appearance + clothing
-BAD: "soft pink sakura glow" when scene is AT NIGHT — wrong lighting
-GOOD: "night, moonlight, cold air, faint blush" — correct atmosphere and lighting
+BAD: "grease-stained hands, oil-smeared engine parts" — describes body/objects, NOT atmosphere
+BAD: "flickering fluorescent light, shadows on concrete floor" — too specific, describes room details
+GOOD: "night, moonlight, cold air" — simple lighting only
+GOOD: "indoor, warm lamp light" — simple lighting only
 
 Select suitable "outfit_key" from the list above. If person took off clothes, set this value as "underwear" or "nude", based on context.
 
@@ -549,252 +549,6 @@ CRITICAL RULES:
 SFW Level Guide (ONLY use 0 or 1):
 0 = fully clothed, public setting, modest, casual
 1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
-
-    "create_character_output_schema": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "russian_language_character_card",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ],
-                                "description": "Имя персонажа, извлечённое из текста. Если имени нет — null."
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Краткое, связное описание персонажа на русском языке (внешность + характер + немного фона)."
-                            },
-                            "visual": {
-                                "type": "object",
-                                "properties": {
-                                    "llm_settings": {
-                                        "type": "object",
-                                        "properties": {
-                                            "preferences": {
-                                                "type": [
-                                                    "string",
-                                                    "null"
-                                                ],
-                                                "description": "Сексуальные предпочтения / фетиши, подходящие персонажу. Если не подходит — null. Примеры: anal sex, domination, gentle romance, etc."
-                                            },
-                                            "relationship_role": {
-                                                "type": "string",
-                                                "enum": [
-                                                    "Падчерица",
-                                                    "Мачеха",
-                                                    "Любовница",
-                                                    "Одноклассник",
-                                                    "Коллега",
-                                                    "Учитель",
-                                                    "Девушка",
-                                                    "Друзья с привилегиями",
-                                                    "Жена",
-                                                    "Друг",
-                                                    "Парень",
-                                                    "Муж",
-                                                    "Пасынок",
-                                                    "Отчим",
-                                                    "Любовник"
-                                                ],
-                                                "description": "Роль в отношениях с пользователем. Обязательно из списка."
-                                            }
-                                        },
-                                        "required": [
-                                            "preferences",
-                                            "relationship_role"
-                                        ],
-                                        "additionalProperties": False
-                                    },
-                                    "nationality": {
-                                        "type": "string",
-                                        "enum": [
-                                            "american",
-                                            "asian",
-                                            "russian",
-                                            "italian",
-                                            "latin",
-                                            "german",
-                                            "japanese",
-                                            "indian",
-                                            "arab",
-                                            "kazakh"
-                                        ],
-                                        "description": "Национальность из фиксированного списка."
-                                    },
-                                    "age": {
-                                        "type": "string",
-                                        "enum": [
-                                            "18",
-                                            "25",
-                                            "35",
-                                            "45",
-                                            "70"
-                                        ],
-                                        "description": "Возраст строго из списка (как строка)."
-                                    },
-                                    "ass": {
-                                        "type": ["string", "null"],
-                                        "enum": [
-                                            "small ass",
-                                            "fit ass",
-                                            "big round ass",
-                                            "huge round ass",
-                                            None
-                                        ],
-                                        "description": "Только для женских персонажей. Для мужских — null."
-                                    },
-                                    "boobs": {
-                                        "type": ["string", "null"],
-                                        "enum": [
-                                            "small breasts",
-                                            "beautiful breasts",
-                                            "big breasts",
-                                            "huge breasts",
-                                            None
-                                        ],
-                                        "description": "Только для женских персонажей. Для мужских — null."
-                                    },
-                                    "build": {
-                                        "type": ["string", "null"],
-                                        "enum": [
-                                            "lean build",
-                                            "average build",
-                                            "athletic build",
-                                            "muscular build",
-                                            None
-                                        ],
-                                        "description": "Только для мужских персонажей. Для женских — null."
-                                    },
-                                    "facial_hair": {
-                                        "type": ["string", "null"],
-                                        "enum": [
-                                            "clean shaven",
-                                            "stubble",
-                                            "short beard",
-                                            "full beard",
-                                            "mustache",
-                                            None
-                                        ],
-                                        "description": "Только для мужских персонажей. Для женских — null."
-                                    },
-                                    "hair_color": {
-                                        "type": "string",
-                                        "enum": [
-                                            "black",
-                                            "brown",
-                                            "blond",
-                                            "grey",
-                                            "white",
-                                            "dark blue"
-                                        ]
-                                    },
-                                    "haircut": {
-                                        "type": "string",
-                                        "enum": [
-                                            "straight haircut",
-                                            "braids haircut",
-                                            "curly hair",
-                                            "hair in bun",
-                                            "pixie haircut",
-                                            "ponytail hair",
-                                            "two ponytails hair"
-                                        ]
-                                    },
-                                    "eye_color": {
-                                        "type": "string",
-                                        "enum": [
-                                            "brown",
-                                            "blue",
-                                            "green",
-                                            "grey",
-                                            "purple"
-                                        ]
-                                    },
-                                    "body_type": {
-                                        "type": "string",
-                                        "enum": [
-                                            "anorexic slender body",
-                                            "petite slim body",
-                                            "fit body",
-                                            "curvy body",
-                                            "fat body",
-                                            "athletic body",
-                                            "muscular body"
-                                        ]
-                                    },
-                                    "default_outfit": {
-                                        "type": "string",
-                                        "description": "Одежда по умолчанию в формате тегов через запятую, СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ, например: 'cream colored knit sweater, blue jeans, simple gold stud earrings, hair in long single braid'"
-                                    },
-                                    "wardrobe": {
-                                        "type": "object",
-                                        "description": "Набор одежды по ситуациям. СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ. Ключи — произвольные (casual, traditional, student и т.д.), значения — строка с тегами через запятую.",
-                                        "additionalProperties": {
-                                            "type": "string"
-                                        },
-                                        "minProperties": 1
-                                    }
-                                },
-                                "required": [
-                                    "llm_settings",
-                                    "nationality",
-                                    "age",
-                                    "ass",
-                                    "boobs",
-                                    "build",
-                                    "facial_hair",
-                                    "hair_color",
-                                    "haircut",
-                                    "eye_color",
-                                    "body_type",
-                                    "default_outfit",
-                                    "wardrobe"
-                                ],
-                                "additionalProperties": False
-                            },
-                            "personality": {
-                                "type": "string",
-                                "description": "Подробное описание характера на русском языке."
-                            },
-                            "scenario": {
-                                "type": "string",
-                                "description": "Сценарий / обстоятельства знакомства с персонажем. На русском."
-                            },
-                            "first_mes": {
-                                "type": "string",
-                                "description": "Первое сообщение от персонажа. На русском, с *действиями* и \"речью\"."
-                            },
-                            "alternate_greetings": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                },
-                                "description": "Массив альтернативных приветствий. Каждое — полноценное сообщение на русском."
-                            },
-                            "example_dialogue": {
-                                "type": "string",
-                                "description": "Пример диалога в формате {{user}}: ...\\n{{char}}: ... На русском."
-                            }
-                        },
-                        "required": [
-                            "name",
-                            "description",
-                            "visual",
-                            "personality",
-                            "scenario",
-                            "first_mes",
-                            "alternate_greetings",
-                            "example_dialogue"
-                        ],
-                        "additionalProperties": False
-                    }
-                }
-            }
 }
 
 async def init_prompt_cache(db: AsyncSession):

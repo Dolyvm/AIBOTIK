@@ -43,12 +43,12 @@ PLAN_LIMITS = {
         "price_rub": 1299,
         "price_stars": 1299,
         "duration_days": 30,
-        "messages": 12000,
-        "images": 300,
-        "characters_created": 50,
-        "worlds_created": 50,
-        "content_edits": 150,
-        "avatar_generations": 5,
+        "messages": 9999,
+        "images": 9999,
+        "characters_created": 9999,
+        "worlds_created": 9999,
+        "content_edits": 9999,
+        "avatar_generations": 9999,
     },
 }
 

@@ -121,7 +121,8 @@ async def main():
         if is_prod:
             await bot.set_webhook(
                 url=full_webhook_url,
-                drop_pending_updates=False
+                drop_pending_updates=False,
+                allowed_updates=["message", "pre_checkout_query", "callback_query"],
             )
             logger.info(f"Webhook set to {full_webhook_url}")
 
