@@ -40,7 +40,6 @@ async def get_plans():
                 "characters_created": config["characters_created"],
                 "worlds_created": config["worlds_created"],
                 "content_edits": config["content_edits"],
-                "avatar_generations": config["avatar_generations"],
             },
         })
     return {"plans": plans}

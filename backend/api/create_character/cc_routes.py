@@ -251,14 +251,6 @@ async def generate_avatar(
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
-    sub_service = get_subscription_service()
-    async with get_session() as session:
-        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "avatar_generations", session)
-        if not allowed:
-            from shared.database.exceptions import UsageLimitExceeded
-            raise UsageLimitExceeded("avatar_generations", limit)
-        await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
-
     model_type = data.get("model_type", "anime")
     appearance = data.get("appearance", "")
     body = data.get("body", "")
