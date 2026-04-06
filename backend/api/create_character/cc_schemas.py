@@ -20,4 +20,5 @@ class CreateCharacterRequest(BaseModel):
     visual_style_tags: Optional[str] = None
     wardrobe: dict[str, str] = {}
     avatar_url: Optional[str] = None
+    custom_avatar: bool = False
     tags: list[str] = []

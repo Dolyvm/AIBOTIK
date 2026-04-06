@@ -12,7 +12,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
-from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
+from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN, IMAGES_STORAGE_PATH
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
@@ -407,6 +407,43 @@ async def generate_avatar(
 
     return {"task_id": task_id, "status": "pending"}
 
+
+@router.post("/api/upload-avatar")
+async def admin_upload_avatar(
+        request: Request,
+        admin: dict = Depends(get_admin_user)
+):
+    import aiofiles
+    from pathlib import Path
+
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be under 5MB")
+
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    ext = ext_map.get(file.content_type, ".png")
+    import uuid
+    temp_name = f"temp_{uuid.uuid4().hex[:12]}{ext}"
+
+    avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+
+    full_path = avatars_dir / temp_name
+    async with aiofiles.open(full_path, "wb") as f:
+        await f.write(content)
+
+    return {"url": f"/images/avatars/{temp_name}"}
+
+
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
         request: Request,
@@ -475,17 +512,21 @@ async def create_character(
         "face": form_data.get("visual_face", "").strip(),
         "default_outfit": form_data.get("visual_default_outfit", "").strip(),
         "style_tags": form_data.get("visual_style_tags", "").strip(),
-        "wardrobe": wardrobe
+        "wardrobe": wardrobe,
+        "custom_avatar": form_data.get("custom_avatar_flag", "false") == "true",
     }
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
-        try:
-            avatar_path = await save_avatar(avatar_url, character_id)
-            visual_data["avatar"] = f"/images/{avatar_path}"
-        except Exception as e:
-            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+        if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
+        else:
+            try:
+                avatar_path = await save_avatar(avatar_url, character_id)
+                visual_data["avatar"] = f"/images/{avatar_path}"
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}, using provider URL")
+                visual_data["avatar"] = avatar_url
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -650,12 +691,15 @@ async def update_character(
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
-        try:
-            avatar_path = await save_avatar(avatar_url, character_id)
-            visual_data["avatar"] = f"/images/{avatar_path}"
-        except Exception as e:
-            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+        if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
+        else:
+            try:
+                avatar_path = await save_avatar(avatar_url, character_id)
+                visual_data["avatar"] = f"/images/{avatar_path}"
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}, using provider URL")
+                visual_data["avatar"] = avatar_url
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
