@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from sqlalchemy import select
 
 from shared.services.analytics import AnalyticsService
@@ -12,7 +12,8 @@ from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RA
 from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
 from shared.services.prompt_service import create_or_update_character_modifiers
-from shared.services.image_storage import save_avatar
+from shared.services.image_storage import save_avatar, ALLOWED_CONTENT_TYPES
+from shared.config import IMAGES_STORAGE_PATH
 from shared.services.redis_client import get_redis
 from shared.constants import invalidate_character_modifiers_cache
 from shared.models import User, Character
@@ -81,6 +82,7 @@ async def create_character(
             "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
             "style_tags": style_tags,
             "wardrobe": wardrobe,
+            "custom_avatar": data.custom_avatar,
         }
 
         if data.avatar_url:
@@ -202,6 +204,7 @@ async def update_character(
             "style_tags": style_tags,
             "wardrobe": data.wardrobe,
             "avatar": old_visual.get("avatar", ""),
+            "custom_avatar": data.custom_avatar,
         }
 
         if data.avatar_url and data.avatar_url != old_visual.get("avatar", ""):
@@ -323,3 +326,36 @@ async def generate_avatar(
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     return {"task_id": task_id, "status": "pending"}
+
+
+MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+@router.post("/api/create_character/upload-avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
+
+    content = await file.read()
+    if len(content) > MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="File size must be under 5MB")
+
+    from pathlib import Path
+    import aiofiles
+
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    ext = ext_map.get(file.content_type, ".png")
+    temp_name = f"temp_{uuid.uuid4().hex[:12]}{ext}"
+
+    avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+
+    full_path = avatars_dir / temp_name
+    async with aiofiles.open(full_path, "wb") as f:
+        await f.write(content)
+
+    return {"url": f"/images/avatars/{temp_name}"}

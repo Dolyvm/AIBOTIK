@@ -77,6 +77,13 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
         all_events = msg_dicts + images
         all_events.sort(key=lambda x: x["timestamp"])
 
+        custom_avatar = False
+        if chat.chat_type == "character":
+            from shared.services.content_loader import get_character
+            char_data = await get_character(chat.target_id)
+            if char_data:
+                custom_avatar = char_data.get("visual", {}).get("custom_avatar", False)
+
         return {
             "history": all_events,
             "target_id": chat.target_id,
@@ -85,7 +92,8 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "affinity": chat.affinity,
             "arousal": chat.arousal,
             "mood": chat.current_mood,
-            "location": chat.current_location
+            "location": chat.current_location,
+            "custom_avatar": custom_avatar,
         }
 
 
