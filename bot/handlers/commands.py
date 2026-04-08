@@ -32,11 +32,13 @@ async def cmd_start(message: Message):
     from shared.subscription_plans import PLAN_LIMITS
     plan_config = PLAN_LIMITS.get(user.subscription_plan, {})
     plan_name = plan_config.get("display_name", "Free")
-
+    await message.answer_sticker("CAACAgIAAxkBAAEQ4yJp1qPgXQaySjVyfn05QfgHGBR5TgACppsAAoTDOUkHvrOFfJvx9TsE")
     await message.answer(
-        f"Привет, {message.from_user.first_name}!\n\n"
-        f"Твой план: {plan_name}\n\n"
-        "Нажми кнопку меню внизу, чтобы выбрать персонажа или вселенную."
+        f"Привет, {message.from_user.first_name} 👋\n\n"
+        "Добро пожаловать в AIKAI — место, где оживают любимые персонажи и создаются миры!\n\n"
+        f"Твой тариф: {plan_name}\n\n"
+        "Выбирай героя или вселенную и начинай свою историю!\n\n"
+        "👇 Открой меню ниже"
     )
 
 
@@ -46,7 +48,7 @@ async def cmd_admin(message: Message):
     if message.from_user.id not in ADMIN_TELEGRAM_IDS:
         return
 
-    webapp_url = os.getenv("WEBAPP_URL")
+    webapp_url = os.getenv("WEBAPP_URL", "").split("?")[0].rstrip("/")
     admin_url = f"{webapp_url}/admin/"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
