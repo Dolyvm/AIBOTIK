@@ -678,8 +678,10 @@ async def update_character(
     author_type = form_data.get("author_type", "aikai")
     if author_type == "custom":
         created_by_username = form_data.get("created_by_username", "").strip() or None
+        created_by_username_id_update = None
     else:
-        created_by_username = "AiKai Team"
+        created_by_username = None
+        created_by_username_id_update = None
 
     if not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
@@ -732,20 +734,25 @@ async def update_character(
             "heat_level": heat_level
         })
 
+    update_values = dict(
+        name=name,
+        short_description=short_description,
+        description=description,
+        personality=personality,
+        visual_data=visual_data,
+        scenarios=scenarios,
+        tags=tags,
+        is_nsfw=is_nsfw,
+        created_by_username=created_by_username,
+        created_by_username_id=created_by_username_id_update,
+    )
+    if author_type == "aikai":
+        update_values["is_public"] = True
+
     await db.execute(
         update(Character)
         .where(Character.id == character_id)
-        .values(
-            name=name,
-            short_description=short_description,
-            description=description,
-            personality=personality,
-            visual_data=visual_data,
-            scenarios=scenarios,
-            tags=tags,
-            is_nsfw=is_nsfw,
-            created_by_username=created_by_username
-        )
+        .values(**update_values)
     )
     await db.commit()
 
