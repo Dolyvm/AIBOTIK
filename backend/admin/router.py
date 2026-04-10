@@ -12,7 +12,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
-from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
+from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN, IMAGES_STORAGE_PATH
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
@@ -349,6 +349,7 @@ async def generate_avatar(
     data = await request.json()
 
     model_type = data.get("model_type", "anime")
+    gender = data.get("gender", "female")
     appearance = data.get("appearance", "")
     body = data.get("body", "")
     face = data.get("face", "")
@@ -363,7 +364,7 @@ async def generate_avatar(
         nsfw_level=0
     )
 
-    pos, neg = await prompt.build_prompt(model_type)
+    pos, neg = await prompt.build_prompt(model_type, gender=gender)
 
     task_id = str(uuid4())
     task_params = {
@@ -405,6 +406,43 @@ async def generate_avatar(
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     return {"task_id": task_id, "status": "pending"}
+
+
+@router.post("/api/upload-avatar")
+async def admin_upload_avatar(
+        request: Request,
+        admin: dict = Depends(get_admin_user)
+):
+    import aiofiles
+    from pathlib import Path
+
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be under 5MB")
+
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    ext = ext_map.get(file.content_type, ".png")
+    import uuid
+    temp_name = f"temp_{uuid.uuid4().hex[:12]}{ext}"
+
+    avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+
+    full_path = avatars_dir / temp_name
+    async with aiofiles.open(full_path, "wb") as f:
+        await f.write(content)
+
+    return {"url": f"/images/avatars/{temp_name}"}
+
 
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
@@ -457,25 +495,38 @@ async def create_character(
         for k, v in zip(wardrobe_keys, wardrobe_values)
         if k.strip()
     }
+    # Auto-add required wardrobe keys if missing
+    gender = form_data.get("gender", "female")
+    if gender == "male":
+        wardrobe.setdefault("nude", "nothing, showing his naked body")
+        wardrobe.setdefault("underwear", "black boxer briefs")
+    else:
+        wardrobe.setdefault("nude", "nothing, showing her naked body")
+        wardrobe.setdefault("underwear", "white bra, white panties")
 
     visual_data = {
         "model_type": form_data.get("model_type", "anime"),
+        "gender": form_data.get("gender", "female"),
         "appearance": form_data.get("appearance", "").strip(),
         "body": form_data.get("visual_body", "").strip(),
         "face": form_data.get("visual_face", "").strip(),
         "default_outfit": form_data.get("visual_default_outfit", "").strip(),
         "style_tags": form_data.get("visual_style_tags", "").strip(),
-        "wardrobe": wardrobe
+        "wardrobe": wardrobe,
+        "custom_avatar": form_data.get("custom_avatar_flag", "false") == "true",
     }
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
-        try:
-            avatar_path = await save_avatar(avatar_url, character_id)
-            visual_data["avatar"] = f"/images/{avatar_path}"
-        except Exception as e:
-            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+        if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
+        else:
+            try:
+                avatar_path = await save_avatar(avatar_url, character_id)
+                visual_data["avatar"] = f"/images/{avatar_path}"
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}, using provider URL")
+                visual_data["avatar"] = avatar_url
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -627,8 +678,10 @@ async def update_character(
     author_type = form_data.get("author_type", "aikai")
     if author_type == "custom":
         created_by_username = form_data.get("created_by_username", "").strip() or None
+        created_by_username_id_update = None
     else:
-        created_by_username = "AiKai Team"
+        created_by_username = None
+        created_by_username_id_update = None
 
     if not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
@@ -640,12 +693,15 @@ async def update_character(
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
-        try:
-            avatar_path = await save_avatar(avatar_url, character_id)
-            visual_data["avatar"] = f"/images/{avatar_path}"
-        except Exception as e:
-            logger.warning(f"Failed to save avatar: {e}, using provider URL")
+        if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
+        else:
+            try:
+                avatar_path = await save_avatar(avatar_url, character_id)
+                visual_data["avatar"] = f"/images/{avatar_path}"
+            except Exception as e:
+                logger.warning(f"Failed to save avatar: {e}, using provider URL")
+                visual_data["avatar"] = avatar_url
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -678,20 +734,25 @@ async def update_character(
             "heat_level": heat_level
         })
 
+    update_values = dict(
+        name=name,
+        short_description=short_description,
+        description=description,
+        personality=personality,
+        visual_data=visual_data,
+        scenarios=scenarios,
+        tags=tags,
+        is_nsfw=is_nsfw,
+        created_by_username=created_by_username,
+        created_by_username_id=created_by_username_id_update,
+    )
+    if author_type == "aikai":
+        update_values["is_public"] = True
+
     await db.execute(
         update(Character)
         .where(Character.id == character_id)
-        .values(
-            name=name,
-            short_description=short_description,
-            description=description,
-            personality=personality,
-            visual_data=visual_data,
-            scenarios=scenarios,
-            tags=tags,
-            is_nsfw=is_nsfw,
-            created_by_username=created_by_username
-        )
+        .values(**update_values)
     )
     await db.commit()
 

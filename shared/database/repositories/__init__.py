@@ -8,6 +8,7 @@ from .image import GeneratedImageRepository
 from .character import CharacterRepository
 from .world import WorldRepository
 from .prompt import PromptRepository
+from .subscription import SubscriptionRepository
 
 __all__ = [
     "BaseRepository",
@@ -19,4 +20,5 @@ __all__ = [
     "CharacterRepository",
     "WorldRepository",
     "PromptRepository",
+    "SubscriptionRepository",
 ]

@@ -188,7 +188,7 @@ async def init_prompts():
                 continue
 
             if key in existing_prompts:
-                updated_count += 1
+                pass  # don't overwrite manually edited prompts
             else:
                 prompt = Prompt(
                     key=key,

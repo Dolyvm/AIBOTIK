@@ -17,8 +17,9 @@ async def _get_meta_instruction(allow_nsfw: bool = True) -> str:
             return await get_prompt("meta_instruction")
         raise
 
-async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True) -> str:
+async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True, gender: str = "female") -> str:
     instruction = ""
+    is_male = gender == "male"
 
     if affinity < 20:
         instruction += await get_prompt("behavior_affinity_cold")
@@ -27,13 +28,20 @@ async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool 
     elif affinity < 80:
         instruction += await get_prompt("behavior_affinity_warm")
     else:
-        instruction += await get_prompt("behavior_affinity_love")
+        key = "behavior_affinity_love_male" if is_male else "behavior_affinity_love"
+        try:
+            instruction += await get_prompt(key)
+        except KeyError:
+            instruction += await get_prompt("behavior_affinity_love")
 
     if arousal > 50:
         if allow_nsfw:
-            instruction += await get_prompt("behavior_arousal_high")
+            key = "behavior_arousal_high_male" if is_male else "behavior_arousal_high"
+            try:
+                instruction += await get_prompt(key)
+            except KeyError:
+                instruction += await get_prompt("behavior_arousal_high")
         else:
-                                             
             try:
                 instruction += await get_prompt("behavior_arousal_high_sfw")
             except KeyError:
@@ -53,7 +61,8 @@ async def build_character_prompt(
     arousal = chat.arousal
     mood = chat.current_mood
 
-    behavior_instruction = await _get_character_behavior(affinity, arousal, allow_nsfw)
+    gender = character.get("visual", {}).get("gender", "female")
+    behavior_instruction = await _get_character_behavior(affinity, arousal, allow_nsfw, gender=gender)
 
     char_id = character.get("id", "")
     state_dict = {

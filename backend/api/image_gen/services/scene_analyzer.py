@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel
 from shared.services.llm import LLMClient
 from shared.services.cache import get_cache
@@ -174,11 +174,20 @@ class SceneAnalyzer:
 
     NEGATIVE_MOODS = {"angry", "furious", "disgusted", "sad", "crying", "scared", "offended", "irritated"}
 
+    @staticmethod
+    def _format_outfits(outfits) -> str:
+        if isinstance(outfits, dict):
+            return "\n".join(
+                f"- {k}: {v}" if v else f"- {k}"
+                for k, v in outfits.items()
+            )
+        return ", ".join(outfits)
+
     async def analyze(
         self,
         history: list[dict],
         character_name: str,
-        available_outfits: list[str],
+        available_outfits: Union[list[str], dict[str, str]],
         allow_nsfw: bool = True,
         chat_id: int = None,
         mood: str = "neutral",
@@ -186,10 +195,11 @@ class SceneAnalyzer:
         arousal: int = 0,
         current_location: str = "",
         model_type: str = "anime",
+        gender: str = "female",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
 
-        recent_messages = history[-5:] if len(history) > 5 else history
+        recent_messages = history[-2:] if len(history) > 2 else history
 
         context_str = f"{character_name}:{allow_nsfw}:{recent_messages}"
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
@@ -202,7 +212,7 @@ class SceneAnalyzer:
                 return SceneAnalysis(**cached)
 
         formatted = "\n".join([
-            f"{m['role'].upper()}: {m['content'][:200]}"
+            f"{m['role'].upper()}: {m['content']}"
             for m in recent_messages
         ])
 
@@ -213,15 +223,27 @@ class SceneAnalyzer:
             logger.warning(f"Prompt '{prompt_key}' not found, falling back to default")
             prompt_template = await get_prompt("scene_analyzer_prompt")
 
+        is_male = gender == "male"
+        gender_possessive = "HIS" if is_male else "HER"
+        if is_male:
+            pose_examples = '"standing dominant position", "lying on back relaxed", "sitting with legs apart", "thrusting from behind", "leaning against wall"'
+            nsfw_level_3_desc = "shirtless, partial nudity, exposed chest"
+        else:
+            pose_examples = '"on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"'
+            nsfw_level_3_desc = "exposed breasts"
+
         prompt = prompt_template.format(
             character_name=character_name,
             formatted_chat=formatted,
-            available_outfits=', '.join(available_outfits),
+            available_outfits=self._format_outfits(available_outfits),
             mood=mood,
             affinity=affinity,
             arousal=arousal,
             current_location=current_location or "unknown",
             model_type=model_type,
+            gender_possessive=gender_possessive,
+            pose_examples=pose_examples,
+            nsfw_level_3_desc=nsfw_level_3_desc,
         )
 
         try:
@@ -245,21 +267,17 @@ class SceneAnalyzer:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
                 logger.info(f"nsfw_level capped to {scene.nsfw_level} due to negative mood '{mood}'")
 
-            if affinity < 20:
-                scene.nsfw_level = min(scene.nsfw_level, 1)
-            elif affinity < 40:
-                scene.nsfw_level = min(scene.nsfw_level, 2)
-            elif affinity < 60:
-                scene.nsfw_level = min(scene.nsfw_level, 3)
-
             original_outfit = scene.outfit_key
+            outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
 
-            if scene.nsfw_level >= 4 and scene.outfit_key != "nude":
+            if scene.nsfw_level >= 4 and scene.outfit_key != "nude" and "nude" in outfit_keys:
                 scene.outfit_key = "nude"
             elif scene.nsfw_level == 3 and scene.outfit_key not in ("nude", "underwear"):
-                scene.outfit_key = "underwear"
+                if "underwear" in outfit_keys:
+                    scene.outfit_key = "underwear"
             elif scene.nsfw_level == 2 and scene.outfit_key not in ("underwear", "swimwear", "sleepwear", "nude"):
-                scene.outfit_key = "swimwear"
+                if "swimwear" in outfit_keys:
+                    scene.outfit_key = "swimwear"
             elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
                 scene.outfit_key = "default_outfit"
 

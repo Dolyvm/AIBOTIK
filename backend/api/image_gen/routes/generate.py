@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import sys
@@ -22,6 +23,7 @@ from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
 from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
+from shared.services.subscription import get_subscription_service
 from shared.services.image_provider import generate_image as provider_generate_image
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
@@ -38,8 +40,8 @@ logging.basicConfig(
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
 
 @router.post("/build_prompt")
-async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None):
-    return await data.build_prompt(model_type)
+async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = None, gender: str = "female"):
+    return await data.build_prompt(model_type, gender=gender)
 
 @router.post("/generate")
 async def generate_image(data: GenerateRequest):
@@ -71,6 +73,13 @@ async def gen(
             limits = RATE_LIMITS["images"]
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "images", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("images", limit)
+
     chat = await verify_chat_ownership(chat_id, user)
 
     try:
@@ -84,6 +93,11 @@ async def gen(
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
+        if content.get("visual", {}).get("custom_avatar", False):
+            raise HTTPException(status_code=400, detail="Photo generation is not available for this character")
+
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error loading content: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -115,7 +129,9 @@ async def gen(
             wardrobe = visual.get("wardrobe", {})
             if not isinstance(wardrobe, dict):
                 wardrobe = {}
-            available_outfits = ["default_outfit"] + list(wardrobe.keys())
+            available_outfits = {"default_outfit": visual.get("default_outfit", "")}
+            for key, desc in wardrobe.items():
+                available_outfits[key] = desc
 
             allow_nsfw = content.get("is_nsfw", True)
 
@@ -130,6 +146,7 @@ async def gen(
                 arousal=chat.arousal,
                 current_location=chat.current_location or "",
                 model_type=content.get("model_type", "anime"),
+                gender=content.get("visual", {}).get("gender", "female"),
             )
 
             nsfw_level = scene.nsfw_level
@@ -173,8 +190,12 @@ async def gen(
         environment=environment,
     )
     logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
-    prompt.action = state_meta.get("action") or pose
-    prompt.facial_expression = emotion
+    prompt.action = pose or state_meta.get("action", "")
+    # scene_description убран из промпта — дублирует environment и перегружает CLIP
+    # if scene_description:
+    #     prompt.scene_details = scene_description
+    if emotion and emotion != "neutral":
+        prompt.facial_expression = emotion
     # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
     if nsfw_level >= 4 and nsfw_tags:
         prompt.body_state = nsfw_tags
@@ -192,7 +213,8 @@ async def gen(
     logging.info(f"  scene_reasoning={scene_reasoning}")
     logging.info(f"=== END COMPONENTS ===")
 
-    pos, neg = await prompt.build_prompt(content.get("model_type"))
+    char_gender = content.get("visual", {}).get("gender", "female")
+    pos, neg = await prompt.build_prompt(content.get("model_type"), gender=char_gender)
     logging.info(f"{pos=}")
     logging.info(f"{neg=}")
     logging.info(f"{content=}")
@@ -201,6 +223,9 @@ async def gen(
     if model_type not in ("anime", "real"):
         raise HTTPException(status_code=400, detail="Unsupported model type")
     task_id = str(uuid4())
+
+    char_id = (character or {}).get("id") or content.get("name", "")
+    seed = int(hashlib.md5(str(char_id).encode()).hexdigest()[:8], 16) % (2**31)
 
     task_params = {
         "chat_id": chat.id,
@@ -213,6 +238,7 @@ async def gen(
         "allow_nsfw": content.get("is_nsfw", True),
         "nsfw_level": nsfw_level,
         "pose": pose,
+        "seed": seed,
     }
 
     redis = await get_redis()
@@ -238,11 +264,16 @@ async def gen(
             ctx = {"redis": redis, "get_session": get_session}
             result = await generate_image_task(ctx, task_id, task_params)
             if result.get("status") == "completed":
+                async with get_session() as session:
+                    await sub_service.increment_usage(user.telegram_id, "images", session)
                 return result.get("result", {})
             raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
     except Exception as e:
         logging.error(f"Failed to enqueue task: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start generation: {e}")
+
+    async with get_session() as session:
+        await sub_service.increment_usage(user.telegram_id, "images", session)
 
     response = {"task_id": task_id, "status": "pending"}
     logging.info(f"Returning response: {response}")

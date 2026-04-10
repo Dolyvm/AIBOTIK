@@ -13,6 +13,8 @@ from sqlalchemy import select
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, UserRepository
 from shared.services.content_loader import get_character, get_world
+from shared.services.subscription import get_subscription_service
+from shared.subscription_plans import PLAN_LIMITS
 from shared.models import User, Character, World
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_user_id_match
@@ -39,14 +41,33 @@ async def get_user_profile(user_id: int, user: User = Depends(get_current_user))
     """User profile"""
     await verify_user_id_match(user_id, user)
 
+    service = get_subscription_service()
+    async with get_session() as session:
+        db_user = await session.get(User, user.telegram_id)
+        if not db_user:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="User not found")
+        summary = await service.get_usage_summary(user.telegram_id, session)
+
+    plan_value = summary.get("plan", "free")
+    plan_enum = db_user.subscription_plan
+    plan_config = PLAN_LIMITS[plan_enum]
+
     return {
-        "telegram_id": user.telegram_id,
-        "username": user.username,
-        "avatar_url": user.avatar_url,
-        "balance": user.balance,
+        "telegram_id": db_user.telegram_id,
+        "username": db_user.username,
+        "avatar_url": db_user.avatar_url,
+        "balance": db_user.balance,
         "nsfw_blur": user.settings.nsfw_blur if user.settings else True,
         "nickname": user.settings.nickname if user.settings else None,
-        "age_confirmed": user.settings.age_confirmed if user.settings else False
+        "age_confirmed": user.settings.age_confirmed if user.settings else False,
+        "subscription": {
+            "plan": plan_value,
+            "plan_display": plan_config.get("display_name", "Free"),
+            "end_date": db_user.subscription_end_date.isoformat() if db_user.subscription_end_date else None,
+            "auto_renew": db_user.subscription_auto_renew,
+        },
+        "usage": summary.get("usage", {}),
     }
 
 

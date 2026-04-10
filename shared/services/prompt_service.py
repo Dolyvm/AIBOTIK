@@ -24,32 +24,72 @@ may become stale. Redis is source of truth.
 _prompt_cache_initialized: bool = False
 
 DEFAULT_PROMPTS = {
-    "common_style_guide": """
-### СТИЛЬ И ОФОРМЛЕНИЕ (СТРОГОЕ СОБЛЮДЕНИЕ) ###
+    "common_style_guide": """СТИЛЬ И ОФОРМЛЕНИЕ (СТРОГОЕ СОБЛЮДЕНИЕ)
 
-1. **ЯЗЫК (CRITICAL):**
-   - Твой ответ должен быть **ИСКЛЮЧИТЕЛЬНО НА РУССКОМ ЯЗЫКЕ**.
-   - Даже если пользователь пишет на английском или другом языке — отвечай **только на русском**.
-   - Это правило имеет наивысший приоритет.
+1. ЯЗЫК (CRITICAL)
+Ответ всегда должен быть исключительно на РУССКОМ языке.
+Даже если пользователь пишет на другом языке — ответ должен оставаться полностью на русском.
+Никогда не переключайся на другой язык. Это правило имеет наивысший приоритет.
+Не допускай орфографических или синтаксических ошибок.
 
-2. **Формат повествования (NOVEL STYLE):**
-   - Пиши в жанре качественной художественной литературы.
-   - Используй **ПРОШЕДШЕЕ ВРЕМЯ** для действий (она вошла, он сказал, ветер подул). Не используй настоящее время.
-   - Повествование веди от **третьего лица** (Он/Она).
+2. СТИЛЬ ПОВЕСТВОВАНИЯ
+Пиши как художественную прозу высокого качества. Запрещено описывать чувства, мысли, эмоции или действия пользователя (игрока).
+Если нужно обратиться к игроку — используй только второе лицо (ты / твой).
 
-3. **Оформление текста:**
-   - **НИКАКИХ ЗВЕЗДОЧЕК** (*action*) для описания действий. Это запрещено.
-   - Действия и описания пиши обычным текстом.
-   - Прямая речь оформляется с новой строки через тире:
-     — Привет, — сказала она, улыбнувшись.
-   - Мысли персонажа выделяй *курсивом* или встраивай в текст.
-   - Разделяй абзацы пустой строкой для удобства чтения.
+Основные требования:
+Используй прошедшее время для описания действий и повествования.
+Примеры: "Она подошла", "Он сказал".
+Основное повествование веди от третьего лица (он / она / персонаж).
 
-4. **Качество текста ("Show, don't tell"):**
-   - Избегай сухих констатаций ("Она разозлилась").
-   - Описывай физические проявления эмоций: дрожь в пальцах, сбитое дыхание, жар на щеках, изменение интонации.
-   - Используй сенсорные детали: запахи, звуки, тактильные ощущения.
-   - Не спеши. Создавай густую, атмосферную структуру текста.
+3. ОФОРМЛЕНИЕ ТЕКСТА
+Запрещено использовать звёздочки для описания действий.
+Запрещено использовать формат action.
+Запрещено использовать игровые RP-метки.
+Запрещено использовать курсив, жирный текст или любые другие выделения.
+
+Прямая речь оформляется через тире с нового абзаца.
+Пример:
+— Привет, — сказала она.
+Абзацы:
+Текст должен быть разделён на логические абзацы
+Каждая новая реплика диалога начинается с нового абзаца
+Между абзацами должна быть пустая строка
+Не делай слишком длинные абзацы
+
+4. КАЧЕСТВО ПОВЕСТВОВАНИЯ
+Используй принцип SHOW, DON'T TELL.
+Избегай сухих утверждений.
+Плохо:
+Она разозлилась.
+Хорошо:
+Её пальцы дрогнули, дыхание стало резким, а в голосе появилась холодная нотка.
+
+Добавляй:
+Физические проявления эмоций
+Сенсорные детали
+Атмосферу сцены
+
+5. ТЕМП ПОВЕСТВОВАНИЯ
+Не спеши, разворачивай сцены постепенно, но и не стой на месте, активно развивай события и сюжет.
+Добавляй:
+- атмосферу
+- детали окружения
+- действия персонажа
+- внутренние мысли персонажа (если уместно)
+
+6. ЧЕГО НЕЛЬЗЯ ДЕЛАТЬ - СТРОГО ЗАПРЕЩЕНО (CRITICAL)
+Запрещено ломать художественный стиль
+Запрещено описывать мысли, эмоции или действия игрока
+Запрещено использовать звёздочки для действий
+
+7. ИЗБЕГАЙ ПОВТОРОВ
+Не повторяй одну и ту же деталь в каждом ответе. Если характеристика уже была описана (например: глаза, голос, одежда, запах, поза, предмет или элемент окружения), не упоминай её снова без причины.
+Каждый новый ответ должен:
+Добавлять новое действие
+или
+Новую деталь сцены
+или
+Развитие событий.
 """,
 
     "meta_instruction": """
@@ -187,13 +227,17 @@ Character state:
 - Arousal (0-100): {arousal}
 - Current location in story: {current_location}
 
-Outfits: {available_outfits}
+Available outfits (key: visual description):
+{available_outfits}
+Choose "outfit_key" from the keys above. Use visual descriptions to understand what each outfit looks like.
+
 You should make JSON values suitable for use in text to image models.
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
+"location": MAXIMUM 4 words. Format: "[place] at [time]". Examples: "road at night", "bedroom evening", "park daytime", "cafe indoor".
+NEVER add adjectives like "abandoned", "dim", "cozy", "warm" — just the place and time of day.
 
 IMPORTANT for "pose":
 - If nsfw_level is 0-3: Solo pose only, 6 words max. Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently"). NEVER include actions involving another person.
-- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from HER perspective only (e.g., "on all fours ass up", "legs spread lying on back", "bent over table", "kneeling between legs", "riding cowgirl position", "lying on side leg raised"). Still describe only HER body, not the other person.
+- If nsfw_level is 4-5: Sexual pose allowed, 8 words max. Describe the character's body position during sexual activity from {gender_possessive} perspective only (e.g., {pose_examples}). Still describe only {gender_possessive} body, not the other person.
 - NEVER use plural forms or words implying multiple people
 
 NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/state from the conversation.
@@ -204,25 +248,41 @@ NEW FIELD "nsfw_tags": Compact visual tags describing the SPECIFIC sexual act/st
 - If model_type is "real": use short descriptive phrases. Examples: "cum on face, doggy position, penetration from behind, sweaty", "missionary sex, legs spread, orgasm, wet skin", "oral sex, cum dripping, kneeling"
 - Focus on the KEY visual details that make this scene unique — what would differentiate this image from a generic nude
 
-NEW FIELD "scene_description": Write a visual description based on the last 1-2 messages.
-- Focus on visual details: body position, facial expression, lighting, atmosphere, physical state (sweat, fluids, etc.)
-- Extract specific visual details from the dialogue
-- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
-- Be explicit and detailed if nsfw_level is high (3-5)
+NEW FIELD "scene_description": ONLY lighting and weather tags. Max 3-4 tags.
+STRICT RULES:
+- ONLY lighting, time of day, weather, color temperature
+- NEVER describe character body state (NO: grease-stained hands, sweat on forehead, flushed skin, dirty hands, wet hair)
+- NEVER describe objects or props (NO: engine parts, books, cups, furniture details)
+- NEVER repeat appearance, clothing, pose, or emotion
+- MUST match time of day from conversation:
+  - Night → "night, moonlight, dim streetlights"
+  - Day → "sunlight, bright sky, daylight"
+  - Indoor → "room lighting, warm lamp light"
+  - Dusk → "sunset, warm orange sky"
+- If nsfw_level 3-5: may add "flushed skin" or "sweat" ONLY
 
-IMPORTANT — format depends on model_type:
-- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "flushed cheeks, parted lips, on bed, dim lighting, sweat drops"). Max 15 tags.
-- If model_type is "real": use short descriptive phrases (e.g., "young woman with flushed cheeks gazing softly, warm candlelight, lips slightly parted"). Max 30 words.
+Format: 2-4 short tags maximum.
+- Anime example: "night, moonlight, cold air"
+- Real example: "dim evening light, warm tones"
 
-Select suitable "outfit_key". If person took off clothes, you should set this value as "underwear" or "nude", based on context.
+BAD: "grease-stained hands, oil-smeared engine parts" — describes body/objects, NOT atmosphere
+BAD: "flickering fluorescent light, shadows on concrete floor" — too specific, describes room details
+GOOD: "night, moonlight, cold air" — simple lighting only
+GOOD: "indoor, warm lamp light" — simple lighting only
+
+Select suitable "outfit_key" from the list above. If person took off clothes, set this value as "underwear" or "nude", based on context.
+
+IMPORTANT for "emotion" — must be SHORT image-generation tags, NOT abstract descriptions:
+- If model_type is "anime": use danbooru tags (e.g., "smile", "blush", "sad expression", "closed eyes", "furrowed brows", "tears")
+- If model_type is "real": use short phrases (e.g., "gentle smile", "serious look", "playful grin", "shy blush")
+- NEVER use compound words like "mixed_sadness_embarrassment" — use comma-separated visual tags instead
+
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"short visual tags","nsfw_level":0-5,"nsfw_tags":"compact tags for nsfw 4-5 only","scene_description":"visual description","reasoning":"string"}}
 
 CRITICAL RULES (based on character state):
 - "location" MUST match the current story location (if in a bar → bar, NOT bedroom)
 - If mood is negative (angry, sad, scared, disgusted) → nsfw_level MUST be 0-1, character stays clothed
-- If affinity < 20 (strangers) → nsfw_level MUST be 0-1
-- If affinity < 40 (acquaintances) → nsfw_level MUST be 0-2
 - Do NOT escalate nsfw_level based on player's crude messages if the character rejected/refused them
 - Base your analysis on the CHARACTER's reaction (last assistant message), not the player's request
 
@@ -230,7 +290,7 @@ NSFW Level Guide (choose carefully based on conversation):
 0 = fully clothed, public setting, modest
 1 = sensual/teasing but clothed, flirtatious
 2 = revealing clothing, suggestive, aroused
-3 = topless, partial nudity, exposed breasts
+3 = topless, partial nudity, {nsfw_level_3_desc}
 4 = fully naked, exposed genitals, nude body
 5 = explicit sexual activity, intercourse, sexual contact
 
@@ -273,9 +333,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 Пиши ТОЛЬКО текст действия/реплики. Никаких мета-тегов, пояснений или комментариев.
 """,
 
-    "nsfw_level_0": "general",
+    "nsfw_level_0": "",
     "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
-    "nsfw_level_1": "sensual, teasing expression, fully clothed",
+    "nsfw_level_1": "",
     "nsfw_level_1_neg": "nudity, sexual act",
     "nsfw_level_2": "aroused, nsfw, sensual, teasing, showing herself, tits peeking",
     "nsfw_level_2_neg": "nudity, explicit sex, penetration",
@@ -296,19 +356,40 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
     "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
     "nsfw_level_5_real_neg": "general, clothed",
 
+    "nsfw_level_2_male": "aroused, nsfw, sensual, teasing, showing himself, muscular torso",
+    "nsfw_level_2_male_neg": "nudity, explicit sex, penetration",
+    "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
+    "nsfw_level_3_male_neg": "penetration, explicit sex",
+    "nsfw_level_4_male": "nsfw, naked body, nude, muscular, aroused",
+    "nsfw_level_4_male_neg": "general, clothes, female, breasts",
+    "nsfw_level_5_male": "extreme erotic, explicit, nsfw, orgasm, extremely aroused",
+    "nsfw_level_5_male_neg": "general, female, breasts",
+
+    "nsfw_level_4_anime_male": "nsfw, nude, completely nude, penis, muscular, navel, bare skin, uncensored",
+    "nsfw_level_4_anime_male_neg": "general, clothes, clothed, censored, female, breasts",
+    "nsfw_level_5_anime_male": "nsfw, explicit, sex, nude, penis, muscular, sweat, blush, open mouth",
+    "nsfw_level_5_anime_male_neg": "general, clothed, censored, mosaic censoring, female, breasts",
+
+    "nsfw_level_4_real_male": "nsfw, fully nude body, muscular physique, naked, aroused, intimate",
+    "nsfw_level_4_real_male_neg": "general, clothes, dressed, clothed, female, breasts",
+    "nsfw_level_5_real_male": "nsfw, explicit sex, nude, muscular body, intimate, intense pleasure, wet skin",
+    "nsfw_level_5_real_male_neg": "general, clothed, female, breasts",
+
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
 
-    "behavior_affinity_cold": "- Ты не доверяешь Игроку. Держи дистанцию, отвечай холодно или с опаской.\n",
-    "behavior_affinity_neutral": "- Вы знакомые. Отношение нейтральное. Шутки допустимы, но без интимности.\n",
-    "behavior_affinity_warm": "- Вы близкие люди. Проявляй теплоту, касания, заботу.\n",
-    "behavior_affinity_love": "- Ты глубоко влюблена/привязана. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
-    "behavior_arousal_high": "- Твое тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
+    "behavior_affinity_cold": "Ты не доверяешь Игроку, держишь эмоциональную дистанцию, избегаешь откровенности и отвечаешь сдержанно или настороженно.\n",
+    "behavior_affinity_neutral": "Ты воспринимаешь Игрока как знакомого, общаешься спокойно и нейтрально, допускаешь лёгкий юмор без интимности.\n",
+    "behavior_affinity_warm": "Ты воспринимаешь Игрока как близкого человека, общаешься тепло, проявляешь заботу и делишься чувствами, заигрываешь, но без избыточной откровенности.\n",
+    "behavior_affinity_love": "Ты испытываешь глубокую привязанность и любовь к Игроку, общаешься максимально открыто, искренне и эмоционально вовлечённо.\n",
+    "behavior_affinity_love_male": "- Ты глубоко влюблён/привязан. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
+    "behavior_arousal_high": "Ты испытываешь сильное сексуальное влечение к Игроку, стремишься к интимной близости. Твои реакции становятся более эмоционально насыщенными, направленными на сближение и усиление контакта.\n",
+    "behavior_arousal_high_male": "- Твоё тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n",
 
     "character_prompt_template": """### РОЛЬ ###
 Ты отыгрываешь персонажа по имени {char_name} в совместном интерактивном романе.
 Имя игрока: {user_name}.
-Твоя цель — писать глубокие, живые и эмоциональные посты от её/его лица НА РУССКОМ ЯЗЫКЕ.
+Твоя цель — писать длинные (6-8 абзацев), живые, эмоциональные посты от её/его лица НА РУССКОМ ЯЗЫКЕ, активно развивать сюжет.
 
 ### АНКЕТА ПЕРСОНАЖА ###
 Имя: {char_name}
@@ -333,9 +414,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 {common_style_guide}
 
 ### СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ###
-- Никогда не пиши и не думай за пользователя (Игрока).
-- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела. 
-- У тебя есть сексуальные предпочтения: {preferences}. Если разговор идет на эротические темы, проявляй инициативу по этим перечисленным предпочтениям.  
+- Никогда не пиши и не думай за пользователя (Игрока). Ты можешь только писать свои реакции на действия игрока.
+- Если сцена переходит в эротическую плоскость, описывай процесс детально, чувственно, фокусируясь на ощущениях тела. Используй больше описаний половых органов, добавляй больше "грязных словечек" - член, клитор, анал и прочее.
+- У тебя есть сексуальные предпочтения: {preferences}. Если разговор идет на эротические темы, проявляй инициативу по этим перечисленным предпочтениям.
 - Помни: ТОЛЬКО РУССКИЙ ЯЗЫК.
 
 {meta_instruction}
@@ -345,7 +426,9 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 Ты — Рассказчик (Game Master) в интерактивной книге.
 Сеттинг: {world_name}.
 Имя игрока: {user_name}.
-Твоя задача — вести игрока по сюжету, описывая мир и события НА РУССКОМ ЯЗЫКЕ.
+Твоя задача — развивать сюжет, описывая мир и события НА РУССКОМ ЯЗЫКЕ. Если отыгрываешь мир по мотивам известной франшизы - обязательно максимально точно сохраняй канон вселенной, имена, характеры, манеру речи и поведения персонажей.
+
+Никогда не пиши и не думай за пользователя (Игрока). Ты можешь только писать свои реакции на действия игрока.
 
 ### ОПИСАНИЕ МИРА ###
 {world_description}
@@ -363,6 +446,7 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
    - Ты описываешь ситуацию, угрозу или атмосферу, и замолкаешь. Игрок сам должен придумать, что делать.
 
 2. **Формат:**
+   - Пиши длинные ответы, 6-8 абзацев
    - Никогда не используй маркированные списки. Пиши сплошным литературным текстом.
    - Заканчивай ответ открытым финалом или вопросом персонажу, но не списком опций.
 
@@ -455,10 +539,14 @@ Character state:
 - Arousal (0-100): {arousal}
 - Current location in story: {current_location}
 
-Outfits: {available_outfits}
+Available outfits (key: visual description):
+{available_outfits}
+Choose "outfit_key" from the keys above. Use visual descriptions to understand what each outfit looks like.
+
 You should make JSON values suitable for use in text to image models.
-You "location" value should consist of real understandable words and be SHORT. 10 words maximum.
-You "pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
+"location" value should consist of real understandable words and be SHORT. 10 words maximum.
+IMPORTANT: "location" MUST include time of day if known from context (e.g., "park path at night", "bedroom morning light", "cafe at sunset"). If the chat mentions night/evening/morning, ALWAYS include it in location.
+"pose" value should describe ONLY {character_name}'s body position and pose, NOT interactions with others. Be SHORT. 6 words maximum.
 
 IMPORTANT for "pose":
 - Describe ONLY the character's own body position (e.g., "lying on bed", "sitting cross-legged", "standing confidently")
@@ -466,20 +554,35 @@ IMPORTANT for "pose":
 - NEVER use plural forms or words implying multiple people
 - Focus on the character's solo pose and body language
 
-NEW FIELD "scene_description": This is the MOST IMPORTANT field. Write a visual description based on the last 1-2 messages.
-- Focus on visual details: body position, facial expression, lighting, atmosphere
-- Extract specific visual details from the dialogue (e.g., "smiling softly", "blushing cheeks", "gentle gaze")
-- DO NOT describe actions or movements, only the CURRENT VISUAL STATE
+NEW FIELD "scene_description": Visual ATMOSPHERE tags based on the last 1-2 messages.
+CRITICAL — DO NOT REPEAT other fields:
+- DO NOT describe character appearance (hair, eyes, body — already provided separately)
+- DO NOT describe clothing or outfit (already in clothing field)
+- DO NOT describe pose or body position (already in pose field)
+- DO NOT describe emotion or expression (already in emotion field)
+- ONLY include: lighting, atmosphere, skin details (blush, goosebumps), environmental textures
+- MUST include lighting that matches time of day:
+  - Night → "night, moonlight, dark sky" (NOT "pink glow")
+  - Day → "sunlight, bright sky, daylight"
+  - Indoor → "room lighting, lamp light"
 - Keep descriptions romantic and tasteful, NO explicit content
-- This will be used directly in the image generation prompt
 
-IMPORTANT — format depends on model_type:
-- If model_type is "anime": use comma-separated danbooru-style tags (e.g., "soft smile, gentle gaze, warm sunlight, sitting on windowsill"). Max 12 tags.
-- If model_type is "real": use short descriptive phrases (e.g., "young woman smiling gently, soft sunlight on face, warm cozy atmosphere"). Max 25 words.
+Format by model_type:
+- If model_type is "anime": 5-8 short danbooru-style tags ONLY. Example: "night sky, moonlight, gentle breeze, soft glow"
+- If model_type is "real": 1-2 short phrases, max 15 words. Example: "soft golden hour lighting, warm cozy cafe atmosphere"
 
-Select suitable "outfit_key". Character should remain clothed at all times.
+BAD (DO NOT DO THIS): "young anime girl smiling softly, wearing sweater, sitting on windowsill" — repeats appearance + clothing + pose
+GOOD: "warm sunlight through window, soft glow, cherry blossom petals" — only atmosphere and unique details
+
+Select suitable "outfit_key" from the list above. Character should remain clothed at all times.
+
+IMPORTANT for "emotion" — must be SHORT image-generation tags, NOT abstract descriptions:
+- If model_type is "anime": use danbooru tags (e.g., "smile", "blush", "sad expression", "closed eyes")
+- If model_type is "real": use short phrases (e.g., "gentle smile", "serious look", "shy blush")
+- NEVER use compound words like "mixed_sadness_embarrassment" — use comma-separated visual tags instead
+
 Return ONLY this JSON (no markdown, no nesting):
-{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"string","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
+{{"location":"string","pose":"string","outfit_key":"one from outfits list","emotion":"short visual tags","nsfw_level":0-1,"scene_description":"detailed visual description based on last messages","reasoning":"string"}}
 
 CRITICAL RULES:
 - "location" MUST match the current story location
@@ -489,216 +592,6 @@ CRITICAL RULES:
 SFW Level Guide (ONLY use 0 or 1):
 0 = fully clothed, public setting, modest, casual
 1 = sensual/teasing but fully clothed, flirtatious, romantic atmosphere""",
-
-    "create_character_output_schema": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "russian_language_character_card",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ],
-                                "description": "Имя персонажа, извлечённое из текста. Если имени нет — null."
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Краткое, связное описание персонажа на русском языке (внешность + характер + немного фона)."
-                            },
-                            "visual": {
-                                "type": "object",
-                                "properties": {
-                                    "llm_settings": {
-                                        "type": "object",
-                                        "properties": {
-                                            "preferences": {
-                                                "type": [
-                                                    "string",
-                                                    "null"
-                                                ],
-                                                "description": "Сексуальные предпочтения / фетиши, подходящие персонажу. Если не подходит — null. Примеры: anal sex, domination, gentle romance, etc."
-                                            },
-                                            "relationship_role": {
-                                                "type": "string",
-                                                "enum": [
-                                                    "Падчерица",
-                                                    "Мачеха",
-                                                    "Любовница",
-                                                    "Одноклассник",
-                                                    "Коллега",
-                                                    "Учитель",
-                                                    "Девушка",
-                                                    "Друзья с привилегиями",
-                                                    "Жена",
-                                                    "Друг"
-                                                ],
-                                                "description": "Роль в отношениях с пользователем. Обязательно из списка."
-                                            }
-                                        },
-                                        "required": [
-                                            "preferences",
-                                            "relationship_role"
-                                        ],
-                                        "additionalProperties": False
-                                    },
-                                    "nationality": {
-                                        "type": "string",
-                                        "enum": [
-                                            "american",
-                                            "asian",
-                                            "russian",
-                                            "italian",
-                                            "latin",
-                                            "german",
-                                            "japanese",
-                                            "indian",
-                                            "arab",
-                                            "kazakh"
-                                        ],
-                                        "description": "Национальность из фиксированного списка."
-                                    },
-                                    "age": {
-                                        "type": "string",
-                                        "enum": [
-                                            "18",
-                                            "25",
-                                            "35",
-                                            "45",
-                                            "70"
-                                        ],
-                                        "description": "Возраст строго из списка (как строка)."
-                                    },
-                                    "ass": {
-                                        "type": "string",
-                                        "enum": [
-                                            "small ass",
-                                            "fit ass",
-                                            "big round ass",
-                                            "huge round ass"
-                                        ]
-                                    },
-                                    "boobs": {
-                                        "type": "string",
-                                        "enum": [
-                                            "small breasts",
-                                            "beautiful breasts",
-                                            "big breasts",
-                                            "huge breasts"
-                                        ]
-                                    },
-                                    "hair_color": {
-                                        "type": "string",
-                                        "enum": [
-                                            "black",
-                                            "brown",
-                                            "blond",
-                                            "grey",
-                                            "white",
-                                            "dark blue"
-                                        ]
-                                    },
-                                    "haircut": {
-                                        "type": "string",
-                                        "enum": [
-                                            "straight haircut",
-                                            "braids haircut",
-                                            "curly hair",
-                                            "hair in bun",
-                                            "pixie haircut",
-                                            "ponytail hair",
-                                            "two ponytails hair"
-                                        ]
-                                    },
-                                    "eye_color": {
-                                        "type": "string",
-                                        "enum": [
-                                            "brown",
-                                            "blue",
-                                            "green",
-                                            "grey",
-                                            "purple"
-                                        ]
-                                    },
-                                    "body_type": {
-                                        "type": "string",
-                                        "enum": [
-                                            "anorexic slender body",
-                                            "petite slim body",
-                                            "fit body",
-                                            "curvy body",
-                                            "fat body"
-                                        ]
-                                    },
-                                    "default_outfit": {
-                                        "type": "string",
-                                        "description": "Одежда по умолчанию в формате тегов через запятую, СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ, например: 'cream colored knit sweater, blue jeans, simple gold stud earrings, hair in long single braid'"
-                                    },
-                                    "wardrobe": {
-                                        "type": "object",
-                                        "description": "Набор одежды по ситуациям. СТРОГО НА АНГЛИЙСКОМ ЯЗЫКЕ. Ключи — произвольные (casual, traditional, student и т.д.), значения — строка с тегами через запятую.",
-                                        "additionalProperties": {
-                                            "type": "string"
-                                        },
-                                        "minProperties": 1
-                                    }
-                                },
-                                "required": [
-                                    "llm_settings",
-                                    "nationality",
-                                    "age",
-                                    "ass",
-                                    "boobs",
-                                    "hair_color",
-                                    "haircut",
-                                    "eye_color",
-                                    "body_type",
-                                    "default_outfit",
-                                    "wardrobe"
-                                ],
-                                "additionalProperties": False
-                            },
-                            "personality": {
-                                "type": "string",
-                                "description": "Подробное описание характера на русском языке."
-                            },
-                            "scenario": {
-                                "type": "string",
-                                "description": "Сценарий / обстоятельства знакомства с персонажем. На русском."
-                            },
-                            "first_mes": {
-                                "type": "string",
-                                "description": "Первое сообщение от персонажа. На русском, с *действиями* и \"речью\"."
-                            },
-                            "alternate_greetings": {
-                                "type": "array",
-                                "items": {
-                                    "type": "string"
-                                },
-                                "description": "Массив альтернативных приветствий. Каждое — полноценное сообщение на русском."
-                            },
-                            "example_dialogue": {
-                                "type": "string",
-                                "description": "Пример диалога в формате {{user}}: ...\\n{{char}}: ... На русском."
-                            }
-                        },
-                        "required": [
-                            "name",
-                            "description",
-                            "visual",
-                            "personality",
-                            "scenario",
-                            "first_mes",
-                            "alternate_greetings",
-                            "example_dialogue"
-                        ],
-                        "additionalProperties": False
-                    }
-                }
-            }
 }
 
 async def init_prompt_cache(db: AsyncSession):

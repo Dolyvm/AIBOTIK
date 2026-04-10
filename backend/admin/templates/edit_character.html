@@ -104,12 +104,12 @@
         </div>
 
         <div class="form-group">
-            <label>Альтернативные приветствия:</label>
+            <label>Альтернативные сценарии:</label>
             <div id="alternateПриветствиеsContainer">
                 {% for greeting in alternate_greetings %}
                 <div class="alternate-greeting-item" style="margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="font-size: 13px; color: #7f8c8d;">Приветствие {{ loop.index }}</strong>
+                        <strong style="font-size: 13px; color: #7f8c8d;">Сценарий {{ loop.index }}</strong>
                         <button type="button" class="btn btn-danger btn-small" onclick="removeAlternateПриветствие(this)">Удалить</button>
                     </div>
                     <textarea
@@ -121,7 +121,7 @@
                 </div>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативный сценарий</button>
         </div>
 
         <div class="form-group">
@@ -136,9 +136,27 @@
             <div id="jsonError" style="color: #e74c3c; font-size: 13px; margin-top: 5px; display: none;"></div>
         </div>
 
-        <!-- Avatar Regeneration Section -->
+        <!-- Avatar Section -->
         <div style="margin-bottom: 30px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
             <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Аватар персонажа</h4>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px;">
+                    <input
+                        type="checkbox"
+                        id="custom_avatar_checkbox"
+                        style="width: 18px; height: 18px; cursor: pointer;"
+                    />
+                    <span>Кастомный аватар (без генерации фото в чате)</span>
+                </label>
+                <small style="color: #7f8c8d; font-size: 12px;">Также можно установить "custom_avatar": true в JSON визуальных данных выше.</small>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="font-size: 13px; color: #7f8c8d; display: block; margin-bottom: 8px;">Загрузить своё фото:</label>
+                <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" onchange="handleAvatarUpload(this)" style="font-size: 13px;">
+                <div id="uploadStatus" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 13px;"></div>
+            </div>
 
             <div id="currentAvatarPreview" style="display: none; margin-bottom: 15px; text-align: center;">
                 <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 8px;">Текущий аватар:</p>
@@ -371,6 +389,7 @@
         try {
             const json = JSON.parse(document.getElementById('visual_data').value);
             return {
+                gender: json.gender || "female",
                 model_type: json.model_type || "anime",
                 appearance: json.appearance || "",
                 body: json.body || "",
@@ -507,5 +526,76 @@
     visualDataTextarea.addEventListener('input', function() {
         autoResize(this);
     });
+
+    // Init custom_avatar checkbox from visual_data JSON
+    try {
+        const vd = JSON.parse(visualDataTextarea.value);
+        if (vd.custom_avatar) {
+            document.getElementById('custom_avatar_checkbox').checked = true;
+        }
+    } catch (e) {}
+
+    // Sync checkbox to visual_data JSON
+    document.getElementById('custom_avatar_checkbox').addEventListener('change', function() {
+        try {
+            const vd = JSON.parse(visualDataTextarea.value);
+            vd.custom_avatar = this.checked;
+            visualDataTextarea.value = JSON.stringify(vd, null, 2);
+            autoResize(visualDataTextarea);
+        } catch (e) {
+            alert('Ошибка парсинга JSON визуальных данных');
+        }
+    });
+
+    async function handleAvatarUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const uploadStatus = document.getElementById('uploadStatus');
+        const previewDiv = document.getElementById('newAvatarPreview');
+        const avatarInput = document.getElementById('avatarUrlInput');
+
+        if (file.size > 5 * 1024 * 1024) {
+            uploadStatus.innerHTML = '<span style="color: #e74c3c;">Файл слишком большой (макс. 5MB)</span>';
+            uploadStatus.style.display = 'block';
+            uploadStatus.style.background = '#fdecea';
+            return;
+        }
+
+        uploadStatus.innerHTML = '<span style="color: #2980b9;">Загрузка...</span>';
+        uploadStatus.style.display = 'block';
+        uploadStatus.style.background = '#eaf0f8';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/admin/api/upload-avatar', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Upload failed');
+
+            avatarInput.value = data.url;
+            document.getElementById('newPreviewImage').src = data.url;
+            previewDiv.style.display = 'block';
+
+            uploadStatus.innerHTML = '<span style="color: #27ae60;">Фото загружено и выбрано как аватар!</span>';
+            uploadStatus.style.background = '#e8f8e8';
+
+            // Auto-check custom avatar and update JSON
+            const checkbox = document.getElementById('custom_avatar_checkbox');
+            checkbox.checked = true;
+            try {
+                const vd = JSON.parse(visualDataTextarea.value);
+                vd.custom_avatar = true;
+                visualDataTextarea.value = JSON.stringify(vd, null, 2);
+                autoResize(visualDataTextarea);
+            } catch (e) {}
+        } catch (error) {
+            uploadStatus.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${error.message}</span>`;
+            uploadStatus.style.background = '#fdecea';
+        }
+    }
 </script>
 {% endblock %}

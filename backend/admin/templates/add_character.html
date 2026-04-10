@@ -122,9 +122,9 @@
             </div>
 
             <div class="form-group">
-                <label>Альтернативные приветствия:</label>
+                <label>Альтернативные сценарии:</label>
                 <div id="alternateПриветствиеsContainer"></div>
-                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативное приветствие</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативный сценарий</button>
             </div>
         </div>
 
@@ -133,6 +133,18 @@
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
                 Визуальные данные (для генерации изображений)
             </h3>
+
+            <div class="form-group">
+                <label for="gender">Пол персонажа:</label>
+                <select
+                    id="gender"
+                    name="gender"
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                >
+                    <option value="female">Женский</option>
+                    <option value="male">Мужской</option>
+                </select>
+            </div>
 
             <div class="form-group">
                 <label for="model_type">Тип модели:</label>
@@ -153,7 +165,7 @@
                     name="appearance"
                     rows="3"
                     class="auto-resize"
-                    placeholder="Общее описание внешности для генерации изображений..."
+                    placeholder="Теги через запятую, EN. Anime F: 1girl, anime girl, solo, 18yo, slim body, blonde hair, blue eyes. Anime M: 1boy, anime boy, solo, 25yo, athletic, brown hair. Real F: russian woman, 25yo, blonde hair, blue eyes, fit. Real M: american man, 30yo, dark hair, muscular, stubble"
                 ></textarea>
             </div>
 
@@ -164,7 +176,7 @@
                     name="visual_body"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Описание тела (рост, телосложение и т.д.)..."
+                    placeholder="Необязательно. Доп. теги тела EN: slim waist, long legs, athletic figure"
                 ></textarea>
             </div>
 
@@ -175,7 +187,7 @@
                     name="visual_face"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Описание лица (глаза, волосы, черты...)..."
+                    placeholder="Необязательно. Доп. теги лица EN: defined cheekbones, full lips, natural skin"
                 ></textarea>
             </div>
 
@@ -186,7 +198,7 @@
                     name="visual_default_outfit"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Описание стандартной одежды/наряда..."
+                    placeholder="Теги через запятую EN: black hoodie, ripped jeans, sneakers"
                 ></textarea>
             </div>
 
@@ -197,7 +209,7 @@
                     name="visual_style_tags"
                     rows="2"
                     class="auto-resize"
-                    placeholder="Дополнительные теги стиля для генерации изображений..."
+                    placeholder="Для anime: оставить пустым. Для real: soft natural lighting, film photography, warm tones"
                 ></textarea>
             </div>
 
@@ -205,7 +217,7 @@
             <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                 <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Гардероб</h4>
                 <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
-                    Добавьте категории нарядов для генерации изображений. AI будет выбирать подходящие наряды на основе контекста разговора.
+                    Обязательные ключи: casual, formal, gym, swimwear, sleepwear, underwear, nude. Описание тегами EN через запятую. Для nude: "nothing, showing her naked body" (F) / "nothing, showing his naked body" (M).
                 </p>
 
                 <div id="wardrobeContainer"></div>
@@ -213,9 +225,28 @@
                 <button type="button" class="btn btn-secondary btn-small" onclick="addOutfit()">+ Добавить наряд</button>
             </div>
 
-            <!-- Avatar Generation Section -->
+            <!-- Avatar Section -->
             <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
                 <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Аватар персонажа</h4>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input
+                            type="checkbox"
+                            id="custom_avatar"
+                            name="custom_avatar"
+                            onchange="toggleCustomAvatar()"
+                            style="width: 18px; height: 18px; cursor: pointer;"
+                        />
+                        <span>Кастомный аватар (без генерации фото в чате)</span>
+                    </label>
+                </div>
+
+                <div id="uploadAvatarSection" style="margin-bottom: 15px;">
+                    <label style="font-size: 13px; color: #7f8c8d; display: block; margin-bottom: 8px;">Загрузить своё фото:</label>
+                    <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" onchange="handleAvatarUpload(this)" style="font-size: 13px;">
+                    <div id="uploadStatus" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 13px;"></div>
+                </div>
 
                 <div id="avatarPreview" style="display: none; margin-bottom: 15px; text-align: center;">
                     <img id="previewImage" src="" alt="Предпросмотр аватара" style="max-width: 256px; max-height: 256px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -231,6 +262,7 @@
                 <span id="generatingSpinner" style="display: none; margin-left: 10px; color: #7f8c8d;">Генерация...</span>
 
                 <input type="hidden" name="avatar_url" id="avatarUrlInput">
+                <input type="hidden" name="custom_avatar_flag" id="customAvatarFlag" value="false">
             </div>
         </div>
 
@@ -559,6 +591,7 @@
     // ========== AVATAR GENERATION ==========
     function collectVisualData() {
         return {
+            gender: document.getElementById('gender').value,
             model_type: document.getElementById('model_type').value,
             appearance: document.getElementById('appearance').value,
             body: document.getElementById('visual_body').value,
@@ -648,6 +681,56 @@
         statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар выбран! Он будет сохранен при создании персонажа.</span>';
         statusDiv.style.display = 'block';
         statusDiv.style.background = '#e8f8e8';
+    }
+
+    function toggleCustomAvatar() {
+        const checkbox = document.getElementById('custom_avatar');
+        document.getElementById('customAvatarFlag').value = checkbox.checked ? 'true' : 'false';
+    }
+
+    async function handleAvatarUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const uploadStatus = document.getElementById('uploadStatus');
+        const previewDiv = document.getElementById('avatarPreview');
+        const avatarInput = document.getElementById('avatarUrlInput');
+
+        if (file.size > 5 * 1024 * 1024) {
+            uploadStatus.innerHTML = '<span style="color: #e74c3c;">Файл слишком большой (макс. 5MB)</span>';
+            uploadStatus.style.display = 'block';
+            uploadStatus.style.background = '#fdecea';
+            return;
+        }
+
+        uploadStatus.innerHTML = '<span style="color: #2980b9;">Загрузка...</span>';
+        uploadStatus.style.display = 'block';
+        uploadStatus.style.background = '#eaf0f8';
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const response = await fetch('/admin/api/upload-avatar', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Upload failed');
+
+            avatarInput.value = data.url;
+            document.getElementById('previewImage').src = data.url;
+            previewDiv.style.display = 'block';
+
+            uploadStatus.innerHTML = '<span style="color: #27ae60;">Фото загружено и выбрано как аватар!</span>';
+            uploadStatus.style.background = '#e8f8e8';
+
+            // Auto-check custom avatar
+            document.getElementById('custom_avatar').checked = true;
+            document.getElementById('customAvatarFlag').value = 'true';
+        } catch (error) {
+            uploadStatus.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${error.message}</span>`;
+            uploadStatus.style.background = '#fdecea';
+        }
     }
 </script>
 {% endblock %}

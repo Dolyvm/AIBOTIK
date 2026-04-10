@@ -12,7 +12,7 @@ from aiohttp import web
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from handlers import commands, messages, webapp
+from handlers import commands, messages, payments, webapp
 import config
 from shared.database import engine
 from shared.services.llm import LLMClient
@@ -94,6 +94,7 @@ async def main():
     webapp_url = os.getenv("WEBAPP_URL")
 
     dp.include_router(commands.router)
+    dp.include_router(payments.router)
     dp.include_router(webapp.router)
     dp.include_router(messages.router)
 
@@ -120,7 +121,8 @@ async def main():
         if is_prod:
             await bot.set_webhook(
                 url=full_webhook_url,
-                drop_pending_updates=False
+                drop_pending_updates=False,
+                allowed_updates=["message", "pre_checkout_query", "callback_query"],
             )
             logger.info(f"Webhook set to {full_webhook_url}")
 
