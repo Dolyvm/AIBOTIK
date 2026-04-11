@@ -58,7 +58,7 @@ async def get_user_profile(user_id: int, user: User = Depends(get_current_user))
         "username": db_user.username,
         "avatar_url": db_user.avatar_url,
         "balance": db_user.balance,
-        "nsfw_blur": user.settings.nsfw_blur if user.settings else True,
+        "nsfw_blur": user.settings.nsfw_blur if user.settings else False,
         "nickname": user.settings.nickname if user.settings else None,
         "age_confirmed": user.settings.age_confirmed if user.settings else False,
         "subscription": {

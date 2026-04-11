@@ -97,6 +97,7 @@ async def build_character_prompt(
         personality=personality,
         scenario=scenario,
         summary=summary if summary else "История только начинается.",
+        location=chat.current_location or "не определена",
         affinity=affinity,
         arousal=arousal,
         mood=mood,
@@ -121,7 +122,8 @@ async def build_world_prompt(
         world: dict,
         summary: str = "",
         user_name: str = "Игрок",
-        allow_nsfw: bool = True
+        allow_nsfw: bool = True,
+        location: str = ""
 ) -> str:
     template = await get_prompt("world_prompt_template")
     prompt = template.format(
@@ -129,6 +131,7 @@ async def build_world_prompt(
         user_name=user_name,
         world_description=world['description'],
         summary=summary if summary else "Приключение начинается.",
+        location=location or "не определена",
         common_style_guide=await _get_common_style_guide(),
         meta_instruction=await _get_meta_instruction(allow_nsfw),
     )

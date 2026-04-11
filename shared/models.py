@@ -77,7 +77,7 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
-    nsfw_blur = Column(Boolean, default=True)
+    nsfw_blur = Column(Boolean, default=False)
     language = Column(String(10), default="ru")
     nickname = Column(String(50), nullable=True, default=None)
     age_confirmed = Column(Boolean, default=False, server_default="false")

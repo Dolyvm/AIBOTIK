@@ -197,23 +197,31 @@ DEFAULT_PROMPTS = {
 ### EXISTING SUMMARY ###
 {existing_summary}
 
-### CURRENT EMOTIONAL STATE ###
+### CURRENT STATE ###
 Affinity: {affinity}/100
 Arousal: {arousal}/100
 Mood: {mood}
+Current location: {location}
 
 ### MESSAGES TO COMPRESS ###
 {messages}
 
 ### INSTRUCTIONS ###
-Create a concise narrative summary that:
-1. Preserves key facts, events, and revelations
-2. Tracks the progression of the relationship
-3. Notes important emotional moments
-4. Integrates with the existing summary
-5. Keeps it under 200 words
+Create a structured narrative summary in Russian. The summary MUST contain:
 
-Write in Russian. Output ONLY the summary, no meta-commentary.""",
+1. **Локация:** Где сейчас находятся персонажи (ОБЯЗАТЕЛЬНО, это критически важно)
+2. **Текущая ситуация:** Что происходит прямо сейчас (какое действие, разговор, событие)
+3. **Ключевые события:** 3-5 самых важных событий из всей истории
+4. **Отношения:** Как развиваются отношения между персонажами
+5. **Важные детали:** Факты, обещания, секреты, которые нельзя забыть
+
+Rules:
+- Integrate with existing summary, don't just append
+- ALWAYS explicitly state the current location — this is the #1 priority
+- ALWAYS describe the most recent events in detail
+- Keep under 300 words
+- Write in Russian
+- Output ONLY the summary, no meta-commentary""",
 
     "scene_analyzer_prompt": """WRITE ONLY IN ENGLISH
 Scene: {character_name}
@@ -401,6 +409,8 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 Краткое содержание предыдущих глав (Summary):
 {summary}
 
+Текущая локация: {location}
+
 ### СОСТОЯНИЕ ОТНОШЕНИЙ ###
 Симпатия (Affinity): {affinity}/100
 Возбуждение (Arousal): {arousal}/100
@@ -436,6 +446,8 @@ CONSISTENCY RULES (outfit_key MUST match nsfw_level):
 ### ТЕКУЩИЙ КОНТЕКСТ ###
 Ранее в истории:
 {summary}
+
+Текущая локация: {location}
 
 {common_style_guide}
 
