@@ -127,6 +127,7 @@ class SubscriptionService:
         repo = self._repo(session)
         usage = await repo.get_monthly_usage(user_id, period)
 
+        is_unlimited = limits.get("display_as_unlimited", False)
         summary = {}
         for usage_type, db_field in USAGE_TYPE_MAP.items():
             plan_limit = limits.get(usage_type, 0)
@@ -135,9 +136,9 @@ class SubscriptionService:
             total_limit = plan_limit + bonus
             summary[usage_type] = {
                 "used": current,
-                "limit": total_limit,
+                "limit": -1 if is_unlimited else total_limit,
                 "bonus": bonus,
-                "remaining": max(0, total_limit - current),
+                "remaining": -1 if is_unlimited else max(0, total_limit - current),
             }
 
         return {

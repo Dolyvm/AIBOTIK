@@ -319,9 +319,9 @@
                             <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'avatar_generations'">
                                 <div class="usage-bar-header">
                                     <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
-                                    <span class="usage-bar-count">{{ info.used }} / {{ info.limit }}</span>
+                                    <span class="usage-bar-count">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
                                 </div>
-                                <div class="usage-bar-track">
+                                <div class="usage-bar-track" v-if="info.limit !== -1">
                                     <div class="usage-bar-fill" :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"
                                          :class="{ 'usage-bar-warning': info.limit && info.used / info.limit > 0.8, 'usage-bar-full': info.limit && info.used >= info.limit }">
                                     </div>
