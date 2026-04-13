@@ -145,6 +145,214 @@
         .modal-overlay {
             padding-top: calc(env(safe-area-inset-top, 50px) + 60px) !important;
         }
+        /* Card counters */
+        .card-counters { display:flex; gap:8px; margin-top:4px; }
+        .card-counter { font-size:11px; color:var(--tg-theme-hint-color); display:flex; align-items:center; gap:3px; }
+        .card-counter .fa-heart { color:#e74c3c; }
+        /* Like + author row inside modal */
+        .modal-author-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+        .modal-author-link { font-size:13px; color:var(--tg-theme-hint-color); }
+        .modal-author-link:hover { text-decoration:underline; }
+        .like-btn { display:flex; align-items:center; gap:5px; background:none; border:1px solid rgba(231,76,60,.3); border-radius:20px; padding:4px 12px; color:var(--tg-theme-hint-color); font-size:13px; cursor:pointer; transition:all .2s; }
+        .like-btn.liked, .like-btn.liked .fa-heart { color:#e74c3c; border-color:rgba(231,76,60,.7); }
+        .private-badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 6px; border-radius:4px; }
+
+        /* ============== Profile redesign ============== */
+        .profile-page {
+            position:fixed;
+            top:0; left:0; right:0; bottom:0;
+            display:flex;
+            flex-direction:column;
+            background:var(--tg-theme-bg-color);
+            overflow:hidden;
+        }
+        .profile-page__scroll {
+            flex:1;
+            overflow-y:auto;
+            -webkit-overflow-scrolling:touch;
+            padding-bottom:calc(var(--bottom-total-spacing, 90px) + 16px);
+        }
+        .page-header {
+            position:sticky; top:0; z-index:10;
+            display:flex; align-items:center; justify-content:space-between;
+            padding:calc(env(safe-area-inset-top, 50px) + 10px) 16px 10px;
+            background:color-mix(in srgb, var(--tg-theme-bg-color) 85%, transparent);
+            backdrop-filter:saturate(180%) blur(14px);
+            -webkit-backdrop-filter:saturate(180%) blur(14px);
+        }
+        .page-header__title { font-size:16px; font-weight:600; color:var(--tg-theme-text-color); flex:1; text-align:center; }
+        .page-icon-btn {
+            width:36px; height:36px; border-radius:50%;
+            display:flex; align-items:center; justify-content:center;
+            background:color-mix(in srgb, var(--tg-theme-secondary-bg-color) 80%, transparent);
+            color:var(--tg-theme-text-color);
+            border:none; cursor:pointer; font-size:15px;
+            transition:transform .15s ease;
+        }
+        .page-icon-btn:active { transform:scale(.92); }
+        .page-icon-btn--placeholder { visibility:hidden; }
+
+        .profile-hero {
+            position:relative;
+            padding:24px 20px 20px;
+            text-align:center;
+            background:
+                radial-gradient(120% 80% at 50% 0%,
+                    color-mix(in srgb, var(--tg-theme-button-color) 18%, transparent) 0%,
+                    transparent 70%);
+        }
+        .profile-hero__avatar-wrap {
+            display:inline-block;
+            position:relative;
+            margin-bottom:14px;
+        }
+        .profile-hero__avatar {
+            width:96px; height:96px; border-radius:50%; object-fit:cover;
+            border:3px solid var(--tg-theme-bg-color);
+            box-shadow:0 8px 24px rgba(0,0,0,.18);
+            display:block;
+        }
+        .profile-hero__avatar--fallback {
+            display:flex; align-items:center; justify-content:center;
+            background:linear-gradient(135deg,
+                color-mix(in srgb, var(--tg-theme-button-color) 80%, #fff),
+                color-mix(in srgb, var(--tg-theme-button-color) 50%, #000));
+            color:#fff; font-size:38px; font-weight:700;
+            text-transform:uppercase;
+        }
+        .profile-hero__name {
+            font-size:24px; font-weight:700;
+            color:var(--tg-theme-text-color);
+            margin:0 0 4px;
+            display:flex; align-items:center; justify-content:center; gap:8px;
+            flex-wrap:wrap;
+        }
+        .profile-hero__handle {
+            font-size:14px;
+            color:var(--tg-theme-hint-color);
+            margin:0 0 14px;
+        }
+        .plan-badge {
+            display:inline-flex; align-items:center; gap:4px;
+            font-size:11px; font-weight:700;
+            padding:3px 9px; border-radius:999px;
+            text-transform:uppercase; letter-spacing:.4px;
+        }
+        .plan-badge--free { background:color-mix(in srgb, var(--tg-theme-hint-color) 20%, transparent); color:var(--tg-theme-hint-color); }
+        .plan-badge--plus { background:color-mix(in srgb, #3498db 22%, transparent); color:#3498db; }
+        .plan-badge--pro  { background:linear-gradient(135deg, #FFD86B, #FF8A00); color:#fff; }
+        .profile-hero__actions {
+            display:flex; gap:10px; justify-content:center;
+            margin-top:6px;
+        }
+        .pill-btn {
+            display:inline-flex; align-items:center; gap:6px;
+            padding:9px 18px; border-radius:999px;
+            background:var(--tg-theme-button-color);
+            color:var(--tg-theme-button-text-color, #fff);
+            font-size:13px; font-weight:600;
+            border:none; cursor:pointer;
+            transition:transform .15s ease, opacity .15s ease;
+        }
+        .pill-btn:active { transform:scale(.96); opacity:.9; }
+        .pill-btn--ghost {
+            background:color-mix(in srgb, var(--tg-theme-secondary-bg-color) 90%, transparent);
+            color:var(--tg-theme-text-color);
+        }
+
+        .profile-content { padding:0 16px; }
+
+        .stat-grid {
+            display:grid;
+            grid-template-columns:repeat(3, 1fr);
+            gap:8px;
+            margin-bottom:18px;
+        }
+        .stat-card {
+            background:var(--tg-theme-secondary-bg-color);
+            border-radius:14px;
+            padding:14px 8px;
+            text-align:center;
+            box-shadow:0 1px 4px rgba(0,0,0,.04);
+        }
+        .stat-card__value { font-size:22px; font-weight:700; color:var(--tg-theme-text-color); line-height:1.1; }
+        .stat-card__label { font-size:10px; color:var(--tg-theme-hint-color); text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
+
+        .section-header {
+            font-size:11px; font-weight:600;
+            color:var(--tg-theme-hint-color);
+            text-transform:uppercase; letter-spacing:.6px;
+            margin:18px 4px 8px;
+        }
+
+        .list-card {
+            background:var(--tg-theme-secondary-bg-color);
+            border-radius:16px;
+            overflow:hidden;
+            box-shadow:0 1px 4px rgba(0,0,0,.04);
+        }
+        .list-row {
+            display:flex; align-items:center;
+            min-height:52px;
+            padding:10px 16px;
+            gap:12px;
+            cursor:pointer;
+            border-bottom:1px solid color-mix(in srgb, var(--tg-theme-hint-color) 12%, transparent);
+            transition:background .12s ease;
+        }
+        .list-row:last-child { border-bottom:none; }
+        .list-row:active { background:color-mix(in srgb, var(--tg-theme-hint-color) 8%, transparent); }
+        .list-row--no-press { cursor:default; }
+        .list-row--no-press:active { background:transparent; }
+        .list-row__icon {
+            width:28px; height:28px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center;
+            color:var(--tg-theme-button-color);
+            font-size:15px;
+        }
+        .list-row__label { flex:1; font-size:15px; color:var(--tg-theme-text-color); }
+        .list-row__value { font-size:14px; color:var(--tg-theme-hint-color); }
+        .list-row__chevron { color:var(--tg-theme-hint-color); font-size:12px; }
+
+        .sub-card {
+            background:var(--tg-theme-secondary-bg-color);
+            border-radius:16px;
+            padding:16px;
+            box-shadow:0 1px 4px rgba(0,0,0,.04);
+        }
+        .sub-card__top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+        .sub-card__plan { font-size:18px; font-weight:700; color:var(--tg-theme-text-color); }
+        .sub-card__date { font-size:12px; color:var(--tg-theme-hint-color); margin-top:2px; }
+        .sub-bar {
+            height:6px;
+            background:color-mix(in srgb, var(--tg-theme-hint-color) 20%, transparent);
+            border-radius:999px;
+            overflow:hidden;
+            margin-top:8px;
+        }
+        .sub-bar__fill {
+            height:100%;
+            background:var(--tg-theme-button-color);
+            border-radius:999px;
+            transition:width .25s ease;
+        }
+        .sub-card__usage-label { display:flex; justify-content:space-between; font-size:12px; color:var(--tg-theme-hint-color); margin-top:8px; }
+        .sub-toggle-btn {
+            background:none; border:none;
+            color:var(--tg-theme-button-color);
+            font-size:13px; font-weight:600; cursor:pointer;
+            padding:0; margin-top:10px;
+        }
+
+        .author-grid-section { margin-top:6px; }
+
+        .empty-author {
+            text-align:center;
+            padding:40px 20px;
+            color:var(--tg-theme-hint-color);
+        }
+        .empty-author i { font-size:40px; margin-bottom:12px; opacity:.5; }
+        .empty-author p { font-size:14px; margin:0; }
     </style>
 </head>
 <body>
@@ -234,6 +442,10 @@
                         <div class="card-title">
                             {{ char.name }}
                             <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
+                            <div class="card-counters" v-if="char.chat_count !== undefined || char.like_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count || 0 }}</span>
+                                <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count || 0 }}</span>
+                            </div>
                         </div>
                     </div>
                     <div v-if="characters.length === 0" class="empty-state">Персонажи не найдены</div>
@@ -261,6 +473,9 @@
                         <div class="card-title">
                             {{ world.name }}
                             <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
+                            <div class="card-counters" v-if="world.chat_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count || 0 }}</span>
+                            </div>
                         </div>
                     </div>
                     <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
@@ -289,154 +504,348 @@
                     <div v-if="activeChats.length === 0" class="empty-state">Активные чаты не найдены</div>
                 </div>
 
-                <!-- Profile -->
-                <div v-if="tab === 'profile'" class="profile-view">
-                    <!-- Profile Header -->
-                    <div class="profile-header">
-                        <div class="profile-avatar">
-                            <img :src="userProfile.avatar_url || 'https://via.placeholder.com/80'" alt="Avatar">
-                        </div>
-                        <div class="profile-info">
-                            <div class="profile-name">{{ userProfile.username }}</div>
-                            <div class="plan-badge" :class="'plan-' + (subscription ? subscription.plan : 'free')">
-                                {{ subscription ? subscription.plan_display_name : 'Free' }}
-                            </div>
-                        </div>
-                    </div>
+            </div>
 
-                    <!-- Subscription Section -->
-                    <div class="profile-section" v-if="subscription">
-                        <div class="section-title">Подписка</div>
-                        <div class="subscription-current">
-                            <span class="plan-badge" :class="'plan-' + subscription.plan">{{ subscription.plan_display_name }}</span>
-                            <span v-if="subscription.subscription_end_date" class="plan-expiry">
-                                до {{ new Date(subscription.subscription_end_date).toLocaleDateString('ru-RU') }}
+            <div class="tabs">
+                <button :class="{active: tab === 'characters' && currentView === 'selection'}" @click="goToTab('characters')">Персонажи</button>
+                <button :class="{active: tab === 'worlds' && currentView === 'selection'}" @click="goToTab('worlds')">Миры</button>
+                <button :class="{active: tab === 'chats' && currentView === 'selection'}" @click="goToTab('chats')">Мои чаты</button>
+                <button :class="{active: currentView === 'profile'}" @click="goToProfile">Профиль</button>
+            </div>
+        </div>
+
+        <!-- View: Profile (own) -->
+        <div v-if="currentView === 'profile'" class="profile-page">
+            <div class="page-header">
+                <span class="page-icon-btn page-icon-btn--placeholder"></span>
+                <div class="page-header__title">Профиль</div>
+                <button class="page-icon-btn" @click="shareMyProfile" title="Поделиться">
+                    <i class="fas fa-share-nodes"></i>
+                </button>
+            </div>
+
+            <div class="profile-page__scroll">
+            <div class="profile-hero">
+                <div class="profile-hero__avatar-wrap">
+                    <img v-if="userProfile.avatar_url" class="profile-hero__avatar"
+                         :src="userProfile.avatar_url" alt="Avatar">
+                    <div v-else class="profile-hero__avatar profile-hero__avatar--fallback">
+                        {{ getInitials(profileSettings.nickname || userProfile.username) }}
+                    </div>
+                </div>
+                <h1 class="profile-hero__name">
+                    {{ profileSettings.nickname || userProfile.username || 'Пользователь' }}
+                    <span class="plan-badge"
+                          :class="'plan-badge--' + (subscription ? (subscription.plan === 'free' ? 'free' : (subscription.plan === 'pro' ? 'pro' : 'plus')) : 'free')">
+                        {{ subscription ? subscription.plan_display_name : 'Free' }}
+                    </span>
+                </h1>
+                <p class="profile-hero__handle" v-if="userProfile.username && userProfile.username !== profileSettings.nickname">@{{ userProfile.username }}</p>
+            </div>
+
+            <div class="profile-content">
+                <!-- Stats -->
+                <div class="stat-grid" v-if="myAuthorProfile">
+                    <div class="stat-card">
+                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_chats }}</div>
+                        <div class="stat-card__label">Чатов</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_likes }}</div>
+                        <div class="stat-card__label">Лайков</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card__value">{{ myAuthorProfile.stats.characters_count + myAuthorProfile.stats.worlds_count }}</div>
+                        <div class="stat-card__label">Творений</div>
+                    </div>
+                </div>
+
+                <!-- Subscription -->
+                <div v-if="subscription">
+                    <div class="section-header">Подписка</div>
+                    <div class="sub-card">
+                        <div class="sub-card__top">
+                            <div>
+                                <div class="sub-card__plan">{{ subscription.plan_display_name }}</div>
+                                <div class="sub-card__date" v-if="subscription.subscription_end_date">
+                                    до {{ new Date(subscription.subscription_end_date).toLocaleDateString('ru-RU') }}
+                                </div>
+                            </div>
+                            <span class="plan-badge"
+                                  :class="'plan-badge--' + (subscription.plan === 'free' ? 'free' : (subscription.plan === 'pro' ? 'pro' : 'plus'))">
+                                {{ subscription.plan_display_name }}
                             </span>
                         </div>
 
-                        <!-- Usage Bars -->
-                        <div class="usage-bars" v-if="subscription.usage">
-                            <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'avatar_generations'">
-                                <div class="usage-bar-header">
-                                    <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
-                                    <span class="usage-bar-count">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
+                        <template v-if="subscription.usage">
+                            <template v-for="(info, key) in subscription.usage" :key="key">
+                                <div v-if="key === 'messages_sent' && info.limit !== -1">
+                                    <div class="sub-card__usage-label">
+                                        <span>{{ usageLabels[key] || key }}</span>
+                                        <span>{{ info.used }} / {{ info.limit }}</span>
+                                    </div>
+                                    <div class="sub-bar">
+                                        <div class="sub-bar__fill"
+                                             :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"></div>
+                                    </div>
                                 </div>
-                                <div class="usage-bar-track" v-if="info.limit !== -1">
-                                    <div class="usage-bar-fill" :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"
-                                         :class="{ 'usage-bar-warning': info.limit && info.used / info.limit > 0.8, 'usage-bar-full': info.limit && info.used >= info.limit }">
+                            </template>
+                        </template>
+
+                        <button class="sub-toggle-btn" @click="showFullSubscription = !showFullSubscription">
+                            {{ showFullSubscription ? 'Свернуть' : 'Подробнее' }}
+                            <i class="fas" :class="showFullSubscription ? 'fa-chevron-up' : 'fa-chevron-down'" style="margin-left:4px;font-size:11px"></i>
+                        </button>
+
+                        <div v-if="showFullSubscription" style="margin-top:14px;">
+                            <div class="usage-bars" v-if="subscription.usage">
+                                <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'avatar_generations' && key !== 'messages_sent'">
+                                    <div class="usage-bar-header">
+                                        <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
+                                        <span class="usage-bar-count">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
+                                    </div>
+                                    <div class="usage-bar-track" v-if="info.limit !== -1">
+                                        <div class="usage-bar-fill" :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"
+                                             :class="{ 'usage-bar-warning': info.limit && info.used / info.limit > 0.8, 'usage-bar-full': info.limit && info.used >= info.limit }">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Plan Cards -->
-                        <div class="plan-cards" v-if="availablePlans.length">
-                            <div class="plan-card" v-for="p in availablePlans" :key="p.plan"
-                                 :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
-                                 @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
-                                <div class="plan-card-name">{{ p.display_name }}</div>
-                                <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
-                                <div class="plan-card-price" v-else>Бесплатно</div>
-                                <div class="plan-card-current" v-if="p.plan === subscription.plan">Текущий</div>
-                            </div>
-                        </div>
-
-                        <!-- Plan Preview -->
-                        <div class="plan-preview" v-if="previewPlanData">
-                            <div class="plan-preview-title">{{ previewPlanData.display_name }} — лимиты:</div>
-                            <div class="plan-preview-limits">
-                                <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
-                                    <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
-                                    <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
+                            <div class="plan-cards" v-if="availablePlans.length" style="margin-top:12px;">
+                                <div class="plan-card" v-for="p in availablePlans" :key="p.plan"
+                                     :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
+                                     @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
+                                    <div class="plan-card-name">{{ p.display_name }}</div>
+                                    <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
+                                    <div class="plan-card-price" v-else>Бесплатно</div>
+                                    <div class="plan-card-current" v-if="p.plan === subscription.plan">Текущий</div>
                                 </div>
                             </div>
-                            <button class="plan-card-btn plan-preview-buy"
-                                    v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'"
-                                    @click="purchasePlan(previewPlanData.plan)">
-                                Купить
-                            </button>
-                        </div>
 
-                        <!-- Auto-renew toggle -->
-                        <div class="setting-item" v-if="subscription.plan !== 'free'" style="margin-top: 12px;">
-                            <span class="setting-label">Автопродление</span>
-                            <label class="toggle">
-                                <input type="checkbox" v-model="autoRenew" @change="toggleAutoRenew">
-                                <span class="toggle-slider"></span>
-                            </label>
-                        </div>
-                    </div>
+                            <div class="plan-preview" v-if="previewPlanData">
+                                <div class="plan-preview-title">{{ previewPlanData.display_name }} — лимиты:</div>
+                                <div class="plan-preview-limits">
+                                    <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
+                                        <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
+                                        <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
+                                    </div>
+                                </div>
+                                <button class="plan-card-btn plan-preview-buy"
+                                        v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'"
+                                        @click="purchasePlan(previewPlanData.plan)">
+                                    Купить
+                                </button>
+                            </div>
 
-                    <!-- Settings Section -->
-                    <div class="profile-section">
-                        <div class="section-title">Настройки</div>
-                        <div class="settings-list">
-                            <div class="setting-item">
-                                <span class="setting-label">NSFW Blur</span>
+                            <div class="setting-item" v-if="subscription.plan !== 'free'" style="margin-top: 12px;">
+                                <span class="setting-label">Автопродление</span>
                                 <label class="toggle">
-                                    <input type="checkbox" v-model="profileSettings.nsfw_blur">
+                                    <input type="checkbox" v-model="autoRenew" @change="toggleAutoRenew">
                                     <span class="toggle-slider"></span>
                                 </label>
-                            </div>
-                            <div class="setting-item">
-                                <span class="setting-label">Мой никнейм</span>
-                                <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname">
-                                    <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
-                                    <i class="fas fa-pen nickname-edit-icon"></i>
-                                </div>
-                                <div v-else class="nickname-edit">
-                                    <input
-                                        type="text"
-                                        v-model="nicknameDraft"
-                                        class="nickname-input"
-                                        maxlength="50"
-                                        placeholder="Введите никнейм"
-                                        @keyup.enter="saveNickname"
-                                    >
-                                    <button class="nickname-save-btn" @click="saveNickname" :disabled="isSavingNickname">
-                                        <i class="fas fa-check"></i>
-                                    </button>
-                                    <button class="nickname-cancel-btn" @click="cancelEditNickname">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Documents Section -->
-                    <div class="profile-section">
-                        <div class="section-title">Документы</div>
-                        <div class="settings-list">
-                            <div class="setting-item" style="cursor:pointer" @click="openDocument('privacy')">
-                                <span class="setting-label"><i class="fas fa-shield-halved" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Политика конфиденциальности</span>
-                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
-                            </div>
-                            <div class="setting-item" style="cursor:pointer" @click="openDocument('terms')">
-                                <span class="setting-label"><i class="fas fa-file-contract" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Пользовательское соглашение</span>
-                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Support Section -->
-                    <div class="profile-section">
-                        <div class="section-title">Помощь</div>
-                        <div class="settings-list">
-                            <div class="setting-item" style="cursor:pointer" @click="openSupport">
-                                <span class="setting-label"><i class="fas fa-headset" style="margin-right:8px;color:var(--tg-theme-hint-color)"></i>Поддержка</span>
-                                <i class="fas fa-chevron-right" style="color:var(--tg-theme-hint-color);font-size:12px"></i>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Settings -->
+                <div class="section-header">Настройки</div>
+                <div class="list-card">
+                    <div class="list-row list-row--no-press">
+                        <div class="list-row__icon"><i class="fas fa-eye-slash"></i></div>
+                        <span class="list-row__label">NSFW Blur</span>
+                        <label class="toggle">
+                            <input type="checkbox" v-model="profileSettings.nsfw_blur">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="list-row list-row--no-press">
+                        <div class="list-row__icon"><i class="fas fa-user-pen"></i></div>
+                        <span class="list-row__label">Никнейм</span>
+                        <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname" style="cursor:pointer">
+                            <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
+                            <i class="fas fa-pen nickname-edit-icon"></i>
+                        </div>
+                        <div v-else class="nickname-edit">
+                            <input type="text" v-model="nicknameDraft" class="nickname-input" maxlength="50"
+                                   placeholder="Введите никнейм" @keyup.enter="saveNickname">
+                            <button class="nickname-save-btn" @click="saveNickname" :disabled="isSavingNickname">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="nickname-cancel-btn" @click="cancelEditNickname">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Other -->
+                <div class="section-header">Прочее</div>
+                <div class="list-card">
+                    <div class="list-row" @click="openDocument('privacy')">
+                        <div class="list-row__icon"><i class="fas fa-shield-halved"></i></div>
+                        <span class="list-row__label">Политика конфиденциальности</span>
+                        <i class="fas fa-chevron-right list-row__chevron"></i>
+                    </div>
+                    <div class="list-row" @click="openDocument('terms')">
+                        <div class="list-row__icon"><i class="fas fa-file-contract"></i></div>
+                        <span class="list-row__label">Пользовательское соглашение</span>
+                        <i class="fas fa-chevron-right list-row__chevron"></i>
+                    </div>
+                    <div class="list-row" @click="openSupport">
+                        <div class="list-row__icon"><i class="fas fa-headset"></i></div>
+                        <span class="list-row__label">Поддержка</span>
+                        <i class="fas fa-chevron-right list-row__chevron"></i>
+                    </div>
+                </div>
+
+                <!-- My creativity -->
+                <template v-if="myAuthorProfile && (myAuthorProfile.characters.length || myAuthorProfile.worlds.length)">
+                    <div v-if="myAuthorProfile.characters.length" class="author-grid-section">
+                        <div class="section-header">Мои персонажи</div>
+                        <div class="grid">
+                            <div v-for="char in myAuthorProfile.characters" :key="char.id"
+                                 class="card" @click="selectItem('character', char)">
+                                <img :src="char.avatar" loading="lazy">
+                                <span v-if="char.is_nsfw" class="nsfw-badge">NSFW</span>
+                                <span v-if="char.is_public === false" class="private-badge">Private</span>
+                                <div class="card-title">
+                                    {{ char.name }}
+                                    <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
+                                    <div class="card-counters">
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="myAuthorProfile.worlds.length" class="author-grid-section">
+                        <div class="section-header">Мои миры</div>
+                        <div class="grid">
+                            <div v-for="world in myAuthorProfile.worlds" :key="world.id"
+                                 class="card" @click="selectItem('world', world)">
+                                <img :src="world.cover_image" loading="lazy">
+                                <span v-if="world.is_nsfw" class="nsfw-badge">NSFW</span>
+                                <div class="card-title">
+                                    {{ world.name }}
+                                    <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
+                                    <div class="card-counters">
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
             </div>
 
             <div class="tabs">
-                <button :class="{active: tab === 'characters'}" @click="tab = 'characters'">Персонажи</button>
-                <button :class="{active: tab === 'worlds'}" @click="tab = 'worlds'">Миры</button>
-                <button :class="{active: tab === 'chats'}" @click="loadChats">Мои чаты</button>
-                <button :class="{active: tab === 'profile'}" @click="loadProfile">Профиль</button>
+                <button :class="{active: false}" @click="goToTab('characters')">Персонажи</button>
+                <button :class="{active: false}" @click="goToTab('worlds')">Миры</button>
+                <button :class="{active: false}" @click="goToTab('chats')">Мои чаты</button>
+                <button :class="{active: true}">Профиль</button>
+            </div>
+        </div>
+
+        <!-- View: Author Profile -->
+        <div v-if="currentView === 'author-profile'" class="profile-page">
+            <div class="page-header">
+                <button class="page-icon-btn" @click="backFromAuthorProfile">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <div class="page-header__title">{{ authorProfileData ? authorProfileData.author.display_name : 'Профиль' }}</div>
+                <span class="page-icon-btn page-icon-btn--placeholder"></span>
+            </div>
+
+            <div class="profile-page__scroll">
+            <div v-if="isLoadingAuthorProfile" class="modal-loading" style="padding:60px 20px;">
+                <div class="spinner"></div>
+                <p>Загрузка профиля...</p>
+            </div>
+
+            <template v-else-if="authorProfileData">
+                <div class="profile-hero">
+                    <div class="profile-hero__avatar-wrap">
+                        <img v-if="authorProfileData.author.avatar_url" class="profile-hero__avatar"
+                             :src="authorProfileData.author.avatar_url" alt="Author">
+                        <div v-else class="profile-hero__avatar profile-hero__avatar--fallback">
+                            <i v-if="authorProfileData.author.is_team" class="fas fa-users" style="font-size:34px"></i>
+                            <template v-else>{{ getInitials(authorProfileData.author.nickname || authorProfileData.author.username || authorProfileData.author.display_name) }}</template>
+                        </div>
+                    </div>
+                    <h1 class="profile-hero__name">
+                        {{ authorProfileData.author.nickname || authorProfileData.author.display_name }}
+                    </h1>
+                    <p class="profile-hero__handle"
+                       v-if="authorProfileData.author.username && authorProfileData.author.nickname">
+                        @{{ authorProfileData.author.username }}
+                    </p>
+                </div>
+
+                <div class="profile-content">
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <div class="stat-card__value">{{ authorProfileData.stats.total_chats }}</div>
+                            <div class="stat-card__label">Чатов</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card__value">{{ authorProfileData.stats.total_likes }}</div>
+                            <div class="stat-card__label">Лайков</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-card__value">{{ authorProfileData.stats.characters_count + authorProfileData.stats.worlds_count }}</div>
+                            <div class="stat-card__label">Творений</div>
+                        </div>
+                    </div>
+
+                    <div v-if="!authorProfileData.characters.length && !authorProfileData.worlds.length" class="empty-author">
+                        <i class="fas fa-folder-open"></i>
+                        <p>Пока ничего не опубликовано</p>
+                    </div>
+
+                    <div v-if="authorProfileData.characters.length" class="author-grid-section">
+                        <div class="section-header">Персонажи</div>
+                        <div class="grid">
+                            <div v-for="char in authorProfileData.characters" :key="char.id"
+                                 class="card" @click="selectItem('character', char)">
+                                <img :src="char.avatar" loading="lazy">
+                                <span v-if="char.is_nsfw" class="nsfw-badge">NSFW</span>
+                                <span v-if="char.is_public === false" class="private-badge">Private</span>
+                                <div class="card-title">
+                                    {{ char.name }}
+                                    <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
+                                    <div class="card-counters">
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="authorProfileData.worlds.length" class="author-grid-section">
+                        <div class="section-header">Миры</div>
+                        <div class="grid">
+                            <div v-for="world in authorProfileData.worlds" :key="world.id"
+                                 class="card" @click="selectItem('world', world)">
+                                <img :src="world.cover_image" loading="lazy">
+                                <span v-if="world.is_nsfw" class="nsfw-badge">NSFW</span>
+                                <div class="card-title">
+                                    {{ world.name }}
+                                    <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
+                                    <div class="card-counters">
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
             </div>
         </div>
 
@@ -894,7 +1303,18 @@
                         <div class="modal-character-info">
                             <h2>{{ selectedCharacter.name }}</h2>
                             <!-- Author Info -->
-                           <p v-if="selectedCharacter.author">Made by {{selectedCharacter.author.display_name}}</p>
+                            <div class="modal-author-row" v-if="selectedCharacter.author">
+                                <span class="modal-author-link"
+                                      @click="openAuthorProfileFromCard(selectedCharacter.author)"
+                                      style="cursor:pointer">
+                                    Made by {{ selectedCharacter.author.display_name }}
+                                </span>
+                                <button class="like-btn" v-if="selectedCharacter.type === 'character'"
+                                        @click.stop="toggleLike" :disabled="isLiking"
+                                        :class="{ liked: selectedCharacter.is_liked }">
+                                    <i class="fas fa-heart"></i> {{ selectedCharacter.like_count || 0 }}
+                                </button>
+                            </div>
                             <p class="modal-character-description">{{ selectedCharacter.description }}</p>
                         </div>
                     </div>
@@ -999,6 +1419,7 @@
             </div>
         </div>
 
+        <!-- Modal: Author Profile -->
         <!-- 18+ Age Confirmation Overlay -->
         <div v-if="showAgeConfirmation" class="age-confirmation-overlay">
             <div class="age-confirmation-card">
@@ -1114,6 +1535,16 @@
                 const showCharacterProfileModal = ref(false);
                 const characterProfileData = ref(null);
                 const isLoadingProfile = ref(false);
+
+                // Likes
+                const isLiking = ref(false);
+
+                // Author profile (full page) state
+                const authorProfileData = ref(null);
+                const isLoadingAuthorProfile = ref(false);
+
+                // My author profile (for "My creativity" section in profile tab)
+                const myAuthorProfile = ref(null);
 
                 // Filters
                 const filterOptions = ref({ tags: [], styles: [], worldTags: [] });
@@ -1356,9 +1787,8 @@
                                 };
                                 const label = labels[data.usage_type] || data.usage_type;
                                 showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
-                                currentView.value = 'selection';
-                                tab.value = 'profile';
-                                loadSubscription();
+                                currentView.value = 'profile';
+                                loadProfile();
                             } else if (data?.code === 'RATE_LIMIT_EXCEEDED') {
                                 showToast('Слишком много запросов, подождите немного', 'error');
                             }
@@ -1610,8 +2040,6 @@
                 };
 
                 const loadProfile = async () => {
-                    tab.value = 'profile';
-
                     // Данные из Telegram
                     const tgUser = tg.initDataUnsafe?.user;
                     if (tgUser) {
@@ -1637,7 +2065,99 @@
                             console.error(e);
                         }
                         await loadSubscription();
+                        try {
+                            const authorRes = await axios.get(`/api/user/${userId.value}/author-profile`);
+                            myAuthorProfile.value = authorRes.data;
+                        } catch (e) {
+                            console.error('failed to load my author profile', e);
+                            myAuthorProfile.value = null;
+                        }
                     }
+                };
+
+                // Like toggle
+                const toggleLike = async () => {
+                    if (!selectedCharacter.value || isLiking.value) return;
+                    isLiking.value = true;
+                    try {
+                        const res = await axios.post(`/api/characters/${selectedCharacter.value.id}/like`);
+                        selectedCharacter.value.is_liked = res.data.liked;
+                        selectedCharacter.value.like_count = res.data.like_count;
+                    } catch (e) {
+                        showToast('Ошибка', 'error');
+                    } finally {
+                        isLiking.value = false;
+                    }
+                };
+
+                // Author profile (full page)
+                const openAuthorProfile = async (authorUserId) => {
+                    if (authorUserId === undefined || authorUserId === null) return;
+                    closeModal();
+                    currentView.value = 'author-profile';
+                    isLoadingAuthorProfile.value = true;
+                    authorProfileData.value = null;
+                    try {
+                        const res = await axios.get(`/api/user/${authorUserId}/author-profile`);
+                        authorProfileData.value = res.data;
+                    } catch (e) {
+                        showToast('Не удалось загрузить профиль автора', 'error');
+                        currentView.value = 'selection';
+                    } finally {
+                        isLoadingAuthorProfile.value = false;
+                    }
+                };
+                const openAuthorProfileFromCard = (author) => {
+                    if (!author) return;
+                    openAuthorProfile(author.user_id || 0);
+                };
+                const backFromAuthorProfile = () => {
+                    currentView.value = 'selection';
+                    authorProfileData.value = null;
+                };
+
+                // Tab bar navigation
+                const goToTab = (tabName) => {
+                    currentView.value = 'selection';
+                    if (tabName === 'chats') {
+                        loadChats();
+                    } else {
+                        tab.value = tabName;
+                    }
+                };
+                const goToProfile = () => {
+                    currentView.value = 'profile';
+                    loadProfile();
+                };
+
+                // Share my profile
+                const BOT_USERNAME = 'aikaichat_bot';
+                const shareMyProfile = () => {
+                    if (!userId.value) return;
+                    const link = `https://t.me/${BOT_USERNAME}?start=author_${userId.value}`;
+                    try {
+                        if (tg.shareURL) {
+                            tg.shareURL(link);
+                        } else if (tg.openTelegramLink) {
+                            tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}`);
+                        } else if (navigator.clipboard) {
+                            navigator.clipboard.writeText(link);
+                            showToast('Ссылка скопирована', 'success');
+                        }
+                    } catch (e) {
+                        showToast('Не удалось поделиться', 'error');
+                    }
+                };
+
+                const showFullSubscription = ref(false);
+
+                const getInitials = (name) => {
+                    if (!name) return '?';
+                    const cleaned = String(name).replace(/^@/, '').trim();
+                    if (!cleaned) return '?';
+                    const parts = cleaned.split(/\s+/).filter(Boolean);
+                    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+                    return cleaned.slice(0, 2).toUpperCase();
                 };
 
                 // Watch for nsfw_blur changes (только при ручном изменении)
@@ -2285,9 +2805,8 @@
                     if (!checkUsageRemaining(usageType)) {
                         const label = usageLimitLabels[usageType] || usageType;
                         showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
-                        currentView.value = 'selection';
-                        tab.value = 'profile';
-                        loadSubscription();
+                        currentView.value = 'profile';
+                        loadProfile();
                         return true;
                     }
                     return false;
@@ -2726,6 +3245,11 @@
                     showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
                     closeModal, startChatWithScenario, deleteCharacter, userId,
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
+                    isLiking, toggleLike,
+                    authorProfileData, isLoadingAuthorProfile,
+                    openAuthorProfile, openAuthorProfileFromCard, backFromAuthorProfile,
+                    myAuthorProfile,
+                    goToTab, goToProfile, shareMyProfile, showFullSubscription, getInitials,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds, debouncedLoadCharacters, debouncedLoadWorlds,
                     toast, autoContinue, hideKeyboard,
                     createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,

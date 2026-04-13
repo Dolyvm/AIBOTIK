@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -10,9 +11,10 @@ from shared.services.analytics import AnalyticsService
 # Add parent directory to path for shared package
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database import get_session
+from shared.database.repositories import LikeRepository
 from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
@@ -20,6 +22,19 @@ from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_character_file_paths, delete_files
 from auth.telegram_auth import get_current_user
 router = APIRouter(prefix="/api/characters", tags=["characters"])
+
+
+async def _get_chat_counts_batch(
+    session: AsyncSession, chat_type: str, target_ids: list[str]
+) -> dict[str, int]:
+    if not target_ids:
+        return {}
+    rows = await session.execute(
+        select(Chat.target_id, func.count(Chat.id))
+        .where(Chat.chat_type == chat_type, Chat.target_id.in_(target_ids))
+        .group_by(Chat.target_id)
+    )
+    return {row[0]: int(row[1]) for row in rows.all()}
 
 
 @router.get("")
@@ -88,7 +103,43 @@ async def list_characters(
             "is_nsfw": char.get("is_nsfw", False)
         })
 
+    char_ids = [r["id"] for r in result]
+    if char_ids:
+        async with get_session() as session:
+            like_repo = LikeRepository(session)
+            chat_counts = await _get_chat_counts_batch(session, "character", char_ids)
+            like_counts = await like_repo.get_like_counts_batch(char_ids)
+            liked_ids = await like_repo.get_liked_character_ids(user.telegram_id, char_ids)
+        for r in result:
+            r["chat_count"] = chat_counts.get(r["id"], 0)
+            r["like_count"] = like_counts.get(r["id"], 0)
+            r["is_liked"] = r["id"] in liked_ids
+
     return {"characters": result}
+
+
+@router.post("/{character_id}/like")
+async def toggle_character_like(
+    character_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Toggle like for a character."""
+    char_exists = await db.execute(select(Character.id).where(Character.id == character_id))
+    if not char_exists.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail={"error": "not_found", "code": "CHARACTER_NOT_FOUND"})
+
+    like_repo = LikeRepository(db)
+    existing = await like_repo.get_like(user.telegram_id, character_id)
+    if existing:
+        await like_repo.remove_like(user.telegram_id, character_id)
+        liked = False
+    else:
+        await like_repo.add_like(user.telegram_id, character_id)
+        liked = True
+
+    count = await like_repo.get_like_count(character_id)
+    return {"liked": liked, "like_count": count}
 
 
 @router.get("/{character_id}/edit")
@@ -132,7 +183,11 @@ async def get_character_for_edit(
 
 
 @router.get("/{character_id}")
-async def get_character_detail(character_id: str, user: User = Depends(get_current_user)):
+async def get_character_detail(
+    character_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_session),
+):
     """Detailed character information"""
     char = await get_character(character_id)
     if not char:
@@ -162,6 +217,11 @@ async def get_character_detail(character_id: str, user: User = Depends(get_curre
         for i, alt in enumerate(char.get("alternate_greetings", []), 1):
             scenarios.append({"index": i, "name": f"Сценарий {i}", "preview": alt, "heat_level": 0})
 
+    like_repo = LikeRepository(db)
+    chat_counts = await _get_chat_counts_batch(db, "character", [character_id])
+    like_count = await like_repo.get_like_count(character_id)
+    liked_ids = await like_repo.get_liked_character_ids(user.telegram_id, [character_id])
+
     return {
         "id": character_id,
         "name": char["name"],
@@ -172,7 +232,10 @@ async def get_character_detail(character_id: str, user: User = Depends(get_curre
         "scenarios": scenarios,
         "appearance": char["appearance"],
         "model_type": char["model_type"],
-        "author": char.get("author", {"display_name": "AiKai Team"})
+        "author": char.get("author", {"display_name": "AiKai Team"}),
+        "chat_count": chat_counts.get(character_id, 0),
+        "like_count": like_count,
+        "is_liked": character_id in liked_ids,
     }
 
 

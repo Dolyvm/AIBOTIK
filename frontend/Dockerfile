@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -7,10 +7,6 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build
+EXPOSE 5173
 
-FROM busybox:stable-musl
-
-COPY --from=builder /app/dist /app/dist
-
-CMD ["sh", "-c", "cp -r /app/dist/. /dist/ && sleep infinity"]
+CMD ["npm", "run", "dev"]

@@ -128,6 +128,15 @@ class World(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class CharacterLike(Base):
+    """User likes for characters"""
+    __tablename__ = "character_likes"
+
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
+    character_id = Column(String(100), ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
 class Chat(Base):
     """Active chat session with a character or world"""
     __tablename__ = "chats"

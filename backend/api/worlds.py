@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_session
@@ -70,6 +70,18 @@ async def list_worlds(
             "is_nsfw": world.get("is_nsfw", False),
             "author": author
         })
+
+    world_ids = [r["id"] for r in result]
+    if world_ids:
+        async with get_session() as session:
+            rows = await session.execute(
+                select(Chat.target_id, func.count(Chat.id))
+                .where(Chat.chat_type == "world", Chat.target_id.in_(world_ids))
+                .group_by(Chat.target_id)
+            )
+            chat_counts = {row[0]: int(row[1]) for row in rows.all()}
+        for r in result:
+            r["chat_count"] = chat_counts.get(r["id"], 0)
 
     return {"worlds": result}
 
