@@ -563,6 +563,12 @@
                         </div>
 
                         <div class="cc-field">
+                            <label>Теги:</label>
+                            <input v-model="createCharacterData.tags_str" type="text" class="cc-name-input" placeholder="anime, female, fantasy, romance">
+                            <div style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Через запятую: anime, female, fantasy...</div>
+                        </div>
+
+                        <div class="cc-field">
                             <label>Аватар:</label>
                             <div style="display: flex; gap: 8px;">
                                 <button class="change-step-button" :class="{ secondary: createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }" style="flex: 1; font-size: 12px;">
@@ -1063,7 +1069,7 @@
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
-                    avatar_url: null, custom_avatar: false
+                    avatar_url: null, custom_avatar: false, tags_str: ''
                 });
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
@@ -2322,6 +2328,7 @@
                             visual_default_outfit: c.visual_default_outfit || '',
                             wardrobe: c.wardrobe || {},
                             custom_avatar: c.custom_avatar || false,
+                            tags_str: (c.tags || []).join(', '),
                         };
                         newCharacterPreview.value = c.avatar || null;
                         generatedAvatars.value = c.avatar ? [c.avatar] : [];
@@ -2487,6 +2494,7 @@
 
                     isCreatingCharacter.value = true;
                     try {
+                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
                         const payload = {
                             name: d.name,
                             short_description: d.short_description,
@@ -2505,6 +2513,7 @@
                             wardrobe: d.wardrobe,
                             avatar_url: newCharacterPreview.value,
                             custom_avatar: d.custom_avatar,
+                            tags: tags,
                         };
 
                         if (editingCharacterId.value) {
