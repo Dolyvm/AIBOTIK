@@ -2272,7 +2272,7 @@
                 const checkUsageRemaining = (usageType) => {
                     const usage = subscription.value?.usage?.[usageType];
                     if (!usage) return true; // no data = allow
-                    return usage.remaining > 0;
+                    return usage.remaining === -1 || usage.remaining > 0;
                 };
 
                 const usageLimitLabels = {
