@@ -347,7 +347,7 @@
                             <div class="plan-preview-limits">
                                 <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
                                     <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
-                                    <span class="plan-preview-value">{{ val }}</span>
+                                    <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
                                 </div>
                             </div>
                             <button class="plan-card-btn plan-preview-buy"
