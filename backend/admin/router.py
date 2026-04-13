@@ -702,19 +702,25 @@ async def update_character(
         raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
 
     avatar_url = form_data.get("avatar_url", "").strip()
+    logger.info(f"[UPDATE_CHARACTER] character_id={character_id} avatar_url_raw={repr(avatar_url)}")
+    logger.info(f"[UPDATE_CHARACTER] visual_data_before={json.dumps(visual_data.get('avatar'))}")
     if avatar_url:
         _parsed = _urlparse(avatar_url)
         if _parsed.scheme and _parsed.path.startswith("/images/"):
             avatar_url = _parsed.path
         if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
+            logger.info(f"[UPDATE_CHARACTER] avatar set to local path: {avatar_url}")
         else:
             try:
                 avatar_path = await save_avatar(avatar_url, character_id)
                 visual_data["avatar"] = f"/images/{avatar_path}"
+                logger.info(f"[UPDATE_CHARACTER] avatar saved via save_avatar: {visual_data['avatar']}")
             except Exception as e:
                 logger.warning(f"Failed to save avatar: {e}, using provider URL")
                 visual_data["avatar"] = avatar_url
+    else:
+        logger.info(f"[UPDATE_CHARACTER] avatar_url is empty, keeping existing avatar")
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -769,9 +775,12 @@ async def update_character(
     )
     await db.commit()
 
+    logger.info(f"[UPDATE_CHARACTER] saved to DB, visual_data avatar={json.dumps(visual_data.get('avatar'))}")
+
     cache = get_cache()
     if cache:
         await cache.invalidate_character(character_id)
+        logger.info(f"[UPDATE_CHARACTER] cache invalidated for {character_id}")
 
     # Обновить модификаторы стадий
     modifiers = {
