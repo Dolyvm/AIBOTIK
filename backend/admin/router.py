@@ -769,6 +769,10 @@ async def update_character(
     )
     await db.commit()
 
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
     # Обновить модификаторы стадий
     modifiers = {
         1: form_data.get("modifier_stage_1", "").strip(),
