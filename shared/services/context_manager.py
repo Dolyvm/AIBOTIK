@@ -72,7 +72,7 @@ class ContextManager:
 
             await message_repo.add(chat.id, "user", user_input)
 
-            history_limit = min(chat.msgs_since_summary, MAX_HISTORY_LENGTH) if chat.summary else MAX_HISTORY_LENGTH
+            history_limit = MAX_HISTORY_LENGTH
             messages = await message_repo.get_history(chat.id, limit=history_limit)
             history = [
                 {"role": msg.role.value, "content": msg.content}
@@ -96,7 +96,7 @@ class ContextManager:
                 )
             elif world:
                 max_tokens = LLM_MAX_TOKENS_WORLD
-                system_prompt = await build_world_prompt(world, chat.summary, user_name, allow_nsfw)
+                system_prompt = await build_world_prompt(world, chat.summary, user_name, allow_nsfw, location=chat.current_location or "")
             else:
                 raise ValueError("Either character or world must be provided")
 
@@ -207,13 +207,14 @@ class ContextManager:
             affinity=chat.affinity,
             arousal=chat.arousal,
             mood=chat.current_mood,
+            location=chat.current_location or "не определена",
             messages=self._format_messages_for_summary(messages_to_summarize)
         )
 
         summary = await self.llm.generate(
             system_prompt=summary_prompt,
             messages=[],
-            max_tokens=400,
+            max_tokens=600,
             temperature=0.3
         )
 

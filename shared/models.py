@@ -77,7 +77,7 @@ class UserSettings(Base):
     __tablename__ = "user_settings"
 
     user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), primary_key=True)
-    nsfw_blur = Column(Boolean, default=True)
+    nsfw_blur = Column(Boolean, default=False)
     language = Column(String(10), default="ru")
     nickname = Column(String(50), nullable=True, default=None)
     age_confirmed = Column(Boolean, default=False, server_default="false")
@@ -244,6 +244,12 @@ class MonthlyUsage(Base):
     worlds_created = Column(Integer, default=0, nullable=False)
     content_edits = Column(Integer, default=0, nullable=False)
     avatar_generations = Column(Integer, default=0, nullable=False)
+    bonus_messages_sent = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_images_generated = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_characters_created = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_worlds_created = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_content_edits = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_avatar_generations = Column(Integer, default=0, nullable=False, server_default='0')
 
     user = relationship("User", back_populates="monthly_usages")
 

@@ -43,6 +43,7 @@ PLAN_LIMITS = {
         "price_rub": 1299,
         "price_stars": 1299,
         "duration_days": 30,
+        "display_as_unlimited": True,
         "messages": 9999,
         "images": 9999,
         "characters_created": 9999,

@@ -28,6 +28,7 @@ async def list_worlds(
     tag: str = None,
     rating: str = None,
     creator_type: str = None,
+    author_search: str = None,  # поиск по нику автора
     user: User = Depends(get_current_user)
 ):
     """List all worlds"""
@@ -49,6 +50,13 @@ async def list_worlds(
 
         if creator_type == "public" and author_user_id == user.telegram_id:
             continue
+
+        if author_search:
+            author_display = (author.get("display_name") or "").lower()
+            author_username = (author.get("username") or "").lower()
+            search_lower = author_search.lower()
+            if search_lower not in author_display and search_lower not in author_username:
+                continue
 
         description_short = world["description"][:150] + "..." if len(world["description"]) > 150 else world["description"]
 

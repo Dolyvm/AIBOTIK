@@ -156,22 +156,22 @@
                 <div v-if="tab === 'characters'">
                     <div class="filters">
                         <select v-model="characterFilters.tag" @change="loadCharacters">
-                            <option :value="null">Все теги</option>
+                            <option :value="null">Теги</option>
                             <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
                         </select>
                         <select v-model="characterFilters.style" @change="loadCharacters">
-                            <option :value="null">Все стили</option>
+                            <option :value="null">Anime/Real</option>
                             <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ style }}</option>
                         </select>
                     </div>
                     <div class="filters">
                         <select v-model="characterFilters.gender" @change="loadCharacters">
-                            <option :value="null">Все персонажи</option>
+                            <option :value="null">Пол</option>
                             <option value="female">Женские</option>
                             <option value="male">Мужские</option>
                         </select>
                         <select v-model="characterFilters.creator_type" @change="loadCharacters">
-                            <option :value="null">По создателю</option>
+                            <option :value="null">Автор</option>
                             <option value="me">Мои персонажи</option>
                             <option value="public">Персонажи сообщества</option>
                         </select>
@@ -181,21 +181,35 @@
                             <option value="only">Только NSFW</option>
                         </select>
                     </div>
+                    <div class="filters">
+                        <input type="text" v-model="characterFilters.author_search"
+                               @input="debouncedLoadCharacters"
+                               placeholder="Поиск по автору..."
+                               style="flex:1; padding:8px 12px; border:1px solid var(--tg-theme-hint-color); border-radius:8px; background:var(--tg-theme-secondary-bg-color); color:var(--tg-theme-text-color); font-size:14px;">
+                    </div>
                 </div>
 
 
 
                 <!-- Filters Worlds -->
-                <div v-if="tab === 'worlds'" class="filters">
-                    <select v-model="worldFilters.tag" @change="loadWorlds">
-                        <option :value="null">Все теги</option>
-                        <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
-                    </select>
-                    <select v-model="worldFilters.creator_type" @change="loadWorlds">
-                        <option :value="null">Фильтр по создателю</option>
-                        <option value="me">Мои миры</option>
-                        <option value="public">Миры от сообщества</option>
-                    </select>
+                <div v-if="tab === 'worlds'">
+                    <div class="filters">
+                        <select v-model="worldFilters.tag" @change="loadWorlds">
+                            <option :value="null">Теги</option>
+                            <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
+                        </select>
+                        <select v-model="worldFilters.creator_type" @change="loadWorlds">
+                            <option :value="null">Автор</option>
+                            <option value="me">Мои миры</option>
+                            <option value="public">Миры от сообщества</option>
+                        </select>
+                    </div>
+                    <div class="filters">
+                        <input type="text" v-model="worldFilters.author_search"
+                               @input="debouncedLoadWorlds"
+                               placeholder="Поиск по автору..."
+                               style="flex:1; padding:8px 12px; border:1px solid var(--tg-theme-hint-color); border-radius:8px; background:var(--tg-theme-secondary-bg-color); color:var(--tg-theme-text-color); font-size:14px;">
+                    </div>
                 </div>
 
                 <!-- Grid Characters -->
@@ -333,7 +347,7 @@
                             <div class="plan-preview-limits">
                                 <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
                                     <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
-                                    <span class="plan-preview-value">{{ val }}</span>
+                                    <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
                                 </div>
                             </div>
                             <button class="plan-card-btn plan-preview-buy"
@@ -546,6 +560,12 @@
                         <div class="cc-field">
                             <label>Короткое описание (макс. 30 символов):</label>
                             <input v-model="createCharacterData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Теги:</label>
+                            <input v-model="createCharacterData.tags_str" type="text" class="cc-name-input" placeholder="anime, female, fantasy, romance">
+                            <div style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Через запятую: anime, female, fantasy...</div>
                         </div>
 
                         <div class="cc-field">
@@ -979,14 +999,6 @@
             </div>
         </div>
 
-        <!-- Document Viewer Overlay -->
-        <div v-if="showDocumentOverlay" class="modal-overlay" :class="{'document-overlay-high': showAgeConfirmation}" @click.self="closeDocument">
-            <div class="modal-content">
-                <button class="modal-close" @click="closeDocument"><i class="fas fa-times"></i></button>
-                <div class="modal-body document-viewer" v-html="currentDocument.content"></div>
-            </div>
-        </div>
-
         <!-- 18+ Age Confirmation Overlay -->
         <div v-if="showAgeConfirmation" class="age-confirmation-overlay">
             <div class="age-confirmation-card">
@@ -1057,7 +1069,7 @@
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
-                    avatar_url: null, custom_avatar: false
+                    avatar_url: null, custom_avatar: false, tags_str: ''
                 });
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
@@ -1105,8 +1117,8 @@
 
                 // Filters
                 const filterOptions = ref({ tags: [], styles: [], worldTags: [] });
-                const characterFilters = ref({ tag: null, style: null, creator_type: null, nsfw: null, gender: null });
-                const worldFilters = ref({ tag: null, creator_type: null  });
+                const characterFilters = ref({ tag: null, style: null, creator_type: null, nsfw: null, gender: null, author_search: '' });
+                const worldFilters = ref({ tag: null, creator_type: null, author_search: '' });
 
                 // Toast
                 const toast = ref({ show: false, message: '', type: 'error' });
@@ -1118,7 +1130,7 @@
                     balance: 0
                 });
                 const profileSettings = ref({
-                    nsfw_blur: true,
+                    nsfw_blur: false,
                     nickname: ''
                 });
                 const isEditingNickname = ref(false);
@@ -1187,27 +1199,16 @@
                     }
                 };
 
-                // Legal documents
-                const legalDocuments = {
-                    privacy: {
-                        title: 'Политика конфиденциальности',
-                        content: '<h2>Политика конфиденциальности</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Сбор данных</h3><p>Мы собираем минимально необходимые данные для работы сервиса: идентификатор Telegram, имя пользователя и данные взаимодействия с приложением.</p><h3>2. Использование данных</h3><p>Данные используются исключительно для предоставления услуг приложения, включая персонализацию контента и обеспечение работоспособности сервиса.</p><h3>3. Хранение данных</h3><p>Все данные хранятся на защищённых серверах. Мы не передаём персональные данные третьим лицам без вашего согласия.</p><h3>4. Удаление данных</h3><p>Вы можете запросить удаление ваших данных, обратившись в поддержку.</p>'
-                    },
-                    terms: {
-                        title: 'Пользовательское соглашение',
-                        content: '<h2>Пользовательское соглашение</h2><p>Дата вступления в силу: 05.03.2026</p><h3>1. Общие положения</h3><p>Настоящее соглашение регулирует использование приложения AIKAI. Используя приложение, вы соглашаетесь с условиями данного соглашения.</p><h3>2. Возрастные ограничения</h3><p>Приложение предназначено для лиц старше 18 лет. Используя приложение, вы подтверждаете, что достигли совершеннолетия.</p><h3>3. Контент</h3><p>Приложение содержит контент, сгенерированный искусственным интеллектом. Все персонажи являются вымышленными.</p><h3>4. Ответственность</h3><p>Пользователь несёт ответственность за соблюдение применимого законодательства при использовании сервиса.</p>'
-                    }
-                };
-                const showDocumentOverlay = ref(false);
-                const currentDocument = ref({ title: '', content: '' });
-
+                // Legal documents — open external links
                 const openDocument = (key) => {
-                    currentDocument.value = legalDocuments[key];
-                    showDocumentOverlay.value = true;
-                };
-
-                const closeDocument = () => {
-                    showDocumentOverlay.value = false;
+                    const urls = {
+                        privacy: 'https://telegra.ph/Politika-konfidencialnosti-04-01-26',
+                        terms: 'https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'
+                    };
+                    const url = urls[key];
+                    if (url) {
+                        tg.openLink(url);
+                    }
                 };
 
                 const openSupport = () => {
@@ -1534,20 +1535,34 @@
                     if (characterFilters.value.creator_type) params.creator_type = characterFilters.value.creator_type;
                     if (characterFilters.value.nsfw) params.nsfw = characterFilters.value.nsfw;
                     if (characterFilters.value.gender) params.gender = characterFilters.value.gender;
+                    if (characterFilters.value.author_search) params.author_search = characterFilters.value.author_search;
                     try {
                         const res = await axios.get('/api/characters', { params });
                         characters.value = res.data.characters;
                     } catch (e) { console.error(e); }
                 };
 
+                let _charSearchTimer = null;
+                const debouncedLoadCharacters = () => {
+                    clearTimeout(_charSearchTimer);
+                    _charSearchTimer = setTimeout(loadCharacters, 300);
+                };
+
                 const loadWorlds = async () => {
                     const params = {};
                     if (worldFilters.value.tag) params.tag = worldFilters.value.tag;
                     if (worldFilters.value.creator_type) params.creator_type = worldFilters.value.creator_type;
+                    if (worldFilters.value.author_search) params.author_search = worldFilters.value.author_search;
                     try {
                         const res = await axios.get('/api/worlds', { params });
                         worlds.value = res.data.worlds;
                     } catch (e) { console.error(e); }
+                };
+
+                let _worldSearchTimer = null;
+                const debouncedLoadWorlds = () => {
+                    clearTimeout(_worldSearchTimer);
+                    _worldSearchTimer = setTimeout(loadWorlds, 300);
                 };
 
                 const loadFilterOptions = async () => {
@@ -2313,6 +2328,7 @@
                             visual_default_outfit: c.visual_default_outfit || '',
                             wardrobe: c.wardrobe || {},
                             custom_avatar: c.custom_avatar || false,
+                            tags_str: (c.tags || []).join(', '),
                         };
                         newCharacterPreview.value = c.avatar || null;
                         generatedAvatars.value = c.avatar ? [c.avatar] : [];
@@ -2478,6 +2494,7 @@
 
                     isCreatingCharacter.value = true;
                     try {
+                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
                         const payload = {
                             name: d.name,
                             short_description: d.short_description,
@@ -2496,6 +2513,7 @@
                             wardrobe: d.wardrobe,
                             avatar_url: newCharacterPreview.value,
                             custom_avatar: d.custom_avatar,
+                            tags: tags,
                         };
 
                         if (editingCharacterId.value) {
@@ -2708,7 +2726,7 @@
                     showScenarioModal, selectedCharacter, isLoadingScenarios, existingChatsForCharacter,
                     closeModal, startChatWithScenario, deleteCharacter, userId,
                     showCharacterProfileModal, characterProfileData, isLoadingProfile, openCharacterProfile, closeCharacterProfile,
-                    filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds,
+                    filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds, debouncedLoadCharacters, debouncedLoadWorlds,
                     toast, autoContinue, hideKeyboard,
                     createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
                     generateNewCharacterPreview, isGeneratingPreview,
@@ -2732,7 +2750,7 @@
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
                     // Documents & Support
-                    showDocumentOverlay, currentDocument, openDocument, closeDocument, openSupport,
+                    openDocument, openSupport,
                     // Age confirmation
                     showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur

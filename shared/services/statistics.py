@@ -1,9 +1,11 @@
+import math
 from typing import List, Dict, Any
 
 from sqlalchemy import select, func, distinct, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models import User, Event
+from shared.subscription_plans import PLAN_LIMITS
 
 
 class StatisticsService:
@@ -234,4 +236,103 @@ class StatisticsService:
         row = result.mappings().first()
 
         return dict(row) if row else {}
+
+    @staticmethod
+    async def get_users_table(
+        session: AsyncSession,
+        page: int = 1,
+        per_page: int = 50,
+        search: str = "",
+    ) -> Dict[str, Any]:
+        """Возвращает постраничный список пользователей с тарифом и usage за текущий месяц."""
+        from datetime import datetime
+        period = datetime.utcnow().strftime("%Y-%m")
+
+        search_clause = ""
+        params: Dict[str, Any] = {"period": period, "limit": per_page, "offset": (page - 1) * per_page}
+        if search:
+            search_clause = "WHERE u.username ILIKE :search OR CAST(u.telegram_id AS TEXT) LIKE :search"
+            params["search"] = f"%{search}%"
+
+        count_query = text(f"""
+            SELECT COUNT(*) FROM users u
+            {search_clause}
+        """)
+        count_result = await session.execute(count_query, params)
+        total = count_result.scalar_one()
+
+        rows_query = text(f"""
+            SELECT
+                u.telegram_id,
+                u.username,
+                u.subscription_plan,
+                u.subscription_end_date,
+                u.last_active_at,
+                u.created_at,
+                COALESCE(mu.messages_sent, 0)      AS messages_sent,
+                COALESCE(mu.images_generated, 0)   AS images_generated,
+                COALESCE(mu.characters_created, 0) AS characters_created,
+                COALESCE(mu.worlds_created, 0)     AS worlds_created,
+                COALESCE(mu.content_edits, 0)      AS content_edits,
+                COALESCE(mu.avatar_generations, 0) AS avatar_generations,
+                COALESCE(mu.bonus_messages_sent, 0)      AS bonus_messages_sent,
+                COALESCE(mu.bonus_images_generated, 0)   AS bonus_images_generated,
+                COALESCE(mu.bonus_characters_created, 0) AS bonus_characters_created,
+                COALESCE(mu.bonus_worlds_created, 0)     AS bonus_worlds_created,
+                COALESCE(mu.bonus_content_edits, 0)      AS bonus_content_edits,
+                COALESCE(mu.bonus_avatar_generations, 0) AS bonus_avatar_generations
+            FROM users u
+            LEFT JOIN monthly_usage mu
+                ON mu.user_id = u.telegram_id AND mu.period = :period
+            {search_clause}
+            ORDER BY u.last_active_at DESC NULLS LAST
+            LIMIT :limit OFFSET :offset
+        """)
+        rows_result = await session.execute(rows_query, params)
+        rows = rows_result.mappings().all()
+
+        from shared.models import SubscriptionPlan
+        users = []
+        for row in rows:
+            try:
+                plan = SubscriptionPlan(row["subscription_plan"])
+            except (ValueError, KeyError):
+                plan = SubscriptionPlan.FREE
+            plan_cfg = PLAN_LIMITS[plan]
+
+            usage_types = {
+                "messages": ("messages_sent", "bonus_messages_sent"),
+                "images": ("images_generated", "bonus_images_generated"),
+                "characters_created": ("characters_created", "bonus_characters_created"),
+                "worlds_created": ("worlds_created", "bonus_worlds_created"),
+                "content_edits": ("content_edits", "bonus_content_edits"),
+                "avatar_generations": ("avatar_generations", "bonus_avatar_generations"),
+            }
+            usage_summary = {}
+            for ut, (db_field, bonus_field) in usage_types.items():
+                used = row[db_field]
+                bonus = row[bonus_field]
+                plan_limit = plan_cfg.get(ut, 0)
+                total_limit = plan_limit + bonus
+                usage_summary[ut] = {"used": used, "limit": total_limit, "bonus": bonus}
+
+            users.append({
+                "telegram_id": row["telegram_id"],
+                "username": row["username"],
+                "plan": plan.value,
+                "plan_display_name": plan_cfg["display_name"],
+                "subscription_end_date": row["subscription_end_date"],
+                "last_active_at": row["last_active_at"],
+                "created_at": row["created_at"],
+                "usage": usage_summary,
+            })
+
+        total_pages = max(1, math.ceil(total / per_page))
+        return {
+            "users": users,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+        }
 

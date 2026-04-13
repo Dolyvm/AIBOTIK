@@ -106,6 +106,225 @@
         {% endif %}
     </div>
 
+    <!-- Пользователи -->
+    <div style="margin-bottom: 40px;">
+        <h3>Пользователи</h3>
+
+        <!-- Поиск -->
+        <form method="get" action="/admin/stats" style="margin-bottom: 16px; display: flex; gap: 8px; align-items: center;">
+            <input type="text" name="search" value="{{ search }}" placeholder="Поиск по ID или username..."
+                   style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; width: 280px; font-size: 14px;">
+            <button type="submit" style="padding: 6px 14px;">Найти</button>
+            {% if search %}
+            <a href="/admin/stats" style="padding: 6px 10px; color: #666; font-size: 13px;">✕ Сбросить</a>
+            {% endif %}
+        </form>
+
+        {% if users_data and users_data.users %}
+        <div style="overflow-x: auto;">
+        <table id="users-table" style="min-width: 900px; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th style="width:32px;">
+                        <input type="checkbox" id="select-all-checkbox" title="Выбрать всех">
+                    </th>
+                    <th>Telegram ID</th>
+                    <th>Username</th>
+                    <th>Тариф</th>
+                    <th>Истекает</th>
+                    <th title="Сообщения">Сообщ.</th>
+                    <th title="Изображения">Фото</th>
+                    <th title="Персонажи">Перс.</th>
+                    <th title="Миры">Миры</th>
+                    <th title="Редактирования">Ред.</th>
+                    <th title="Аватары">Ава.</th>
+                    <th>Активность</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users_data.users %}
+                <tr>
+                    <td><input type="checkbox" class="user-checkbox" value="{{ u.telegram_id }}"></td>
+                    <td style="font-family: monospace; font-size: 12px;">{{ u.telegram_id }}</td>
+                    <td>{{ u.username or "—" }}</td>
+                    <td>
+                        {% if u.plan == "pro" %}
+                            <span style="background:#f1c40f; color:#333; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:bold;">PRO</span>
+                        {% elif u.plan == "plus_monthly" or u.plan == "plus_weekly" %}
+                            <span style="background:#3498db; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:bold;">{{ u.plan_display_name }}</span>
+                        {% else %}
+                            <span style="background:#bdc3c7; color:#333; padding:2px 7px; border-radius:4px; font-size:11px;">Free</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:12px; white-space:nowrap;">
+                        {% if u.subscription_end_date %}
+                            {{ u.subscription_end_date.strftime("%d.%m.%y") }}
+                        {% else %}—{% endif %}
+                    </td>
+                    {% set u_msgs = u.usage.messages %}
+                    <td title="бонус: +{{ u_msgs.bonus }}">
+                        {{ u_msgs.used }}/{% if u_msgs.limit >= 9999 %}∞{% else %}{{ u_msgs.limit }}{% endif %}
+                        {% if u_msgs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_msgs.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_imgs = u.usage.images %}
+                    <td title="бонус: +{{ u_imgs.bonus }}">
+                        {{ u_imgs.used }}/{% if u_imgs.limit >= 9999 %}∞{% else %}{{ u_imgs.limit }}{% endif %}
+                        {% if u_imgs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_imgs.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_chars = u.usage.characters_created %}
+                    <td title="бонус: +{{ u_chars.bonus }}">
+                        {{ u_chars.used }}/{% if u_chars.limit >= 9999 %}∞{% else %}{{ u_chars.limit }}{% endif %}
+                        {% if u_chars.bonus > 0 %}<sup style="color:#27ae60">+{{ u_chars.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_worlds = u.usage.worlds_created %}
+                    <td title="бонус: +{{ u_worlds.bonus }}">
+                        {{ u_worlds.used }}/{% if u_worlds.limit >= 9999 %}∞{% else %}{{ u_worlds.limit }}{% endif %}
+                        {% if u_worlds.bonus > 0 %}<sup style="color:#27ae60">+{{ u_worlds.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_edits = u.usage.content_edits %}
+                    <td title="бонус: +{{ u_edits.bonus }}">
+                        {{ u_edits.used }}/{% if u_edits.limit >= 9999 %}∞{% else %}{{ u_edits.limit }}{% endif %}
+                        {% if u_edits.bonus > 0 %}<sup style="color:#27ae60">+{{ u_edits.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_avs = u.usage.avatar_generations %}
+                    <td title="бонус: +{{ u_avs.bonus }}">
+                        {{ u_avs.used }}/{% if u_avs.limit >= 9999 %}∞{% else %}{{ u_avs.limit }}{% endif %}
+                        {% if u_avs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_avs.bonus }}</sup>{% endif %}
+                    </td>
+                    <td style="font-size:12px; white-space:nowrap;">
+                        {% if u.last_active_at %}{{ u.last_active_at.strftime("%d.%m.%y %H:%M") }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <!-- Пагинация -->
+        {% if users_data.total_pages > 1 %}
+        <div style="margin-top: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            {% for p in range(1, users_data.total_pages + 1) %}
+                {% if p == users_data.page %}
+                    <span style="padding: 4px 10px; background: #3498db; color: #fff; border-radius: 4px; font-size: 13px;">{{ p }}</span>
+                {% else %}
+                    <a href="/admin/stats?page={{ p }}&search={{ search }}"
+                       style="padding: 4px 10px; background: #ecf0f1; border-radius: 4px; font-size: 13px; text-decoration: none; color: #333;">{{ p }}</a>
+                {% endif %}
+            {% endfor %}
+            <span style="font-size: 12px; color: #666; margin-left: 8px;">Всего: {{ users_data.total }}</span>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <p style="color: #95a5a6;">Нет пользователей.</p>
+        {% endif %}
+    </div>
+
+    <!-- Панель массовых действий -->
+    <div id="bulk-actions-panel" style="display:none; position:sticky; bottom:0; background:#fff; border-top:2px solid #3498db; padding:14px 16px; z-index:100; box-shadow: 0 -2px 8px rgba(0,0,0,0.08);">
+        <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center;">
+            <strong id="selected-count" style="color:#3498db; min-width:90px;">0 выбрано</strong>
+
+            <!-- Изменить тариф -->
+            <div style="display:flex; gap:6px; align-items:center;">
+                <select id="plan-select" style="padding:5px 8px; border-radius:4px; border:1px solid #ccc;">
+                    <option value="free">Free</option>
+                    <option value="plus_weekly">PLUS 1 нед</option>
+                    <option value="plus_monthly">PLUS</option>
+                    <option value="pro">PRO</option>
+                </select>
+                <button onclick="applyPlan()" style="padding:5px 12px; background:#3498db; color:#fff; border:none; border-radius:4px; cursor:pointer;">Применить тариф</button>
+            </div>
+
+            <div style="width:1px; height:28px; background:#ddd;"></div>
+
+            <!-- Добавить бонус -->
+            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                <input type="number" id="bonus-messages"  min="0" placeholder="Сообщ. +" style="width:90px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-images"    min="0" placeholder="Фото +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-chars"     min="0" placeholder="Перс. +"  style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-worlds"    min="0" placeholder="Миры +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-edits"     min="0" placeholder="Ред. +"   style="width:75px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-avatars"   min="0" placeholder="Ава. +"   style="width:75px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <button onclick="applyBonus()" style="padding:5px 12px; background:#27ae60; color:#fff; border:none; border-radius:4px; cursor:pointer;">Добавить бонус</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const panel = document.getElementById('bulk-actions-panel');
+        const countEl = document.getElementById('selected-count');
+        const selectAll = document.getElementById('select-all-checkbox');
+
+        function getSelected() {
+            return Array.from(document.querySelectorAll('.user-checkbox:checked')).map(cb => parseInt(cb.value));
+        }
+
+        function updatePanel() {
+            const ids = getSelected();
+            if (ids.length > 0) {
+                panel.style.display = 'block';
+                countEl.textContent = ids.length + ' выбрано';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        document.querySelectorAll('.user-checkbox').forEach(cb => cb.addEventListener('change', updatePanel));
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function() {
+                document.querySelectorAll('.user-checkbox').forEach(cb => { cb.checked = selectAll.checked; });
+                updatePanel();
+            });
+        }
+
+        window.applyPlan = async function() {
+            const ids = getSelected();
+            if (!ids.length) return;
+            const plan = document.getElementById('plan-select').value;
+            if (!confirm(`Изменить тариф на "${plan}" для ${ids.length} пользователей?`)) return;
+            const resp = await fetch('/admin/api/users/set-plan', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_ids: ids, plan: plan})
+            });
+            const data = await resp.json();
+            if (data.ok) { alert(`Тариф обновлён для ${data.updated} пользователей`); location.reload(); }
+            else { alert('Ошибка: ' + JSON.stringify(data)); }
+        };
+
+        window.applyBonus = async function() {
+            const ids = getSelected();
+            if (!ids.length) return;
+            const bonus = {};
+            const map = [
+                ['bonus-messages',  'messages'],
+                ['bonus-images',    'images'],
+                ['bonus-chars',     'characters_created'],
+                ['bonus-worlds',    'worlds_created'],
+                ['bonus-edits',     'content_edits'],
+                ['bonus-avatars',   'avatar_generations'],
+            ];
+            for (const [elId, key] of map) {
+                const val = parseInt(document.getElementById(elId).value);
+                if (val > 0) bonus[key] = val;
+            }
+            if (!Object.keys(bonus).length) { alert('Укажите хотя бы один бонус'); return; }
+            if (!confirm(`Добавить бонусы для ${ids.length} пользователей?`)) return;
+            const resp = await fetch('/admin/api/users/add-bonus', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_ids: ids, bonus: bonus})
+            });
+            const data = await resp.json();
+            if (data.ok) { alert(`Бонусы добавлены для ${data.updated} пользователей`); location.reload(); }
+            else { alert('Ошибка: ' + JSON.stringify(data)); }
+        };
+    })();
+    </script>
+
     <!-- Churn -->
     <div>
         <h3>Ушедшие пользователи (Churn)</h3>

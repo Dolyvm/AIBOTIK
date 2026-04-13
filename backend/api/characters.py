@@ -29,6 +29,7 @@ async def list_characters(
     creator_type: str = None,  # "all" -> me+public, "me", "public"
     nsfw: str = None,  # "only" — только NSFW, "exclude" — скрыть NSFW
     gender: str = None,  # "male", "female"
+    author_search: str = None,  # поиск по нику автора
     user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
@@ -57,6 +58,14 @@ async def list_characters(
 
         if creator_type == "public" and char.get("author", {}).get("user_id", 0) == user.telegram_id:
             continue
+
+        if author_search:
+            author = char.get("author", {})
+            author_display = (author.get("display_name") or "").lower()
+            author_username = (author.get("username") or "").lower()
+            search_lower = author_search.lower()
+            if search_lower not in author_display and search_lower not in author_username:
+                continue
 
         char_is_nsfw = char.get("is_nsfw", False)
         if nsfw == "only" and not char_is_nsfw:

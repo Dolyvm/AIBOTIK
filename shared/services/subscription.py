@@ -40,14 +40,14 @@ class SubscriptionService:
     async def check_usage_allowed(
         self, user_id: int, usage_type: str, session: AsyncSession
     ) -> tuple[bool, int, int]:
-        """Проверяет лимит. Возвращает (allowed, remaining, limit)."""
+        """Проверяет лимит. Возвращает (allowed, remaining, total_limit)."""
         user = await session.get(User, user_id)
         if not user:
             return False, 0, 0
 
         plan = await self.get_user_plan(user, session)
         limits = PLAN_LIMITS[plan]
-        limit = limits.get(usage_type, 0)
+        plan_limit = limits.get(usage_type, 0)
 
         period = self._current_period()
         repo = self._repo(session)
@@ -55,9 +55,11 @@ class SubscriptionService:
 
         db_field = USAGE_TYPE_MAP.get(usage_type, usage_type)
         current = getattr(usage, db_field, 0) if usage else 0
-        remaining = max(0, limit - current)
+        bonus = getattr(usage, f"bonus_{db_field}", 0) if usage else 0
+        total_limit = plan_limit + bonus
+        remaining = max(0, total_limit - current)
 
-        return remaining > 0, remaining, limit
+        return remaining > 0, remaining, total_limit
 
     async def increment_usage(
         self, user_id: int, usage_type: str, session: AsyncSession
@@ -70,19 +72,24 @@ class SubscriptionService:
 
         plan = await self.get_user_plan(user, session)
         limits = PLAN_LIMITS[plan]
-        limit = limits.get(usage_type, 0)
-
-        if limit <= 0:
-            raise UsageLimitExceeded(usage_type, limit)
+        plan_limit = limits.get(usage_type, 0)
 
         db_field = USAGE_TYPE_MAP.get(usage_type)
         if not db_field:
             raise ValueError(f"Unknown usage type: {usage_type}")
 
+        period = self._current_period()
         repo = self._repo(session)
-        usage = await repo.upsert_usage(user_id, self._current_period(), db_field, 1, limit=limit)
+        current_usage = await repo.get_monthly_usage(user_id, period)
+        bonus = getattr(current_usage, f"bonus_{db_field}", 0) if current_usage else 0
+        total_limit = plan_limit + bonus
+
+        if total_limit <= 0:
+            raise UsageLimitExceeded(usage_type, total_limit)
+
+        usage = await repo.upsert_usage(user_id, period, db_field, 1, limit=total_limit)
         if usage is None:
-            raise UsageLimitExceeded(usage_type, limit)
+            raise UsageLimitExceeded(usage_type, total_limit)
         return usage
 
     async def activate_subscription(
@@ -122,12 +129,15 @@ class SubscriptionService:
 
         summary = {}
         for usage_type, db_field in USAGE_TYPE_MAP.items():
-            limit = limits.get(usage_type, 0)
+            plan_limit = limits.get(usage_type, 0)
             current = getattr(usage, db_field, 0) if usage else 0
+            bonus = getattr(usage, f"bonus_{db_field}", 0) if usage else 0
+            total_limit = plan_limit + bonus
             summary[usage_type] = {
                 "used": current,
-                "limit": limit,
-                "remaining": max(0, limit - current),
+                "limit": total_limit,
+                "bonus": bonus,
+                "remaining": max(0, total_limit - current),
             }
 
         return {

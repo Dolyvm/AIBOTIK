@@ -35,11 +35,8 @@ async def get_plans():
             "price_stars": config["price_stars"],
             "duration_days": config["duration_days"],
             "limits": {
-                "messages": config["messages"],
-                "images": config["images"],
-                "characters_created": config["characters_created"],
-                "worlds_created": config["worlds_created"],
-                "content_edits": config["content_edits"],
+                k: -1 if config.get("display_as_unlimited") else config[k]
+                for k in ["messages", "images", "characters_created", "worlds_created", "content_edits"]
             },
         })
     return {"plans": plans}

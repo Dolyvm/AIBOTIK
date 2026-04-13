@@ -24,6 +24,33 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         "worlds_created", "content_edits", "avatar_generations",
     })
 
+    ALLOWED_BONUS_FIELDS = frozenset({
+        "bonus_messages_sent", "bonus_images_generated", "bonus_characters_created",
+        "bonus_worlds_created", "bonus_content_edits", "bonus_avatar_generations",
+    })
+
+    _RETURNING = """
+        RETURNING id, user_id, period,
+                  messages_sent, images_generated, characters_created,
+                  worlds_created, content_edits, avatar_generations,
+                  bonus_messages_sent, bonus_images_generated, bonus_characters_created,
+                  bonus_worlds_created, bonus_content_edits, bonus_avatar_generations
+    """
+
+    def _row_to_usage(self, row) -> MonthlyUsage:
+        return MonthlyUsage(
+            id=row.id, user_id=row.user_id, period=row.period,
+            messages_sent=row.messages_sent, images_generated=row.images_generated,
+            characters_created=row.characters_created, worlds_created=row.worlds_created,
+            content_edits=row.content_edits, avatar_generations=row.avatar_generations,
+            bonus_messages_sent=row.bonus_messages_sent,
+            bonus_images_generated=row.bonus_images_generated,
+            bonus_characters_created=row.bonus_characters_created,
+            bonus_worlds_created=row.bonus_worlds_created,
+            bonus_content_edits=row.bonus_content_edits,
+            bonus_avatar_generations=row.bonus_avatar_generations,
+        )
+
     async def upsert_usage(self, user_id: int, period: str, field: str, increment: int = 1, limit: int | None = None) -> MonthlyUsage | None:
         """Атомарный upsert usage через ON CONFLICT DO UPDATE.
 
@@ -34,16 +61,13 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
             raise ValueError(f"Invalid usage field: {field}")
 
         if limit is not None:
-            # Атомарная проверка лимита + инкремент в одном запросе
             stmt = text("""
                 INSERT INTO monthly_usage (user_id, period, {field})
                 VALUES (:user_id, :period, :increment)
                 ON CONFLICT ON CONSTRAINT uq_monthly_usage_user_period
                 DO UPDATE SET {field} = monthly_usage.{field} + :increment
                 WHERE monthly_usage.{field} < :limit
-                RETURNING id, user_id, period, messages_sent, images_generated,
-                          characters_created, worlds_created, content_edits, avatar_generations
-            """.format(field=field))
+            """.format(field=field) + self._RETURNING)
             result = await self.session.execute(stmt, {
                 "user_id": user_id, "period": period,
                 "increment": increment, "limit": limit,
@@ -54,9 +78,7 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
                 VALUES (:user_id, :period, :increment)
                 ON CONFLICT ON CONSTRAINT uq_monthly_usage_user_period
                 DO UPDATE SET {field} = monthly_usage.{field} + :increment
-                RETURNING id, user_id, period, messages_sent, images_generated,
-                          characters_created, worlds_created, content_edits, avatar_generations
-            """.format(field=field))
+            """.format(field=field) + self._RETURNING)
             result = await self.session.execute(stmt, {
                 "user_id": user_id, "period": period, "increment": increment,
             })
@@ -67,13 +89,33 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         if row is None:
             return None
 
-        usage = MonthlyUsage(
-            id=row.id, user_id=row.user_id, period=row.period,
-            messages_sent=row.messages_sent, images_generated=row.images_generated,
-            characters_created=row.characters_created, worlds_created=row.worlds_created,
-            content_edits=row.content_edits, avatar_generations=row.avatar_generations,
+        return self._row_to_usage(row)
+
+    async def set_bonus_limits(self, user_id: int, period: str, bonuses: dict[str, int]) -> None:
+        """Прибавляет бонусные лимиты пользователю за указанный период.
+
+        bonuses = {"bonus_messages_sent": 100, "bonus_images_generated": 20, ...}
+        Создаёт запись если её нет, иначе прибавляет к существующим бонусам.
+        """
+        if not bonuses:
+            return
+        for key in bonuses:
+            if key not in self.ALLOWED_BONUS_FIELDS:
+                raise ValueError(f"Invalid bonus field: {key}")
+
+        set_parts = ", ".join(
+            f"{field} = COALESCE(monthly_usage.{field}, 0) + :{field}"
+            for field in bonuses
         )
-        return usage
+        stmt = text(f"""
+            INSERT INTO monthly_usage (user_id, period)
+            VALUES (:user_id, :period)
+            ON CONFLICT ON CONSTRAINT uq_monthly_usage_user_period
+            DO UPDATE SET {set_parts}
+        """)
+        params = {"user_id": user_id, "period": period, **bonuses}
+        await self.session.execute(stmt, params)
+        await self.session.commit()
 
     async def create_payment(
         self,
