@@ -97,7 +97,8 @@ async def save_avatar(provider_url: str, character_id: str) -> str:
 
                 content = await response.read()
 
-        filename = f"{character_id}{extension}"
+        unique_suffix = uuid.uuid4().hex[:8]
+        filename = f"{character_id}_{unique_suffix}{extension}"
         full_path = avatars_dir / filename
         local_path = f"avatars/{filename}"
 
@@ -128,7 +129,8 @@ def copy_as_avatar(source_local_path: str, character_id: str) -> str:
     avatars_dir.mkdir(parents=True, exist_ok=True)
 
     extension = src.suffix or ".png"
-    filename = f"{character_id}{extension}"
+    unique_suffix = uuid.uuid4().hex[:8]
+    filename = f"{character_id}_{unique_suffix}{extension}"
     dst = avatars_dir / filename
 
     shutil.copy2(str(src), str(dst))
