@@ -11,6 +11,6 @@ RUN npm run build
 
 FROM busybox:stable-musl
 
-COPY --from=builder /app/dist /dist
+COPY --from=builder /app/dist /app/dist
 
-CMD ["sleep", "infinity"]
+CMD ["sh", "-c", "cp -r /app/dist/. /dist/ && sleep infinity"]
