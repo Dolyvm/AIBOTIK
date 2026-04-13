@@ -244,6 +244,12 @@ class MonthlyUsage(Base):
     worlds_created = Column(Integer, default=0, nullable=False)
     content_edits = Column(Integer, default=0, nullable=False)
     avatar_generations = Column(Integer, default=0, nullable=False)
+    bonus_messages_sent = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_images_generated = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_characters_created = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_worlds_created = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_content_edits = Column(Integer, default=0, nullable=False, server_default='0')
+    bonus_avatar_generations = Column(Integer, default=0, nullable=False, server_default='0')
 
     user = relationship("User", back_populates="monthly_usages")
 

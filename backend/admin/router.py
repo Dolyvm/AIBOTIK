@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request, HTTPException, Depends, Form, Header
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Request, HTTPException, Depends, Form, Header, Query
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -24,6 +25,11 @@ from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt 
 from telegram_init_data import validate, parse
 
 from shared.services.statistics import StatisticsService
+from shared.services.subscription import get_subscription_service
+from shared.models import SubscriptionPlan
+from shared.subscription_plans import USAGE_TYPE_MAP
+from shared.database.repositories.subscription import SubscriptionRepository
+from datetime import datetime as _dt
 
 logger = logging.getLogger(__name__)
 
@@ -1058,7 +1064,9 @@ async def update_world(
 @router.get("/stats", response_class=HTMLResponse)
 async def statistics_page(
         request: Request,
-        db: AsyncSession = Depends(get_async_session)
+        db: AsyncSession = Depends(get_async_session),
+        page: int = Query(default=1, ge=1),
+        search: str = Query(default=""),
 ):
     admin = await get_current_user(request)
 
@@ -1081,6 +1089,7 @@ async def statistics_page(
     top_characters = await StatisticsService.get_top_characters_info(db, head=10)
     top_worlds = await StatisticsService.get_top_worlds_info(db, head=10)
     churn_summary = await StatisticsService.get_churned_users_summary(db, days_threshold=7)
+    users_data = await StatisticsService.get_users_table(db, page=page, per_page=50, search=search)
 
     return templates.TemplateResponse(
         "stats.html",
@@ -1091,6 +1100,81 @@ async def statistics_page(
             "users_with_chats": users_with_chats,
             "top_characters": top_characters,
             "top_worlds": top_worlds,
-            "churn_summary": churn_summary
+            "churn_summary": churn_summary,
+            "users_data": users_data,
+            "search": search,
         }
     )
+
+
+class SetPlanRequest(BaseModel):
+    user_ids: list[int]
+    plan: str
+
+
+class AddBonusRequest(BaseModel):
+    user_ids: list[int]
+    bonus: dict[str, int]
+
+
+@router.post("/api/users/set-plan")
+async def admin_set_user_plan(
+        body: SetPlanRequest,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+):
+    admin = await get_current_user(request)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        plan = SubscriptionPlan(body.plan)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {body.plan}")
+
+    sub_service = get_subscription_service()
+    updated = 0
+    for uid in body.user_ids:
+        try:
+            await sub_service.activate_subscription(uid, plan, db)
+            updated += 1
+        except Exception:
+            pass
+
+    return JSONResponse({"ok": True, "updated": updated})
+
+
+@router.post("/api/users/add-bonus")
+async def admin_add_user_bonus(
+        body: AddBonusRequest,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+):
+    admin = await get_current_user(request)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Маппим usage_type → bonus_db_field
+    bonus_db: dict[str, int] = {}
+    for usage_type, amount in body.bonus.items():
+        if amount <= 0:
+            continue
+        db_field = USAGE_TYPE_MAP.get(usage_type)
+        if not db_field:
+            raise HTTPException(status_code=400, detail=f"Unknown usage type: {usage_type}")
+        bonus_db[f"bonus_{db_field}"] = amount
+
+    if not bonus_db:
+        return JSONResponse({"ok": True, "updated": 0})
+
+    period = _dt.utcnow().strftime("%Y-%m")
+    repo = SubscriptionRepository(db)
+    updated = 0
+    for uid in body.user_ids:
+        try:
+            await repo.set_bonus_limits(uid, period, bonus_db)
+            updated += 1
+        except Exception:
+            pass
+
+    return JSONResponse({"ok": True, "updated": updated})
