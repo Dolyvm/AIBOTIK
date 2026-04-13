@@ -9,6 +9,7 @@ from .character import CharacterRepository
 from .world import WorldRepository
 from .prompt import PromptRepository
 from .subscription import SubscriptionRepository
+from .like import LikeRepository
 
 __all__ = [
     "BaseRepository",
@@ -21,4 +22,5 @@ __all__ = [
     "WorldRepository",
     "PromptRepository",
     "SubscriptionRepository",
+    "LikeRepository",
 ]
