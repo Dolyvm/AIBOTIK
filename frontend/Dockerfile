@@ -1,16 +1,16 @@
-# dev
-FROM node:18-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Копируем package.json и package-lock.json
 COPY package*.json ./
-
-# Устанавливаем зависимости
 RUN npm install
 
-# Копируем весь код
 COPY . .
 
-# Запускаем Vite dev сервер
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+RUN npm run build
+
+FROM busybox:stable-musl
+
+COPY --from=builder /app/dist /app/dist
+
+CMD ["sh", "-c", "cp -r /app/dist/. /dist/ && sleep infinity"]
