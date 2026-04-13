@@ -493,7 +493,14 @@
         const avatarInput = document.getElementById('avatarUrlInput');
         const statusDiv = document.getElementById('avatarStatus');
 
-        avatarInput.value = newPreviewImage.src;
+        let url = newPreviewImage.src;
+        try {
+            const parsed = new URL(url);
+            if (parsed.origin === window.location.origin) {
+                url = parsed.pathname;
+            }
+        } catch (e) {}
+        avatarInput.value = url;
 
         statusDiv.innerHTML = '<span style="color: #27ae60;">Новый аватар выбран! Он будет сохранён при сохранении персонажа.</span>';
         statusDiv.style.display = 'block';

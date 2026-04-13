@@ -10,7 +10,7 @@ import re
 
 from datetime import datetime
 from uuid import uuid4
-
+from urllib.parse import urlparse as _urlparse
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN, IMAGES_STORAGE_PATH
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
@@ -518,6 +518,10 @@ async def create_character(
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
+        from urllib.parse import urlparse as _urlparse
+        _parsed = _urlparse(avatar_url)
+        if _parsed.scheme and _parsed.path.startswith("/images/"):
+            avatar_url = _parsed.path
         if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
         else:
@@ -693,6 +697,9 @@ async def update_character(
 
     avatar_url = form_data.get("avatar_url", "").strip()
     if avatar_url:
+        _parsed = _urlparse(avatar_url)
+        if _parsed.scheme and _parsed.path.startswith("/images/"):
+            avatar_url = _parsed.path
         if avatar_url.startswith("/images/"):
             visual_data["avatar"] = avatar_url
         else:
