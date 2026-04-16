@@ -45,6 +45,7 @@ def character_to_dict(char: Character) -> dict:
         "name": char.name,
         "short_description": char.short_description or "",
         "is_public": char.is_public,
+        "is_verified": char.is_verified,
         "description": char.description,
         "personality": char.personality,
         "model_type": visual_data.get("model_type", "anime"),
@@ -98,6 +99,8 @@ def world_to_dict(world: World) -> dict:
     return {
         "id": world.id,
         "name": world.name,
+        "is_public": world.is_public,
+        "is_verified": world.is_verified,
         "short_description": world.short_description or "",
         "description": world.description,
         "cover_image": world.cover_image,

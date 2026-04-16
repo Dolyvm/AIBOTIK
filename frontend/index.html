@@ -175,7 +175,7 @@
         .page-header {
             position:sticky; top:0; z-index:10;
             display:flex; align-items:center; justify-content:space-between;
-            padding:calc(env(safe-area-inset-top, 50px) + 10px) 16px 10px;
+            padding:calc(env(safe-area-inset-top, 50px) + 40px) 16px 10px;
             background:color-mix(in srgb, var(--tg-theme-bg-color) 85%, transparent);
             backdrop-filter:saturate(180%) blur(14px);
             -webkit-backdrop-filter:saturate(180%) blur(14px);
@@ -353,6 +353,38 @@
         }
         .empty-author i { font-size:40px; margin-bottom:12px; opacity:.5; }
         .empty-author p { font-size:14px; margin:0; }
+
+        .sub-tabs {
+            display: flex;
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 10px;
+            padding: 3px;
+            margin: 12px 10px;
+            gap: 3px;
+        }
+        .sub-tabs button {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 7px;
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--tg-theme-hint-color);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .sub-tabs button.active {
+            background: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+        }
+        .verified-badge {
+            color: #1da1f2;
+            font-size: 13px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -360,6 +392,12 @@
         <!-- View: Selection (Characters/Worlds) -->
         <div v-if="currentView === 'selection'" class="selection-view">
             <div class="grid-container">
+                <!-- Sub tabs (Main / Community) -->
+                <div v-if="tab === 'characters' || tab === 'worlds'" class="sub-tabs">
+                    <button :class="{active: subTab[tab] === 'main'}" @click="setSubTab('main')">Главная</button>
+                    <button :class="{active: subTab[tab] === 'community'}" @click="setSubTab('community')">Сообщество</button>
+                </div>
+
                 <!-- Filters Characters -->
                 <div v-if="tab === 'characters'">
                     <div class="filters">
@@ -440,7 +478,7 @@
                             <span class="click-hint">👁</span>
                         </div>
                         <div class="card-title">
-                            {{ char.name }}
+                            {{ char.name }}<i v-if="char.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                             <div class="card-counters" v-if="char.chat_count !== undefined || char.like_count !== undefined">
                                 <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count || 0 }}</span>
@@ -471,7 +509,7 @@
                             <span class="click-hint">👁</span>
                         </div>
                         <div class="card-title">
-                            {{ world.name }}
+                            {{ world.name }}<i v-if="world.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                             <div class="card-counters" v-if="world.chat_count !== undefined">
                                 <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count || 0 }}</span>
@@ -1149,6 +1187,17 @@
                             <img :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Avatar" style="width: 100px; height: 133px;">
                         </div>
 
+                        <div class="cc-form-group" style="margin-top: 16px;">
+                            <label class="cc-input-label">Видимость</label>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="change-step-button" :class="{ secondary: !createCharacterData.is_public }" @click="createCharacterData.is_public = true" style="flex: 1;">Публичный</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.is_public }" @click="createCharacterData.is_public = false" style="flex: 1;">Скрытый</button>
+                            </div>
+                            <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 6px;">
+                                {{ createCharacterData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
+                            </div>
+                        </div>
+
                         <button
                             class="create-character-final-btn"
                             @click="createCharacterFinal"
@@ -1260,6 +1309,17 @@
                         <div class="cc-field">
                             <label>Теги (через запятую):</label>
                             <input v-model="createWorldData.tags_str" type="text" class="cc-name-input" placeholder="fantasy, medieval, adventure">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Видимость:</label>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="change-step-button" :class="{ secondary: !createWorldData.is_public }" @click="createWorldData.is_public = true" style="flex: 1;">Публичный</button>
+                                <button class="change-step-button" :class="{ secondary: createWorldData.is_public }" @click="createWorldData.is_public = false" style="flex: 1;">Скрытый</button>
+                            </div>
+                            <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 6px;">
+                                {{ createWorldData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
+                            </div>
                         </div>
 
                         <button
@@ -1410,7 +1470,7 @@
                     <div class="modal-character-header">
                         <img :src="characterProfileData.avatar" class="modal-character-image" alt="Character">
                         <div class="modal-character-info">
-                            <h2>{{ characterProfileData.name }}</h2>
+                            <h2>{{ characterProfileData.name }}<i v-if="characterProfileData.is_verified" class="fas fa-check-circle verified-badge"></i></h2>
                             <p v-if="characterProfileData.author">Made by {{ characterProfileData.author.display_name }}</p>
                             <p class="modal-character-description">{{ characterProfileData.description }}</p>
                         </div>
@@ -1458,6 +1518,7 @@
                 const currentView = ref('selection');
                 // const currentView = ref('create-character');
                 const tab = ref('characters');
+                const subTab = ref({ characters: 'main', worlds: 'main' });
                 const characters = ref([]);
                 const worlds = ref([]);
                 const activeChats = ref([]);
@@ -1490,7 +1551,8 @@
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
-                    avatar_url: null, custom_avatar: false, tags_str: ''
+                    avatar_url: null, custom_avatar: false, tags_str: '',
+                    is_public: true,
                 });
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
@@ -1507,7 +1569,8 @@
                 const defaultCreateWorldData = () => ({
                     name: '', short_description: '', description: '', gm_instructions: '',
                     intro_message: '', alternate_scenarios: [],
-                    cover_image_url: '', tags_str: ''
+                    cover_image_url: '', tags_str: '',
+                    is_public: true,
                 });
                 const createWorldData = ref(defaultCreateWorldData());
                 const cwStep = ref(0);
@@ -1966,6 +2029,7 @@
                     if (characterFilters.value.nsfw) params.nsfw = characterFilters.value.nsfw;
                     if (characterFilters.value.gender) params.gender = characterFilters.value.gender;
                     if (characterFilters.value.author_search) params.author_search = characterFilters.value.author_search;
+                    params.verified = subTab.value.characters === 'community' ? 'community' : 'verified';
                     try {
                         const res = await axios.get('/api/characters', { params });
                         characters.value = res.data.characters;
@@ -1983,10 +2047,20 @@
                     if (worldFilters.value.tag) params.tag = worldFilters.value.tag;
                     if (worldFilters.value.creator_type) params.creator_type = worldFilters.value.creator_type;
                     if (worldFilters.value.author_search) params.author_search = worldFilters.value.author_search;
+                    params.verified = subTab.value.worlds === 'community' ? 'community' : 'verified';
                     try {
                         const res = await axios.get('/api/worlds', { params });
                         worlds.value = res.data.worlds;
                     } catch (e) { console.error(e); }
+                };
+
+                const setSubTab = (val) => {
+                    const key = tab.value;
+                    if (key !== 'characters' && key !== 'worlds') return;
+                    if (subTab.value[key] === val) return;
+                    subTab.value[key] = val;
+                    if (key === 'characters') loadCharacters();
+                    else loadWorlds();
                 };
 
                 let _worldSearchTimer = null;
@@ -2123,6 +2197,8 @@
                         loadChats();
                     } else {
                         tab.value = tabName;
+                        if (tabName === 'characters') loadCharacters();
+                        else if (tabName === 'worlds') loadWorlds();
                     }
                 };
                 const goToProfile = () => {
@@ -2848,6 +2924,7 @@
                             wardrobe: c.wardrobe || {},
                             custom_avatar: c.custom_avatar || false,
                             tags_str: (c.tags || []).join(', '),
+                            is_public: c.is_public !== false,
                         };
                         newCharacterPreview.value = c.avatar || null;
                         generatedAvatars.value = c.avatar ? [c.avatar] : [];
@@ -3033,6 +3110,7 @@
                             avatar_url: newCharacterPreview.value,
                             custom_avatar: d.custom_avatar,
                             tags: tags,
+                            is_public: d.is_public,
                         };
 
                         if (editingCharacterId.value) {
@@ -3103,7 +3181,8 @@
                                 title: a.title || '', intro: a.intro || '', gm_instructions: a.gm_instructions || ''
                             })),
                             cover_image_url: w.cover_image || '',
-                            tags_str: (w.tags || []).join(', ')
+                            tags_str: (w.tags || []).join(', '),
+                            is_public: w.is_public !== false,
                         };
                         editingWorldId.value = worldId;
                         cwStep.value = 0;
@@ -3187,7 +3266,8 @@
                             intro_message: d.intro_message,
                             alternate_scenarios: d.alternate_scenarios.filter(a => a.title.trim() || a.intro.trim()),
                             cover_image_url: d.cover_image_url || null,
-                            tags: tags
+                            tags: tags,
+                            is_public: d.is_public,
                         };
 
                         if (editingWorldId.value) {
@@ -3234,7 +3314,7 @@
                 }
 
                 return {
-                    currentView, tab, characters, worlds, activeChats,
+                    currentView, tab, subTab, setSubTab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId, currentChatCustomAvatar,

@@ -77,6 +77,8 @@ async def create_world(
             locations=[],
             tags=tags,
             is_nsfw=False,
+            is_public=data.is_public,
+            is_verified=False,
             created_by_username_id=user.telegram_id,
             created_by_username=user.username,
         )
@@ -150,6 +152,9 @@ async def update_world(
         world.description = data.description
         world.scenarios = scenarios
         world.tags = [tag.strip() for tag in data.tags if tag.strip()]
+        world.is_public = data.is_public
+        if not data.is_public:
+            world.is_verified = False
 
         await db.commit()
 

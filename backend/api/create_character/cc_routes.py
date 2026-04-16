@@ -122,7 +122,8 @@ async def create_character(
             scenarios=scenarios,
             tags=tags,
             is_nsfw=True,
-            is_public=False,
+            is_public=data.is_public,
+            is_verified=False,
             created_by_username_id=user.telegram_id,
             created_by_username=user.username,
         )
@@ -239,6 +240,9 @@ async def update_character(
         character.visual_data = visual_data
         character.scenarios = scenarios
         character.tags = [tag.strip() for tag in data.tags if tag.strip()]
+        character.is_public = data.is_public
+        if not data.is_public:
+            character.is_verified = False
 
         await db.commit()
 

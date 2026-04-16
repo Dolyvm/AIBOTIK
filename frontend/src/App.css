@@ -517,7 +517,7 @@ body.desktop .grid {
 
 .modal-close {
     position: absolute;
-    top: 12px;
+    top: 17px;
     right: 12px;
     background: rgba(0, 0, 0, 0.1);
     border: none;

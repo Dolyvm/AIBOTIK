@@ -180,6 +180,46 @@
             </label>
         </div>
 
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    id="is_public"
+                    name="is_public"
+                    {% if world.is_public %}checked{% endif %}
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <span>Публичный (виден всем пользователям; если снять — видит только автор)</span>
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input
+                    type="checkbox"
+                    id="is_verified"
+                    name="is_verified"
+                    {% if world.is_verified %}checked{% endif %}
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <span>✓ Верифицирован (синяя галочка, вкладка «Главная»). Требует публичности.</span>
+            </label>
+        </div>
+
+        <script>
+            (function() {
+                const pub = document.getElementById('is_public');
+                const ver = document.getElementById('is_verified');
+                if (!pub || !ver) return;
+                pub.addEventListener('change', function() {
+                    if (!pub.checked) ver.checked = false;
+                });
+                ver.addEventListener('change', function() {
+                    if (ver.checked) pub.checked = true;
+                });
+            })();
+        </script>
+
         <div class="meta-info">
             Последнее обновление: {{ world.updated_at.strftime('%Y-%m-%d %H:%M:%S') if world.updated_at else 'Никогда' }}
         </div>

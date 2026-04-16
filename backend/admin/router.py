@@ -481,6 +481,7 @@ async def create_character(
     first_message = form_data.get("first_message", "").strip()
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
+    is_verified = form_data.get("is_verified") == "on"
 
     if not character_id or not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
@@ -570,6 +571,14 @@ async def create_character(
     else:
         created_by_username = "AiKai Team"
 
+    is_public = form_data.get("is_public") == "on"
+    if author_type != "custom":
+        is_public = True
+    if is_verified and not is_public:
+        is_verified = False
+    if is_verified:
+        is_public = True
+
     new_character = Character(
         id=character_id,
         name=name,
@@ -581,7 +590,8 @@ async def create_character(
         tags=tags,
         is_nsfw=is_nsfw,
         created_by_username=created_by_username,
-        is_public=True
+        is_public=is_public,
+        is_verified=is_verified,
     )
 
     db.add(new_character)
@@ -683,6 +693,8 @@ async def update_character(
     visual_data_str = form_data.get("visual_data", "").strip()
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
+    is_verified = form_data.get("is_verified") == "on"
+    is_public = form_data.get("is_public") == "on"
 
     # Process author
     author_type = form_data.get("author_type", "aikai")
@@ -753,6 +765,13 @@ async def update_character(
             "heat_level": heat_level
         })
 
+    if author_type != "custom":
+        is_public = True
+    if is_verified and not is_public:
+        is_verified = False
+    if is_verified:
+        is_public = True
+
     update_values = dict(
         name=name,
         short_description=short_description,
@@ -762,11 +781,11 @@ async def update_character(
         scenarios=scenarios,
         tags=tags,
         is_nsfw=is_nsfw,
+        is_public=is_public,
+        is_verified=is_verified,
         created_by_username=created_by_username,
         created_by_username_id=created_by_username_id_update,
     )
-    if author_type == "aikai":
-        update_values["is_public"] = True
 
     await db.execute(
         update(Character)
@@ -929,7 +948,9 @@ async def create_world(
         scenarios=scenarios,
         locations=[],
         tags=tags,
-        is_nsfw=False
+        is_nsfw=False,
+        is_public=True,
+        is_verified=True,
     )
 
     db.add(new_world)
@@ -1009,6 +1030,13 @@ async def update_world(
     intro_message = form_data.get("intro_message", "").strip()
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
+    is_verified = form_data.get("is_verified") == "on"
+    is_public = form_data.get("is_public") == "on"
+
+    if is_verified and not is_public:
+        is_verified = False
+    if is_verified:
+        is_public = True
 
     if not name or not description or not intro_message:
         raise HTTPException(status_code=400, detail="Name, description, and intro message are required")
@@ -1060,7 +1088,9 @@ async def update_world(
             cover_image=new_cover_image,
             scenarios=scenarios,
             tags=tags,
-            is_nsfw=is_nsfw
+            is_nsfw=is_nsfw,
+            is_verified=is_verified,
+            is_public=is_public,
         )
     )
     await db.commit()

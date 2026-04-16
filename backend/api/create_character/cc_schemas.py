@@ -22,3 +22,4 @@ class CreateCharacterRequest(BaseModel):
     avatar_url: Optional[str] = None
     custom_avatar: bool = False
     tags: list[str] = []
+    is_public: bool = True

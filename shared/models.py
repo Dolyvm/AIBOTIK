@@ -89,9 +89,10 @@ class Character(Base):
     """Character content table (replaces JSON files)"""
     __tablename__ = "characters"
 
-    id = Column(String(100), primary_key=True) 
+    id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
+    is_verified = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=False)
     short_description = Column(String(30), nullable=True, default="")
     personality = Column(Text, nullable=False)
@@ -113,6 +114,8 @@ class World(Base):
 
     id = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
+    is_public = Column(Boolean, nullable=False, default=False)
+    is_verified = Column(Boolean, nullable=False, default=False)
     description = Column(Text, nullable=False)
     short_description = Column(String(30), nullable=True, default="")
     cover_image = Column(String(500), nullable=True)
