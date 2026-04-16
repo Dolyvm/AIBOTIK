@@ -45,6 +45,7 @@ async def list_characters(
     nsfw: str = None,  # "only" — только NSFW, "exclude" — скрыть NSFW
     gender: str = None,  # "male", "female"
     author_search: str = None,  # поиск по нику автора
+    verified: str = None,  # "verified" | "community"
     user: User = Depends(get_current_user)
 ):
     """List all characters with filtering"""
@@ -58,6 +59,12 @@ async def list_characters(
 
         # у созданных этот параметр 100% будет, поэтому тут ставим такой дефолт
         is_public = char.get("is_public", True)
+        is_verified = char.get("is_verified", False)
+
+        if verified == "verified" and not is_verified:
+            continue
+        if verified == "community" and (is_verified or not is_public):
+            continue
 
         if style and style != model_type:
             continue
@@ -100,7 +107,8 @@ async def list_characters(
             "gender": char_gender,
             "scenarios_count": 1 + len(char.get("alternate_greetings", [])),
             "author": char.get("author", {"display_name": "AiKai Team"}),
-            "is_nsfw": char.get("is_nsfw", False)
+            "is_nsfw": char.get("is_nsfw", False),
+            "is_verified": is_verified,
         })
 
     char_ids = [r["id"] for r in result]
@@ -179,6 +187,7 @@ async def get_character_for_edit(
         "avatar": char.get("avatar", ""),
         "custom_avatar": visual.get("custom_avatar", False),
         "tags": char.get("tags", []),
+        "is_public": char.get("is_public", True),
     }
 
 
@@ -233,6 +242,7 @@ async def get_character_detail(
         "appearance": char["appearance"],
         "model_type": char["model_type"],
         "author": char.get("author", {"display_name": "AiKai Team"}),
+        "is_verified": char.get("is_verified", False),
         "chat_count": chat_counts.get(character_id, 0),
         "like_count": like_count,
         "is_liked": character_id in liked_ids,

@@ -29,6 +29,7 @@ async def list_worlds(
     rating: str = None,
     creator_type: str = None,
     author_search: str = None,  # поиск по нику автора
+    verified: str = None,  # "verified" | "community"
     user: User = Depends(get_current_user)
 ):
     """List all worlds"""
@@ -42,8 +43,19 @@ async def list_worlds(
         if rating and filters.get("rating") != rating:
             continue
 
+        is_public = world.get("is_public", True)
+        is_verified = world.get("is_verified", False)
+
         author = world.get("author", {})
         author_user_id = author.get("user_id", 0)
+
+        if verified == "verified" and not is_verified:
+            continue
+        if verified == "community" and (is_verified or not is_public):
+            continue
+
+        if not is_public and author_user_id != user.telegram_id:
+            continue
 
         if creator_type == "me" and author_user_id != user.telegram_id:
             continue
@@ -68,6 +80,7 @@ async def list_worlds(
             "tags": world_tags,
             "description_short": description_short,
             "is_nsfw": world.get("is_nsfw", False),
+            "is_verified": is_verified,
             "author": author
         })
 
@@ -124,6 +137,7 @@ async def get_world_for_edit(
         "alternate_scenarios": world.get("alternate_scenarios", []),
         "cover_image": world.get("cover_image", ""),
         "tags": world.get("tags", []),
+        "is_public": world.get("is_public", True),
     }
 
 

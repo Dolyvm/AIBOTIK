@@ -17,3 +17,4 @@ class CreateWorldRequest(BaseModel):
     alternate_scenarios: list[AlternateScenario] = []
     cover_image_url: Optional[str] = None
     tags: list[str] = []
+    is_public: bool = True

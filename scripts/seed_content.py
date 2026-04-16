@@ -70,6 +70,7 @@ async def load_characters(session, content_dir: Path):
             character = Character(
                 id=char_id,
                 is_public=data.get("is_public", True),
+                is_verified=True,
                 name=data["name"],
                 short_description=data.get("short_description", ""),
                 description=data.get("description", ""),
@@ -124,7 +125,9 @@ async def load_worlds(session, content_dir: Path):
             scenarios=scenarios,
             locations=locations,
             tags=data.get("tags", []),
-            is_nsfw="NSFW" in data.get("tags", [])
+            is_nsfw="NSFW" in data.get("tags", []),
+            is_public=True,
+            is_verified=True,
         )
         session.add(world)
     await session.commit()
