@@ -1,6 +1,7 @@
 import httpx
 import logging
-from typing import Optional, ClassVar
+from dataclasses import dataclass, field
+from typing import Any, Optional, ClassVar
 
 from shared.config import (
     OPENROUTER_API_KEY,
@@ -24,6 +25,25 @@ class LLMRateLimitError(LLMError):
 
 class LLMTimeoutError(LLMError):
     pass
+
+
+@dataclass(slots=True)
+class LLMResponse:
+    content: str
+    finish_reason: Optional[str] = None
+    native_finish_reason: Optional[str] = None
+    usage: dict[str, Any] = field(default_factory=dict)
+    model: Optional[str] = None
+    id: Optional[str] = None
+
+    @property
+    def completion_tokens(self) -> int:
+        value = self.usage.get("completion_tokens", 0)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        return 0
 
 
 class LLMClient:
@@ -67,7 +87,7 @@ class LLMClient:
         messages: list[dict],
         max_tokens: int = 300,
         temperature: float = None,
-    ) -> str:
+    ) -> LLMResponse:
         temperature = temperature if temperature is not None else LLM_TEMPERATURE
         
         full_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -75,7 +95,7 @@ class LLMClient:
         payload = {
             "model": self.model,
             "messages": full_messages,
-            "max_tokens": max_tokens,
+            "max_completion_tokens": max_tokens,
             "temperature": temperature,
             "top_p": LLM_TOP_P,
             "repetition_penalty": LLM_REPETITION_PENALTY,
@@ -128,14 +148,46 @@ class LLMClient:
                     logger.error(f"Неожиданный формат ответа: {data}")
                     raise LLMError("Неожиданный формат ответа от API")
                 
-                content = data["choices"][0].get("message", {}).get("content", "")
+                choice = data["choices"][0]
+                if choice.get("error"):
+                    logger.error(f"LLM choice error: {choice['error']}")
+                    raise LLMError("Ошибка генерации ответа LLM")
+
+                message = choice.get("message") or {}
+                content = message.get("content", "") or ""
+                llm_response = LLMResponse(
+                    content=content,
+                    finish_reason=choice.get("finish_reason"),
+                    native_finish_reason=choice.get("native_finish_reason"),
+                    usage=data.get("usage") or {},
+                    model=data.get("model"),
+                    id=data.get("id"),
+                )
                 
                 if not content:
                     logger.warning("Пустой ответ от LLM")
-                    return ""
+                    return llm_response
                 
-                logger.debug(f"LLM ответ получен: {len(content)} символов")
-                return content
+                logger.info(
+                    "LLM response: model=%s id=%s finish_reason=%s native_finish_reason=%s "
+                    "prompt_tokens=%s completion_tokens=%s total_tokens=%s max_completion_tokens=%s chars=%s",
+                    llm_response.model,
+                    llm_response.id,
+                    llm_response.finish_reason,
+                    llm_response.native_finish_reason,
+                    llm_response.usage.get("prompt_tokens"),
+                    llm_response.usage.get("completion_tokens"),
+                    llm_response.usage.get("total_tokens"),
+                    max_tokens,
+                    len(content),
+                )
+                if llm_response.finish_reason == "length":
+                    logger.warning(
+                        "LLM response was truncated by completion limit: id=%s max_completion_tokens=%s",
+                        llm_response.id,
+                        max_tokens,
+                    )
+                return llm_response
                 
             except httpx.TimeoutException as e:
                 logger.warning(f"Таймаут запроса, попытка {attempt}/{self.MAX_RETRIES}: {e}")

@@ -1,7 +1,7 @@
 import logging
 
 from shared.constants import get_modifier_for_stage
-from shared.services.prompt_service import get_prompt
+from shared.services.prompt_service import DEFAULT_PROMPTS, get_prompt
 
 async def _get_common_style_guide() -> str:
     return await get_prompt("common_style_guide")
@@ -10,12 +10,24 @@ async def _get_meta_instruction(allow_nsfw: bool = True) -> str:
     key = "meta_instruction" if allow_nsfw else "meta_instruction_sfw"
     try:
         prompt = await get_prompt(key)
+        if _is_legacy_meta_instruction(prompt):
+            logging.warning("Legacy meta prompt detected for '%s', using compact default", key)
+            return DEFAULT_PROMPTS[key]
         return prompt
     except KeyError:
         if not allow_nsfw:
             logging.warning(f"SFW prompt '{key}' not found, falling back to default")
             return await get_prompt("meta_instruction")
         raise
+
+
+def _is_legacy_meta_instruction(prompt: str) -> bool:
+    return (
+        '"mood": ...' in prompt
+        or '"thought": ...' in prompt
+        or "//" in prompt
+        or '"affinity_change": int' in prompt
+    )
 
 async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True, gender: str = "female") -> str:
     instruction = ""
