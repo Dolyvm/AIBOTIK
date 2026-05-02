@@ -11,7 +11,24 @@ if DATABASE_URL.startswith("postgresql://"):
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
-LLM_MODEL = "mistralai/mistral-small-3.2-24b-instruct"
+
+LLM_ACTIVE_MODEL_PROMPT_KEY = "llm_active_model"
+LLM_MODEL_CHOICES = {
+    "deepseek": {
+        "label": "DeepSeek V3.2",
+        "model": "deepseek/deepseek-v3.2",
+    },
+    "grok": {
+        "label": "Grok 4.1 Fast",
+        "model": "x-ai/grok-4.1-fast",
+    },
+}
+LLM_DEFAULT_PROVIDER = os.getenv("LLM_DEFAULT_PROVIDER", "grok")
+LLM_DEFAULT_ACTIVE_MODEL = LLM_MODEL_CHOICES.get(
+    LLM_DEFAULT_PROVIDER,
+    LLM_MODEL_CHOICES["grok"],
+)["model"]
+LLM_MODEL = os.getenv("LLM_MODEL", LLM_DEFAULT_ACTIVE_MODEL)
 
 LLM_MAX_TOKENS_CHARACTER = 1200
 LLM_MAX_TOKENS_WORLD = 1200
@@ -24,7 +41,7 @@ MAX_HISTORY_LENGTH = 10
 
 
 SCENE_ANALYZER_ENABLED = os.getenv("SCENE_ANALYZER_ENABLED", "true").lower() == "true"
-SCENE_ANALYZER_MODEL = os.getenv("SCENE_ANALYZER_MODEL", "mistralai/mistral-small-3.2-24b-instruct") 
+SCENE_ANALYZER_MODEL = os.getenv("SCENE_ANALYZER_MODEL", LLM_DEFAULT_ACTIVE_MODEL) 
 SCENE_ANALYZER_TIMEOUT = int(os.getenv("SCENE_ANALYZER_TIMEOUT", "10"))
 STRUCTURED_MODEL = os.getenv("STRUCTURED_MODEL", "qwen/qwen3-30b-a3b-instruct-2507")
 

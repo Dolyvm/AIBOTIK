@@ -7,6 +7,8 @@ from shared.config import (
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     LLM_MODEL,
+    LLM_ACTIVE_MODEL_PROMPT_KEY,
+    LLM_MODEL_CHOICES,
     LLM_TEMPERATURE,
     LLM_TOP_P,
     LLM_REPETITION_PENALTY,
@@ -74,12 +76,30 @@ class LLMClient:
 
     def __init__(self, api_key: str = None, model: str = None, override_payload: dict = None):
         self.api_key = api_key or OPENROUTER_API_KEY
-        self.model = model or LLM_MODEL
+        self.model = model
         self.base_url = OPENROUTER_BASE_URL
         self.override_payload = override_payload or dict()
 
         if not self.api_key:
             logger.warning("OPENROUTER_API_KEY не установлен!")
+
+    async def _resolve_model(self) -> str:
+        if self.model:
+            return self.model
+
+        try:
+            from shared.services.prompt_service import get_prompt
+
+            active_model = (await get_prompt(LLM_ACTIVE_MODEL_PROMPT_KEY)).strip()
+            allowed_models = {choice["model"] for choice in LLM_MODEL_CHOICES.values()}
+            if active_model in allowed_models:
+                return active_model
+
+            logger.warning("Unsupported active LLM model in DB/cache: %s", active_model)
+        except Exception as e:
+            logger.warning("Failed to resolve active LLM model from DB/cache: %s", e)
+
+        return LLM_MODEL
 
     async def generate(
         self,
@@ -92,8 +112,10 @@ class LLMClient:
         
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
+        resolved_model = await self._resolve_model()
+
         payload = {
-            "model": self.model,
+            "model": resolved_model,
             "messages": full_messages,
             "max_completion_tokens": max_tokens,
             "temperature": temperature,
@@ -113,7 +135,7 @@ class LLMClient:
 
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
-                logger.debug(f"LLM запрос (попытка {attempt}/{self.MAX_RETRIES}): model={self.model}")
+                logger.debug(f"LLM запрос (попытка {attempt}/{self.MAX_RETRIES}): model={resolved_model}")
 
                 response = await client.post(
                     self.base_url,

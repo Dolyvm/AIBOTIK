@@ -13,7 +13,14 @@ from datetime import datetime
 from uuid import uuid4
 from urllib.parse import urlparse as _urlparse
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
-from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN, IMAGES_STORAGE_PATH
+from shared.config import (
+    ADMIN_TELEGRAM_IDS,
+    BOT_TOKEN,
+    IMAGES_STORAGE_PATH,
+    LLM_ACTIVE_MODEL_PROMPT_KEY,
+    LLM_DEFAULT_ACTIVE_MODEL,
+    LLM_MODEL_CHOICES,
+)
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
@@ -37,6 +44,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="admin/templates")
 
 PROMPT_CATEGORIES = {
+    "settings": "Settings",
     "character": "Character Prompts",
     "player": "Player Prompts",
     "summary": "Summary Prompts",
@@ -45,6 +53,37 @@ PROMPT_CATEGORIES = {
     "image": "Image Generation",
     "modifiers": "Character Modifiers",
 }
+
+
+async def _ensure_active_llm_prompt(db: AsyncSession) -> str:
+    result = await db.execute(select(Prompt).where(Prompt.key == LLM_ACTIVE_MODEL_PROMPT_KEY))
+    prompt = result.scalar_one_or_none()
+
+    if prompt:
+        return prompt.content.strip()
+
+    prompt = Prompt(
+        key=LLM_ACTIVE_MODEL_PROMPT_KEY,
+        category="settings",
+        name="Active LLM Model",
+        content=LLM_DEFAULT_ACTIVE_MODEL,
+    )
+    db.add(prompt)
+    await db.commit()
+    await reload_cache(LLM_ACTIVE_MODEL_PROMPT_KEY, LLM_DEFAULT_ACTIVE_MODEL)
+    return LLM_DEFAULT_ACTIVE_MODEL
+
+
+def _build_llm_model_options(active_model: str) -> list[dict]:
+    return [
+        {
+            "provider": provider,
+            "label": choice["label"],
+            "model": choice["model"],
+            "is_active": choice["model"] == active_model,
+        }
+        for provider, choice in LLM_MODEL_CHOICES.items()
+    ]
 
 
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -165,6 +204,66 @@ async def admin_index(
             "admin": admin
         }
     )
+
+
+@router.get("/llm", response_class=HTMLResponse)
+async def llm_settings_form(
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
+):
+    active_model = await _ensure_active_llm_prompt(db)
+
+    return templates.TemplateResponse(
+        "llm.html",
+        {
+            "request": request,
+            "admin": admin,
+            "active_model": active_model,
+            "model_options": _build_llm_model_options(active_model),
+            "is_supported_model": active_model in {choice["model"] for choice in LLM_MODEL_CHOICES.values()},
+        }
+    )
+
+
+@router.post("/llm")
+async def update_llm_settings(
+        request: Request,
+        model: str = Form(...),
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
+):
+    allowed_models = {choice["model"] for choice in LLM_MODEL_CHOICES.values()}
+    if model not in allowed_models:
+        raise HTTPException(status_code=400, detail="Unsupported LLM model")
+
+    result = await db.execute(select(Prompt).where(Prompt.key == LLM_ACTIVE_MODEL_PROMPT_KEY))
+    prompt = result.scalar_one_or_none()
+
+    if prompt:
+        await db.execute(
+            update(Prompt)
+            .where(Prompt.key == LLM_ACTIVE_MODEL_PROMPT_KEY)
+            .values(content=model)
+        )
+    else:
+        db.add(Prompt(
+            key=LLM_ACTIVE_MODEL_PROMPT_KEY,
+            category="settings",
+            name="Active LLM Model",
+            content=model,
+        ))
+
+    await db.commit()
+    await reload_cache(LLM_ACTIVE_MODEL_PROMPT_KEY, model)
+
+    logger.info(
+        "Admin %s switched active LLM model to %s",
+        admin.get("telegram_id"),
+        model,
+    )
+
+    return RedirectResponse(url="/admin/llm", status_code=303)
 
 
 @router.get("/prompts/{key}", response_class=HTMLResponse)

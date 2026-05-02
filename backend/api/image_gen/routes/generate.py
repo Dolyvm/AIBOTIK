@@ -21,7 +21,7 @@ from shared.database.repositories import MessageRepository, GeneratedImageReposi
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
-from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
+from shared.config import SCENE_ANALYZER_ENABLED
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.services.image_provider import generate_image as provider_generate_image
@@ -122,7 +122,7 @@ async def gen(
     emotion = "neutral"
     if SCENE_ANALYZER_ENABLED and history:
         try:
-            llm_client = LLMClient(model=SCENE_ANALYZER_MODEL)
+            llm_client = LLMClient()
             analyzer = SceneAnalyzer(llm_client)
 
             visual = content.get("visual", {})
@@ -278,4 +278,3 @@ async def gen(
     response = {"task_id": task_id, "status": "pending"}
     logging.info(f"Returning response: {response}")
     return response
-

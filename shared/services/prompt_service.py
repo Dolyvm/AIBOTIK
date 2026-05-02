@@ -6,6 +6,7 @@ import asyncio
 
 from shared.models import Prompt
 from shared.services.cache import get_cache
+from shared.config import LLM_ACTIVE_MODEL_PROMPT_KEY, LLM_DEFAULT_ACTIVE_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ may become stale. Redis is source of truth.
 _prompt_cache_initialized: bool = False
 
 DEFAULT_PROMPTS = {
+    LLM_ACTIVE_MODEL_PROMPT_KEY: LLM_DEFAULT_ACTIVE_MODEL,
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
     "behavior_affinity_cold": "Ты не доверяешь Игроку, держишь эмоциональную дистанцию, избегаешь откровенности и отвечаешь сдержанно или настороженно.\r\n",

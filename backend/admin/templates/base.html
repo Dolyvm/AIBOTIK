@@ -234,6 +234,7 @@
     <nav class="nav-menu">
         <div class="container">
             <a href="/admin/" {% if request.url.path == '/admin/' %}class="active"{% endif %}>Промпты</a>
+            <a href="/admin/llm" {% if request.url.path.startswith('/admin/llm') %}class="active"{% endif %}>LLM</a>
             <a href="/admin/characters" {% if request.url.path.startswith('/admin/characters') %}class="active"{% endif %}>Персонажи</a>
             <a href="/admin/worlds" {% if request.url.path.startswith('/admin/worlds') %}class="active"{% endif %}>Миры</a>
             <a href="/admin/stats" {% if request.url.path.startswith('/admin/stats') %}class="active"{% endif %}>Статистика</a>
