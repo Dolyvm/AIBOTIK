@@ -208,35 +208,41 @@ class ContextManager:
         if response.finish_reason != "length":
             return response
 
-        retry_max_tokens = min(max_tokens * 2, 3000)
-        retry_prompt = (
-            f"{system_prompt}\n\n"
-            "### КРИТИЧЕСКОЕ УСЛОВИЕ ЗАВЕРШЕНИЯ ###\n"
-            "Предыдущий ответ был обрезан лимитом генерации. Напиши полный завершенный ответ. "
-            "Сохрани формат <meta> в начале, но при необходимости сокращай детали так, чтобы финальная "
-            "художественная часть не обрывалась на середине фразы или сцены."
-        )
-        logging.warning(
-            "Retrying truncated story response for chat_id=%s with max_completion_tokens=%s",
-            chat_id,
-            retry_max_tokens,
-        )
-        retry_response = await self.llm.generate(
-            system_prompt=retry_prompt,
-            messages=messages,
-            max_tokens=retry_max_tokens,
-        )
-
-        if retry_response.finish_reason == "length":
+        trimmed_content = self._trim_to_complete_sentence(response.content)
+        if trimmed_content:
             logging.error(
-                "LLM response still truncated after retry for chat_id=%s first_id=%s retry_id=%s",
+                "LLM response hit length for chat_id=%s; saving complete sentences only. id=%s",
                 chat_id,
                 response.id,
-                retry_response.id,
             )
-            raise LLMError("LLM response was truncated twice; assistant response was not saved")
+            response.content = trimmed_content
+            return response
 
-        return retry_response
+        logging.error(
+            "LLM response truncated and could not be trimmed for chat_id=%s id=%s",
+            chat_id,
+            response.id,
+        )
+        raise LLMError("LLM response was truncated; assistant response was not saved")
+
+    def _trim_to_complete_sentence(self, text: str) -> str:
+        if not text:
+            return ""
+
+        meta_match = re.match(r'\s*<meta>\s*.*?\s*</meta>\s*', text, re.DOTALL)
+        if not meta_match:
+            return ""
+
+        prefix = text[:meta_match.end()]
+        body = text[meta_match.end():].strip()
+        if not body:
+            return ""
+
+        last_sentence_end = max(body.rfind(mark) for mark in (".", "!", "?", "…"))
+        if last_sentence_end < 200:
+            return ""
+
+        return f"{prefix}{body[:last_sentence_end + 1].strip()}"
 
     async def _summarize_history(
         self,
