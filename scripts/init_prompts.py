@@ -11,6 +11,10 @@ from shared.services.prompt_service import DEFAULT_PROMPTS
 
 
 PROMPT_METADATA = {
+    "llm_active_model": {
+        "category": "settings",
+        "name": "Active LLM Model"
+    },
     "common_style_guide": {
         "category": "character",
         "name": "Common Style Guide"

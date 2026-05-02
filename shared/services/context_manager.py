@@ -332,7 +332,7 @@ class ContextManager:
                 calculate_nsfw_fallback,
                 calculate_sfw_fallback
             )
-            from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL
+            from shared.config import SCENE_ANALYZER_ENABLED
 
             content = character or world
             if not content:
@@ -349,7 +349,7 @@ class ContextManager:
 
             if SCENE_ANALYZER_ENABLED and history:
                 try:
-                    scene_llm = LLMClient(model=SCENE_ANALYZER_MODEL)
+                    scene_llm = LLMClient()
                     analyzer = SceneAnalyzer(scene_llm)
 
                     visual = content.get("visual", {})
