@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
-from shared.services.llm import LLMClient
+from shared.services.llm import LLMClient, LLMError, LLMResponse
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
 from shared.services.cache import get_cache
 from shared.services.redis_client import get_redis
@@ -100,14 +100,15 @@ class ContextManager:
             else:
                 raise ValueError("Either character or world must be provided")
 
-            response = await self.llm.generate(
+            response = await self._generate_complete_story_response(
                 system_prompt=system_prompt,
                 messages=history,
                 max_tokens=max_tokens,
+                chat_id=chat.id,
             )
-            logging.info(f"{response=}")
+            logging.info(f"response={response.content}")
 
-            clean_text, state_updates = self._parse_meta(response)
+            clean_text, state_updates = self._parse_meta(response.content)
 
             if state_updates:
                 logging.info(f"{state_updates=}")
@@ -147,7 +148,12 @@ class ContextManager:
                     if cache:
                         await cache.invalidate_chat_state(chat.id)
 
-            await message_repo.add(chat.id, "assistant", clean_text)
+            await message_repo.add(
+                chat.id,
+                "assistant",
+                clean_text,
+                tokens_used=response.completion_tokens,
+            )
 
             photo_history = history + [{"role": "assistant", "content": clean_text}]
 
@@ -186,6 +192,52 @@ class ContextManager:
             "image_task_id": image_task_id
         }
 
+    async def _generate_complete_story_response(
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        max_tokens: int,
+        chat_id: int,
+    ) -> LLMResponse:
+        response = await self.llm.generate(
+            system_prompt=system_prompt,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+
+        if response.finish_reason != "length":
+            return response
+
+        retry_max_tokens = min(max_tokens * 2, 3000)
+        retry_prompt = (
+            f"{system_prompt}\n\n"
+            "### КРИТИЧЕСКОЕ УСЛОВИЕ ЗАВЕРШЕНИЯ ###\n"
+            "Предыдущий ответ был обрезан лимитом генерации. Напиши полный завершенный ответ. "
+            "Сохрани формат <meta> в начале, но при необходимости сокращай детали так, чтобы финальная "
+            "художественная часть не обрывалась на середине фразы или сцены."
+        )
+        logging.warning(
+            "Retrying truncated story response for chat_id=%s with max_completion_tokens=%s",
+            chat_id,
+            retry_max_tokens,
+        )
+        retry_response = await self.llm.generate(
+            system_prompt=retry_prompt,
+            messages=messages,
+            max_tokens=retry_max_tokens,
+        )
+
+        if retry_response.finish_reason == "length":
+            logging.error(
+                "LLM response still truncated after retry for chat_id=%s first_id=%s retry_id=%s",
+                chat_id,
+                response.id,
+                retry_response.id,
+            )
+            raise LLMError("LLM response was truncated twice; assistant response was not saved")
+
+        return retry_response
+
     async def _summarize_history(
         self,
         chat: Chat,
@@ -211,18 +263,19 @@ class ContextManager:
             messages=self._format_messages_for_summary(messages_to_summarize)
         )
 
-        summary = await self.llm.generate(
+        summary_response = await self.llm.generate(
             system_prompt=summary_prompt,
             messages=[],
             max_tokens=600,
             temperature=0.3
         )
+        summary = summary_response.content.strip()
 
         if chat_repo:
             await chat_repo.update_metrics(
                 chat.id,
                 {
-                    "summary": summary.strip(),
+                    "summary": summary,
                     "msgs_since_summary": 0,
                     "last_auto_photo_at": 0
                 }
@@ -233,13 +286,13 @@ class ContextManager:
                 await repo.update_metrics(
                     chat.id,
                     {
-                        "summary": summary.strip(),
+                        "summary": summary,
                         "msgs_since_summary": 0,
                         "last_auto_photo_at": 0
                     }
                 )
 
-        chat.summary = summary.strip()
+        chat.summary = summary
         chat.msgs_since_summary = 0
         chat.last_auto_photo_at = 0
 
@@ -445,23 +498,26 @@ class ContextManager:
             return None
 
     def _parse_meta(self, response_text: str) -> tuple[str, dict]:
-                                             
-        meta_pattern = r'<meta>(.*?)</meta>'
-        matches = re.findall(meta_pattern, response_text, re.DOTALL)
-
         state_updates = {}
 
-        if matches:
-            for match in matches:
-                try:
-                    updates = json.loads(match.strip().replace("*", "").replace("+", ""))
-                    state_updates.update(updates)
-                except json.JSONDecodeError:
-                    logging.info("malformed json: ", match.strip().replace("\n", ""))
-                                           
-                    pass
+        if not response_text:
+            return "", state_updates
 
-        clean_text = re.sub(meta_pattern, '', response_text, flags=re.DOTALL).strip()
+        meta_match = re.match(r'\s*<meta>\s*(.*?)\s*</meta>\s*', response_text, re.DOTALL)
+        if not meta_match:
+            return response_text.strip(), state_updates
+
+        raw_meta = meta_match.group(1).strip()
+        try:
+            normalized_meta = raw_meta.replace("*", "")
+            normalized_meta = re.sub(r'(:\s*)\+(\d+)', r'\1\2', normalized_meta)
+            updates = json.loads(normalized_meta)
+            if isinstance(updates, dict):
+                state_updates.update(updates)
+        except json.JSONDecodeError:
+            logging.warning("Malformed LLM meta JSON: %s", raw_meta.replace("\n", " ")[:500])
+
+        clean_text = response_text[meta_match.end():].strip()
 
         return clean_text, state_updates
 
@@ -532,21 +588,22 @@ class ContextManager:
             user_name=user_name
         )
 
-        player_action = await self.llm.generate(
+        player_response = await self.llm.generate(
             system_prompt=player_prompt,
             messages=[],
             max_tokens=100,
             temperature=0.9
         )
+        player_action = player_response.content.strip()
 
         if only_user_reply:
             return {
-                "player_message": player_action.strip()
+                "player_message": player_action
             }
 
         result = await self.process_turn(
             chat=chat,
-            user_input=player_action.strip(),
+            user_input=player_action,
             character=character,
             world=world,
             user_name=user_name,
@@ -554,7 +611,7 @@ class ContextManager:
         )
 
         return {
-            "player_message": player_action.strip(),
+            "player_message": player_action,
             "character_response": result["text"],
             "image_url": result.get("image_url"),
             "nsfw_level": result.get("nsfw_level"),

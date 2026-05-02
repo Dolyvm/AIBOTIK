@@ -247,12 +247,13 @@ class SceneAnalyzer:
         )
 
         try:
-            response = await self.llm.generate(
+            llm_response = await self.llm.generate(
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=350,
                 temperature=0.1
             )
+            response = llm_response.content
 
             logger.info(f"SceneAnalyzer LLM raw response: {response[:500]}")
 
