@@ -525,6 +525,7 @@
                          class="chat-row"
                          :style="chatSwipeStyles[chat.id] || {}"
                          @click="handleChatRowClick(chat.id)"
+                         @contextmenu.prevent.stop="requestChatDelete(chat.id)"
                          @touchstart.passive="onChatSwipeStart($event, chat.id)"
                          @touchmove.passive="onChatSwipeMove($event, chat.id)"
                          @touchend="onChatSwipeEnd($event, chat.id)">
@@ -2336,7 +2337,7 @@
                             ...chatSwipeStyles.value,
                             [chatId]: { transform: 'translateX(-80px)', transition: 'transform 0.2s ease' }
                         };
-                        confirmDeleteChatId.value = chatId;
+                        requestChatDelete(chatId);
                     } else {
                         chatSwipeStyles.value = {
                             ...chatSwipeStyles.value,
@@ -2348,6 +2349,13 @@
                             chatSwipeStyles.value = s;
                         }, 300);
                     }
+                };
+
+                const requestChatDelete = (chatId) => {
+                    if (!chatId) return;
+                    chatWasSwiped.value[chatId] = true;
+                    setTimeout(() => { delete chatWasSwiped.value[chatId]; }, 100);
+                    confirmDeleteChatId.value = chatId;
                 };
 
                 const confirmChatDelete = async () => {
@@ -3447,7 +3455,7 @@
                     // Swipe to delete chat
                     chatSwipeStyles, handleChatRowClick,
                     onChatSwipeStart, onChatSwipeMove, onChatSwipeEnd,
-                    confirmDeleteChatId, confirmChatDelete, cancelChatDelete
+                    requestChatDelete, confirmDeleteChatId, confirmChatDelete, cancelChatDelete
                 };
             }
         }).mount('#app');
