@@ -57,7 +57,7 @@ async def generate_image(
     elif model_type == "manhwa":
         return await _submit_manhwa(positive_prompt, negative_prompt, seed=seed)
     elif model_type == "real":
-        return await _submit_real(positive_prompt, allow_nsfw, nsfw_level)
+        return await _submit_real(positive_prompt, negative_prompt, allow_nsfw, nsfw_level)
     else:
         logger.warning(f"Unsupported model_type: {model_type}")
         return None
@@ -89,17 +89,58 @@ async def _submit_anime(positive_prompt: str, negative_prompt: str, seed: int = 
     return None
 
 
-async def _submit_real(prompt: str, allow_nsfw: bool, nsfw_level: int = 0) -> str | None:
+_FAL_ERROR_BODY_LIMIT = 1000
+
+
+def _compose_real_prompt(prompt: str, negative_prompt: str, allow_nsfw: bool) -> str:
+    """Fold negative constraints into the prompt for real models without native negatives."""
+    if not allow_nsfw:
+        return prompt
+
+    negative_prompt = negative_prompt.strip()
+    if not negative_prompt:
+        return prompt
+    return f"{prompt}. Do not depict: {negative_prompt}."
+
+
+def _format_fal_http_error(error: httpx.HTTPStatusError) -> str:
+    response = error.response
+    status_code = response.status_code if response is not None else "unknown"
+    body = ""
+    if response is not None:
+        try:
+            body = response.text.strip()
+        except Exception:
+            body = ""
+    if body:
+        body = body[:_FAL_ERROR_BODY_LIMIT]
+        return f"FAL request failed ({status_code}): {body}"
+    return f"FAL request failed ({status_code}): {error}"
+
+
+async def _submit_real(
+    prompt: str,
+    negative_prompt: str,
+    allow_nsfw: bool,
+    nsfw_level: int = 0,
+) -> str | None:
     # Note: fal-ai/z-image/turbo is FLUX-based and does NOT support negative_prompt.
-    handler = await fal_client.submit_async(
-        "fal-ai/z-image/turbo",
-        arguments={
-            "prompt": prompt,
-            "enable_safety_checker": not allow_nsfw,
-            "image_size": {"width": 1024, "height": 1024},
-        },
-    )
-    result = await handler.get()
+    prompt = _compose_real_prompt(prompt, negative_prompt, allow_nsfw)
+    try:
+        handler = await fal_client.submit_async(
+            "fal-ai/z-image/turbo",
+            arguments={
+                "prompt": prompt,
+                "enable_safety_checker": not allow_nsfw,
+                "image_size": {"width": 1024, "height": 1024},
+            },
+        )
+        result = await handler.get()
+    except httpx.HTTPStatusError as e:
+        error_msg = _format_fal_http_error(e)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg) from e
+
     logger.info(f"FAL result (nsfw_level={nsfw_level}): {result}")
 
     if result and "images" in result and result["images"]:

@@ -28,6 +28,12 @@ DEFAULT_PROMPTS = {
     LLM_ACTIVE_MODEL_PROMPT_KEY: LLM_DEFAULT_ACTIVE_MODEL,
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
+    "real_base_positive": "photorealistic, tasteful glamour photography, single adult subject, realistic skin detail, balanced studio-quality lighting, high aesthetic quality",
+    "real_base_negative": "overweight, cellulite, sagging skin, sagging breasts, belly folds, masculine anatomy on female, feminine anatomy on male, extra limbs, deformed anatomy, distorted genitals, bad hands, blurry, low quality, watermark, text",
+    "real_base_positive_female": "photorealistic adult woman, single subject, anatomically correct female body, feminine-only anatomy, idealized fit figure, smooth firm skin, slim waist, attractive hips, natural glamour photography, high aesthetic quality",
+    "real_base_negative_female": "male, man, penis, bulge, testicles, mixed male and female anatomy, masculine anatomy, beard, body hair, overweight, cellulite, sagging skin, sagging breasts, belly folds, deformed breasts, distorted nipples, extra limbs, bad hands, blurry, low quality, watermark, text",
+    "real_base_positive_male": "photorealistic adult man, single subject, anatomically correct male body, masculine-only anatomy, idealized athletic physique, broad shoulders, firm muscular body, natural glamour photography, high aesthetic quality",
+    "real_base_negative_male": "female, woman, breasts, feminine anatomy, narrow shoulders, overweight, cellulite, sagging skin, belly folds, deformed anatomy, distorted genitals, extra limbs, bad hands, blurry, low quality, watermark, text",
     "manhwa_base_positive": "masterpiece, best quality, amazing quality, very aesthetic, SemiNrealism, semi-realistic, male, 1boy, solo, male focus, adult man, bishounen, handsome man, korean manhwa style, soft niji style, watercolor-like rendering, painterly",
     "manhwa_base_negative": "female, 1girl, woman, child, teen, shota, boyish, low quality, worst quality, blurry, bad anatomy, bad hands, extra fingers, missing fingers, deformed face, ugly, flat lighting, simple background, text, watermark, signature, censored",
     "behavior_affinity_cold": "Ты не доверяешь Игроку, держишь эмоциональную дистанцию, избегаешь откровенности и отвечаешь сдержанно или настороженно.\r\n",
@@ -930,10 +936,22 @@ DEFAULT_PROMPTS = {
     "nsfw_level_4_anime_neg": "general, clothes, clothed, censored",
     "nsfw_level_5_anime": "nsfw, explicit, sex, nude, pussy, nipples, sweat, blush, open mouth, spread legs",
     "nsfw_level_5_anime_neg": "general, clothed, censored, mosaic censoring",
-    "nsfw_level_4_real": "nsfw, fully nude body, exposed pussy, erect nipples, naked, aroused, intimate",
-    "nsfw_level_4_real_neg": "general, clothes, dressed, clothed",
-    "nsfw_level_5_real": "nsfw, explicit sex, nude, orgasm, extremely aroused, intimate penetration, wet skin, intense pleasure",
-    "nsfw_level_5_real_neg": "general, clothed",
+    "nsfw_level_4_real": "nsfw, fully nude adult woman, anatomically female nude body, visible vulva, natural breasts and nipples, aroused, intimate",
+    "nsfw_level_4_real_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
+    "nsfw_level_5_real": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
+    "nsfw_level_5_real_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
+    "nsfw_level_2_real": "sensual glamour pose, revealing adult outfit, attractive curves, tasteful teasing",
+    "nsfw_level_2_real_neg": "nudity, explicit sex, penetration, male genitals, penis",
+    "nsfw_level_3_real": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour",
+    "nsfw_level_3_real_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
+    "nsfw_level_2_real_female": "sensual glamour pose, revealing adult outfit, attractive curves, tasteful teasing, anatomically female body",
+    "nsfw_level_2_real_female_neg": "nudity, explicit sex, penetration, male genitals, penis",
+    "nsfw_level_3_real_female": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour, female-only anatomy",
+    "nsfw_level_3_real_female_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
+    "nsfw_level_4_real_female": "nsfw, fully nude adult woman, anatomically female nude body, female-only anatomy, visible vulva, natural breasts and nipples, aroused, intimate",
+    "nsfw_level_4_real_female_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
+    "nsfw_level_5_real_female": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
+    "nsfw_level_5_real_female_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
     "nsfw_level_2_male": "aroused, nsfw, sensual, teasing, showing himself, muscular torso",
     "nsfw_level_2_male_neg": "nudity, explicit sex, penetration",
     "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
@@ -953,6 +971,45 @@ DEFAULT_PROMPTS = {
     "behavior_affinity_love_male": "- Ты глубоко влюблён/привязан. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high_male": "- Твоё тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n"
 }
+
+DEFAULT_PROMPTS["player_prompt"] = """### РОЛЬ ###
+Ты генерируешь автосообщение ИГРОКА ({user_name}) в интерактивном романе-диалоге.
+Ты не персонаж, не рассказчик и не системный ассистент.
+
+### КРИТИЧЕСКИЙ КОНТРАКТ ВЫВОДА ###
+- Пиши только от лица игрока ({user_name}).
+- Не отвечай за персонажа ({character_name}) и не описывай его новые действия.
+- Запрещено: "она сказала", "он ответил", "персонаж улыбнулась", "ассистент", "system", JSON, markdown, <meta>, заголовки и role labels.
+- Не начинай ответ с "Игрок:", "Персонаж:", "Assistant:", "System:".
+- Верни только финальный текст сообщения игрока, без пояснений.
+
+### КОНТЕКСТ ###
+Персонаж ({character_name}) только что сказал/сделал:
+"{last_character_message}"
+
+### ПРИМЕРЫ СТИЛЯ ИГРОКА ###
+Предыдущие действия игрока:
+{style_examples}
+
+### ИНСТРУКЦИИ ###
+1. Следуй стилю предыдущих сообщений игрока, если они есть.
+2. Длина: 1-2 коротких предложения.
+3. Ответ должен логично продолжать последнюю реплику персонажа.
+4. Формат: первое лицо игрока на русском языке.
+
+### ХОРОШО ###
+— Конечно, — ответил я, чуть наклоняясь ближе.
+Я сделал шаг вперёд и спокойно кивнул.
+
+### ПЛОХО ###
+Персонаж: ...
+<meta>...</meta>
+— Конечно, — ответила она.
+Она улыбнулась и посмотрела на игрока.
+
+### ЗАДАЧА ###
+Сгенерируй одно сообщение игрока. Выведи только текст сообщения.
+"""
 
 async def init_prompt_cache(db: AsyncSession):
     global _prompt_cache, _prompt_cache_initialized

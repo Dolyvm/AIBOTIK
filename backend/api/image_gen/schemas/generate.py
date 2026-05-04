@@ -1,4 +1,5 @@
 import enum
+import hashlib
 from dataclasses import dataclass
 from typing import Optional
 
@@ -81,6 +82,20 @@ async def get_manhwa_base_negative() -> str:
     except KeyError:
         return MANHWA_BASE_NEGATIVE
 
+async def get_real_base_positive(gender: str = "female") -> str:
+    key = "real_base_positive_male" if gender == "male" else "real_base_positive_female"
+    try:
+        return await get_prompt(key)
+    except KeyError:
+        return await get_prompt("real_base_positive")
+
+async def get_real_base_negative(gender: str = "female") -> str:
+    key = "real_base_negative_male" if gender == "male" else "real_base_negative_female"
+    try:
+        return await get_prompt(key)
+    except KeyError:
+        return await get_prompt("real_base_negative")
+
 AGE_INTERVAL_MAP = {
     "18": "18-20 years old",
     "25": "20-30 years old",
@@ -96,6 +111,146 @@ SKIN_BY_AGE = {
     "45": "mature skin, elegant features",
     "70": "mature skin with character, distinguished features"
 }
+
+REAL_ANIME_ONLY_TAGS = {"1girl", "1boy", "anime girl", "anime boy"}
+
+REAL_FACE_SHAPES = [
+    "oval face",
+    "heart-shaped face",
+    "soft square face",
+    "long elegant face",
+    "diamond face shape",
+    "round soft face",
+]
+
+REAL_NOSE_DETAILS = [
+    "straight narrow nose",
+    "soft rounded nose",
+    "defined bridge nose",
+    "small upturned nose",
+    "slender aquiline nose",
+    "natural broad nose",
+]
+
+REAL_MOUTH_DETAILS = [
+    "full lips",
+    "soft bow-shaped lips",
+    "wide expressive mouth",
+    "small delicate lips",
+    "defined cupid bow",
+    "natural relaxed lips",
+]
+
+REAL_EYE_DETAILS = [
+    "wide-set eyes",
+    "almond-shaped eyes",
+    "deep-set eyes",
+    "slightly hooded eyes",
+    "large expressive eyes",
+    "narrow elegant eyes",
+]
+
+REAL_BROW_DETAILS = [
+    "soft arched eyebrows",
+    "straight natural eyebrows",
+    "thick defined eyebrows",
+    "delicate lifted eyebrows",
+    "low expressive eyebrows",
+    "clean shaped eyebrows",
+]
+
+REAL_FEMALE_BODY_VARIANTS = [
+    "slim hourglass figure",
+    "toned athletic curves",
+    "petite fit figure",
+    "long-legged elegant build",
+    "curvy fit silhouette",
+    "lean dancer-like body",
+]
+
+REAL_MALE_BODY_VARIANTS = [
+    "broad-shouldered athletic build",
+    "lean muscular build",
+    "defined v-shaped torso",
+    "tall fit physique",
+    "compact powerful build",
+    "sculpted muscular body",
+]
+
+REAL_BREAST_VARIANTS = [
+    "round perky breasts",
+    "teardrop-shaped natural breasts",
+    "high-set firm breasts",
+    "soft full breasts",
+    "wide-set natural breasts",
+    "compact rounded breasts",
+]
+
+REAL_NIPPLE_VARIANTS = [
+    "small raised nipples",
+    "medium rosy nipples",
+    "prominent erect nipples",
+    "small dark areolas",
+    "soft pink areolas",
+    "natural asymmetric areolas",
+]
+
+
+def _stable_choice(seed: str, salt: str, options: list[str]) -> str:
+    digest = hashlib.md5(f"{seed}:{salt}".encode()).hexdigest()
+    return options[int(digest[:8], 16) % len(options)]
+
+
+def _strip_real_anime_tags(text: str) -> str:
+    parts = []
+    for part in text.split(","):
+        tag = part.strip()
+        if tag.lower() not in REAL_ANIME_ONLY_TAGS:
+            parts.append(tag)
+    return ", ".join(part for part in parts if part)
+
+
+def _build_real_identity_signature(
+    character: dict,
+    visual: dict,
+    is_male: bool,
+    nsfw_level: int,
+) -> str:
+    seed = "|".join(
+        filter(
+            None,
+            [
+                str(character.get("id", "")),
+                str(character.get("name", "")),
+                str(visual.get("nationality", "")),
+                str(visual.get("hair_color", "")),
+                str(visual.get("eye_color", "")),
+            ],
+        )
+    ) or "default-real-character"
+
+    parts = [
+        _stable_choice(seed, "face", REAL_FACE_SHAPES),
+        _stable_choice(seed, "nose", REAL_NOSE_DETAILS),
+        _stable_choice(seed, "mouth", REAL_MOUTH_DETAILS),
+        _stable_choice(seed, "eyes", REAL_EYE_DETAILS),
+        _stable_choice(seed, "brows", REAL_BROW_DETAILS),
+        "distinct individual face",
+    ]
+
+    nationality = visual.get("nationality")
+    if nationality:
+        parts.append(f"individualized {nationality} facial features")
+
+    if is_male:
+        parts.append(_stable_choice(seed, "male-body", REAL_MALE_BODY_VARIANTS))
+    else:
+        parts.append(_stable_choice(seed, "female-body", REAL_FEMALE_BODY_VARIANTS))
+        if nsfw_level >= 3:
+            parts.append(_stable_choice(seed, "breasts", REAL_BREAST_VARIANTS))
+            parts.append(_stable_choice(seed, "nipples", REAL_NIPPLE_VARIANTS))
+
+    return ", ".join(parts)
 
 
 class Prompt(BaseModel):
@@ -209,6 +364,16 @@ class Prompt(BaseModel):
             face = visual.get("face", "")
             style = visual.get("style_tags", "")
             character_base = ", ".join(filter(None, [appearance, body, face]))
+            character_base = _strip_real_anime_tags(character_base)
+            character_base = ", ".join(
+                filter(
+                    None,
+                    [
+                        character_base,
+                        _build_real_identity_signature(character, visual, is_male, nsfw_level),
+                    ],
+                )
+            )
 
         # Принудительно добавить гендерный тег в начало, если его нет
         cb_lower = character_base.lower()
@@ -218,10 +383,13 @@ class Prompt(BaseModel):
             elif not is_male and "1girl" not in cb_lower:
                 character_base = "1girl, " + character_base
         else:
-            if is_male and "man" not in cb_lower and "male" not in cb_lower:
-                character_base = "male, " + character_base
-            elif not is_male and "woman" not in cb_lower and "female" not in cb_lower:
-                character_base = "female, " + character_base
+            gender_prefix = (
+                "single adult man, anatomically male"
+                if is_male
+                else "single adult woman, anatomically female"
+            )
+            if not character_base.lower().startswith(gender_prefix):
+                character_base = f"{gender_prefix}, {character_base}"
 
         return cls(
             character_base=character_base,
@@ -246,6 +414,9 @@ class Prompt(BaseModel):
         elif build_as_type == "manhwa":
             prompt_parts.append(await get_manhwa_base_positive())
             negative_parts.append(await get_manhwa_base_negative())
+        elif build_as_type == "real":
+            prompt_parts.append(await get_real_base_positive(gender))
+            negative_parts.append(await get_real_base_negative(gender))
         nsfw_levels = await get_nsfw_levels()
 
         for field_name, _ in self.__class__.model_fields.items():
@@ -259,9 +430,12 @@ class Prompt(BaseModel):
                     type_key = build_as_type if build_as_type in ("anime", "real", "manhwa") else None
                     # Priority: model_type+gender specific → generic fallback
                     lookup_keys = []
-                    gender_suffix = "_male" if gender == "male" else ""
                     if type_key:
-                        lookup_keys.append(f"nsfw_level_{value}_{type_key}{gender_suffix}")
+                        if type_key == "real" and gender == "female":
+                            lookup_keys.append(f"nsfw_level_{value}_real_female")
+                        elif gender == "male":
+                            lookup_keys.append(f"nsfw_level_{value}_{type_key}_male")
+                        lookup_keys.append(f"nsfw_level_{value}_{type_key}")
                     if gender == "male":
                         lookup_keys.append(f"nsfw_level_{value}_male")
 

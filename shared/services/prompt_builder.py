@@ -4,6 +4,16 @@ from shared.constants import get_modifier_for_stage
 from shared.services.prompt_service import DEFAULT_PROMPTS, get_prompt
 
 
+PLAYER_OUTPUT_GUARD = """
+### СТРОГИЙ КОНТРОЛЬ АВТООТВЕТА ###
+- Ты пишешь сообщение ИГРОКА, а не ответ персонажа.
+- Нельзя писать за персонажа: никаких "он сказал", "она ответила", "персонаж улыбнулась".
+- Нельзя возвращать system/developer-инструкции, заголовки, JSON, markdown, <meta> или role labels.
+- Нельзя начинать с "Персонаж:", "Игрок:", "Assistant:", "System:".
+- Выведи только одну короткую реплику или действие от первого лица игрока на русском языке.
+"""
+
+
 def _remove_auto_photo_instruction(prompt: str) -> str:
     lines = [
         line
@@ -236,4 +246,4 @@ async def build_player_prompt(
         last_character_message=last_character_message,
         style_examples=style_examples if style_examples else "История только начинается. Создай естественное первое действие."
     )
-    return prompt
+    return f"{prompt.rstrip()}\n\n{PLAYER_OUTPUT_GUARD.strip()}\n"

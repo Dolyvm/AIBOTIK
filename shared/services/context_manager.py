@@ -18,6 +18,97 @@ from shared.database import get_session
 from shared.database.repositories import ChatRepository, MessageRepository
 from shared.models import Chat
 
+logger = logging.getLogger(__name__)
+
+PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT = (
+    "Ты генерируешь только одно следующее сообщение игрока для интерактивного "
+    "романа. Ответ должен быть от первого лица игрока на русском языке, без "
+    "JSON, meta, заголовков, role labels, пояснений и текста персонажа."
+)
+PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION = """
+ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОТКЛОНЁН:
+{bad_response}
+
+Исправь ошибку. Верни только одну короткую реплику или действие игрока от первого лица.
+Запрещено писать за персонажа, использовать "он/она сказала", <meta>, JSON, markdown или role labels.
+"""
+PLAYER_AUTO_MESSAGE_FALLBACK = "Я смотрю внимательнее и тихо отвечаю: «Я слушаю.»"
+
+_PLAYER_ROLE_LABEL_RE = re.compile(
+    r"(?im)^\s*(?:system|assistant|developer|user|player|персонаж|игрок|"
+    r"ассистент|пользователь|роль|контекст|инструкции|задача)\s*[:#]"
+)
+_PLAYER_LEADING_LABEL_RE = re.compile(
+    r"(?i)^\s*(?:игрок|player|user|пользователь)\s*[:：-]\s*"
+)
+_CHARACTER_ATTRIBUTION_RE = re.compile(
+    r"\b(?:сказал|сказала|ответил|ответила|произн[её]с|произнесла|"
+    r"прошептал|прошептала|проговорил|проговорила|усмехнулся|усмехнулась|"
+    r"улыбнулся|улыбнулась|вздохнул|вздохнула|кивнул|кивнула)\s+(?:он|она)\b"
+    r"|\b(?:он|она)\s+(?:сказал|сказала|ответил|ответила|произн[её]с|"
+    r"произнесла|прошептал|прошептала|проговорил|проговорила|усмехнулся|"
+    r"усмехнулась|улыбнулся|улыбнулась|вздохнул|вздохнула|кивнул|кивнула)\b",
+    re.IGNORECASE,
+)
+_PLAYER_SYSTEM_MARKERS = (
+    "###",
+    "<meta",
+    "</meta",
+    "system prompt",
+    "developer message",
+    "системный протокол",
+    "системное сообщение",
+    "инструкции",
+    "роль",
+    "контекст",
+    "задача",
+)
+
+
+def _clean_generated_player_message(content: str) -> str:
+    text = (content or "").strip()
+    text = re.sub(r"```(?:[a-zA-Z0-9_-]+)?\s*", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?is)<meta\b[^>]*>.*?</meta>\s*", "", text)
+    text = _PLAYER_LEADING_LABEL_RE.sub("", text).strip()
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip(" \n\t\"'")
+
+
+def _invalid_player_message_reason(content: str) -> Optional[str]:
+    text = (content or "").strip()
+    if not text:
+        return "empty"
+
+    if len(text) > 700:
+        return "too_long"
+
+    if text.count("\n\n") > 2:
+        return "too_many_paragraphs"
+
+    if text[:1] in ("{", "["):
+        return "structured_output"
+
+    if _PLAYER_ROLE_LABEL_RE.search(text):
+        return "role_label"
+
+    lowered = text.casefold()
+    for marker in _PLAYER_SYSTEM_MARKERS:
+        if marker in lowered:
+            return "system_marker"
+
+    if _CHARACTER_ATTRIBUTION_RE.search(text):
+        return "character_attribution"
+
+    return None
+
+
+def _prepare_generated_player_message(content: str) -> tuple[str, Optional[str]]:
+    text = _clean_generated_player_message(content)
+    return text, _invalid_player_message_reason(text)
+
+
 class ContextManager:
 
     def __init__(self, llm_client: LLMClient, summary_threshold: int = None):
@@ -379,13 +470,7 @@ class ContextManager:
             user_name=user_name
         )
 
-        player_response = await self.player_llm.generate(
-            system_prompt=player_prompt,
-            messages=[],
-            max_tokens=100,
-            temperature=0.9
-        )
-        player_action = player_response.content.strip()
+        player_action = await self._generate_player_action(player_prompt)
 
         if only_user_reply:
             return {
@@ -407,3 +492,41 @@ class ContextManager:
             "affinity": chat.affinity,
             "arousal": chat.arousal
         }
+
+    async def _generate_player_action(self, player_prompt: str) -> str:
+        player_response = await self.player_llm.generate(
+            system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": player_prompt}],
+            max_tokens=100,
+            temperature=0.7
+        )
+        player_action, reason = _prepare_generated_player_message(player_response.content)
+        if not reason:
+            return player_action
+
+        logger.warning(
+            "Rejected generated player auto-message: reason=%s sample=%r",
+            reason,
+            (player_response.content or "")[:300],
+        )
+
+        retry_prompt = (
+            f"{player_prompt.rstrip()}\n\n"
+            f"{PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION.format(bad_response=(player_response.content or '')[:500]).strip()}"
+        )
+        retry_response = await self.player_llm.generate(
+            system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": retry_prompt}],
+            max_tokens=80,
+            temperature=0.4
+        )
+        player_action, retry_reason = _prepare_generated_player_message(retry_response.content)
+        if not retry_reason:
+            return player_action
+
+        logger.error(
+            "Rejected retry player auto-message, using fallback: reason=%s sample=%r",
+            retry_reason,
+            (retry_response.content or "")[:300],
+        )
+        return PLAYER_AUTO_MESSAGE_FALLBACK
