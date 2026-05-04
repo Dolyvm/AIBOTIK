@@ -1535,6 +1535,7 @@
 
                 // Chat State
                 const currentChatId = ref(null);
+                const currentChatSessionId = ref(0);
                 const currentChatName = ref('');
                 const currentChatAvatar = ref('');
                 const currentChatType = ref('character');
@@ -2391,8 +2392,23 @@
                     openChat(chatId);
                 };
 
-                const openChat = async (chatId, metaOverride = null) => {
+                const startChatSession = (chatId = null) => {
+                    currentChatSessionId.value += 1;
                     currentChatId.value = chatId;
+                    isUndoing.value = false;
+                    return currentChatSessionId.value;
+                };
+
+                const isCurrentChatSession = (chatId, sessionId) => {
+                    return currentChatId.value === chatId && currentChatSessionId.value === sessionId;
+                };
+
+                const isActiveChat = (chatId, sessionId) => {
+                    return isCurrentChatSession(chatId, sessionId) && currentView.value === 'chat';
+                };
+
+                const openChat = async (chatId, metaOverride = null) => {
+                    const sessionId = startChatSession(chatId);
                     isWaitingResponse.value = true;
 
                     // Если передали мета-данные (при создании), используем их
@@ -2412,6 +2428,7 @@
 
                     try {
                         const res = await axios.get(`/api/chat/${chatId}/history`);
+                        if (!isCurrentChatSession(chatId, sessionId)) return;
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
                         currentChatCustomAvatar.value = res.data.custom_avatar || false;
@@ -2419,10 +2436,13 @@
                         await nextTick();
                         scrollToBottom();
                     } catch (e) {
+                        if (!isCurrentChatSession(chatId, sessionId)) return;
                         showToast('Ошибка открытия чата');
                         currentView.value = 'selection';
                     } finally {
-                        isWaitingResponse.value = false;
+                        if (isCurrentChatSession(chatId, sessionId)) {
+                            isWaitingResponse.value = false;
+                        }
                     }
                 };
 
@@ -2456,17 +2476,22 @@
                 };
 
                 const backToMenu = () => {
+                    startChatSession(null);
                     currentView.value = 'selection';
                     chatHistory.value = [];
                     currentCharacterId.value = null;
                     currentChatCustomAvatar.value = false;
+                    isWaitingResponse.value = false;
+                    isStreaming.value = false;
                     loadChats(); // Refresh list to update dates
                 };
 
                 // --- CHAT LOGIC ---
                 const sendMessage = async () => {
                     const text = inputMessage.value.trim();
-                    if (!text || isWaitingResponse.value || isStreaming.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || !text || isWaitingResponse.value || isStreaming.value) return;
 
                     chatHistory.value.push({ role: 'user', content: text });
                     inputMessage.value = '';
@@ -2475,22 +2500,25 @@
                     scrollToBottom();
 
                     try {
-                        const res = await axios.post(`/api/chat/${currentChatId.value}/send`, { text });
+                        const res = await axios.post(`/api/chat/${sourceChatId}/send`, { text });
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
-                        await typeWriter(res.data.response);
+                        await typeWriter(res.data.response, sourceChatId, sourceSessionId);
                     } catch (e) {
-                        if (e.response?.status !== 429) {
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
                             chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
                         }
                     } finally {
-                        isWaitingResponse.value = false;
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                            isStreaming.value = false;
+                        }
                     }
                 };
 
                 // Poll for image task completion
-                const pollImageTask = async (taskId, onComplete, onError) => {
+                const pollImageTask = async (taskId, onComplete, onError, options = {}) => {
                     const maxAttempts = 300; // 15 minutes max (RunPod Serverless cold starts can be slow)
                     let attempts = 0;
 
@@ -2500,7 +2528,13 @@
                             const status = statusRes.data.status;
 
                             if (status === 'completed') {
-                                onComplete(statusRes.data.result);
+                                const result = statusRes.data.result || {};
+                                const resultChatId = statusRes.data.chat_id ?? result.chat_id;
+                                if (options.expectedChatId !== undefined && Number(resultChatId) !== Number(options.expectedChatId)) {
+                                    onError('Task chat mismatch');
+                                    return;
+                                }
+                                onComplete(result);
                                 return;
                             } else if (status === 'failed') {
                                 onError(statusRes.data.error || 'Generation failed');
@@ -2521,26 +2555,38 @@
                 };
 
                 const requestPhoto = async () => {
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || !isActiveChat(sourceChatId, sourceSessionId)) return;
+
                     isWaitingResponse.value = true;
                     try {
-                        const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`);
+                        const res = await axios.post(`/api/image-gen/${sourceChatId}/generate`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         // Check if we got task_id (async) or url (sync fallback)
                         if (res.data.task_id) {
+                            const clientTaskId = res.data.task_id;
                             // Add placeholder message
-                            const placeholderIndex = chatHistory.value.push({
+                            chatHistory.value.push({
                                 role: 'assistant',
                                 avatar: null,
                                 isGenerating: true,
-                                nsfw_level: 0
-                            }) - 1;
+                                nsfw_level: 0,
+                                clientTaskId,
+                                task_id: clientTaskId
+                            });
                             scrollToBottom();
                             isWaitingResponse.value = false;
 
                             // Start polling in background
                             pollImageTask(
-                                res.data.task_id,
+                                clientTaskId,
                                 (result) => {
+                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                                    if (result.chat_id !== undefined && Number(result.chat_id) !== Number(sourceChatId)) return;
+                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
+                                    if (placeholderIndex === -1) return;
                                     // Update placeholder with actual image
                                     chatHistory.value[placeholderIndex] = {
                                         role: 'assistant',
@@ -2551,13 +2597,19 @@
                                     isWaitingResponse.value = false;
                                 },
                                 (error) => {
+                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
                                     // Remove placeholder and show error
-                                    chatHistory.value.splice(placeholderIndex, 1);
+                                    if (placeholderIndex !== -1) {
+                                        chatHistory.value.splice(placeholderIndex, 1);
+                                    }
                                     showToast('Не удалось создать фото: ' + error);
                                     isWaitingResponse.value = false;
-                                }
+                                },
+                                { expectedChatId: sourceChatId }
                             );
                         } else if (res.data.url) {
+                            if (res.data.chat_id !== undefined && Number(res.data.chat_id) !== Number(sourceChatId)) return;
                             // Sync fallback - got URL directly
                             chatHistory.value.push({
                                 role: 'assistant',
@@ -2571,30 +2623,43 @@
                             isWaitingResponse.value = false;
                         }
                     } catch (e) {
-                        if (e.response?.status !== 429) {
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
                             showToast('Не удалось создать фото');
                         }
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                        }
                     }
                 };
 
                 const resetChat = async () => {
                     if (!confirm('Начать сценарий заново? Память будет очищена.')) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/reset`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/reset`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         chatHistory.value = response.data.first_message
                             ? [{ role: 'assistant', content: response.data.first_message }]
                             : [];
                         await nextTick();
                         scrollToBottom();
                         showToast('Сценарий сброшен', 'success');
-                    } catch (e) { showToast('Ошибка сброса'); }
+                    } catch (e) {
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка сброса');
+                        }
+                    }
                 };
 
                 const undoLastTurn = async () => {
                     const idx = undoTargetIndex.value;
                     if (idx < 1 || isUndoing.value) return;
                     if (!confirm('Удалить последние два сообщения?')) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
 
                     isUndoing.value = true;
                     const h = chatHistory.value;
@@ -2606,19 +2671,28 @@
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
 
                     try {
-                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
-                        showToast('Сообщения удалены', 'success');
+                        await axios.delete(`/api/chat/${sourceChatId}/undo`);
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Сообщения удалены', 'success');
+                        }
                     } catch (e) {
-                        chatHistory.value.splice(userIdx, 0, ...removed);
-                        showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            chatHistory.value.splice(userIdx, 0, ...removed);
+                            showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                        }
                     } finally {
-                        isUndoing.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isUndoing.value = false;
+                        }
                     }
                 };
 
                 const editLastMessage = async () => {
                     const idx = undoTargetIndex.value;
                     if (idx < 1 || isUndoing.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
 
                     const h = chatHistory.value;
                     const userIdx = idx - 1;
@@ -2632,7 +2706,8 @@
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
 
                     try {
-                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
+                        await axios.delete(`/api/chat/${sourceChatId}/undo`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         inputMessage.value = oldText;
                         await nextTick();
                         if (inputField.value) {
@@ -2640,23 +2715,35 @@
                             autoResizeTextarea();
                         }
                     } catch (e) {
-                        chatHistory.value.splice(userIdx, 0, ...removed);
-                        showToast(e.response?.data?.detail || 'Ошибка', 'error');
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            chatHistory.value.splice(userIdx, 0, ...removed);
+                            showToast(e.response?.data?.detail || 'Ошибка', 'error');
+                        }
                     } finally {
-                        isUndoing.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isUndoing.value = false;
+                        }
                     }
                 };
 
                 // --- UTILS ---
-                const typeWriter = async (text) => {
-                    const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
+                const typeWriter = async (text, sourceChatId, sourceSessionId) => {
+                    if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
+                    text = String(text || '');
+                    const message = { role: 'assistant', content: "" };
+                    chatHistory.value.push(message);
                     const chunk = 5; // chars per tick
                     for (let i = 0; i < text.length; i += chunk) {
-                        chatHistory.value[msgIndex].content += text.slice(i, i + chunk);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
+                        if (!chatHistory.value.includes(message)) return false;
+                        message.content += text.slice(i, i + chunk);
                         if (i % 20 === 0) scrollToBottom();
                         await new Promise(r => setTimeout(r, 15));
                     }
-                    scrollToBottom();
+                    if (isActiveChat(sourceChatId, sourceSessionId)) {
+                        scrollToBottom();
+                    }
+                    return true;
                 };
 
                 const scrollToBottom = () => {
@@ -2761,12 +2848,15 @@
 
                 // --- AUTO CONTINUE ---
                 const autoContinue = async () => {
-                    if (!currentChatId.value || isWaitingResponse.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || isWaitingResponse.value) return;
 
                     isWaitingResponse.value = true;
 
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/auto-continue`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/auto-continue`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         const data = response.data;
 
@@ -2779,47 +2869,62 @@
 
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
-                        await typeWriter(data.character_response);
+                        await typeWriter(data.character_response, sourceChatId, sourceSessionId);
 
                         if (data.affinity !== undefined) {
                         }
                         if (data.arousal !== undefined) {
                         }
 
-                        await nextTick();
-                        scrollToBottom();
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            await nextTick();
+                            scrollToBottom();
+                        }
 
                     } catch (error) {
                         console.error('Auto-continue failed:', error);
                         const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
-                        showToast('Ошибка: ' + errorMsg);
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка: ' + errorMsg);
+                            isWaitingResponse.value = false;
+                        }
                     } finally {
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isStreaming.value = false;
+                        }
                     }
                 };
 
                 const generateAutoReply = async () => {
-                    if (!currentChatId.value || isWaitingResponse.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || isWaitingResponse.value) return;
                     inputMessage.value = ''
                     isWaitingResponse.value = true;
 
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/generate-auto-reply`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/generate-auto-reply`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         const data = response.data;
                         inputMessage.value = data.player_message;
                         await nextTick();
-                        autoResizeTextarea();
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            autoResizeTextarea();
+                        }
 
                     } catch (error) {
                         console.error('Auto-continue failed:', error);
                         const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
-                        showToast('Ошибка: ' + errorMsg);
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка: ' + errorMsg);
+                            isWaitingResponse.value = false;
+                        }
                     } finally {
-                        isWaitingResponse.value = false;
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                            isStreaming.value = false;
+                        }
                     }
                 };
 

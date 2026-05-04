@@ -123,6 +123,7 @@ async def gen(
         json.dumps({
             "status": "pending",
             "chat_id": chat.id,
+            "user_id": chat.user_id,
             "created_at": datetime.utcnow().isoformat()
         }),
         ex=3600
@@ -153,6 +154,6 @@ async def gen(
     async with get_session() as session:
         await sub_service.increment_usage(user.telegram_id, "images", session)
 
-    response = {"task_id": task_id, "status": "pending"}
+    response = {"task_id": task_id, "status": "pending", "chat_id": chat.id}
     logging.info(f"Returning response: {response}")
     return response

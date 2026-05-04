@@ -221,7 +221,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
 
     try:
         if params.get("prepare_prompt"):
-            await _update_task_status(redis, task_id, "analyzing", chat_id=chat_id)
+            await _update_task_status(redis, task_id, "analyzing", chat_id=chat_id, user_id=params.get("user_id"))
             params = await _prepare_chat_image_params(ctx, params)
             chat_id = params["chat_id"]
 
@@ -237,7 +237,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
         seed = params.get("seed", -1)
 
         # 1. Update status to generating
-        await _update_task_status(redis, task_id, "generating", chat_id=chat_id)
+        await _update_task_status(redis, task_id, "generating", chat_id=chat_id, user_id=user_id)
 
         # 2. Generate image
         image_url = await generate_image(
@@ -250,11 +250,11 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
         )
 
         if not image_url:
-            await _update_task_status(redis, task_id, "failed", error="Generation failed", chat_id=chat_id)
+            await _update_task_status(redis, task_id, "failed", error="Generation failed", chat_id=chat_id, user_id=user_id)
             return {"status": "failed", "error": "Generation failed"}
 
         # 3. Download and save locally
-        await _update_task_status(redis, task_id, "downloading", chat_id=chat_id)
+        await _update_task_status(redis, task_id, "downloading", chat_id=chat_id, user_id=user_id)
 
         local_path = None
         file_size = None
@@ -315,8 +315,8 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
             logger.error(f"Failed to save to DB: {e}")
 
         # 5. Update final status
-        result = {"url": public_url, "nsfw_level": nsfw_level}
-        await _update_task_status(redis, task_id, "completed", result=result)
+        result = {"url": public_url, "nsfw_level": nsfw_level, "chat_id": chat_id}
+        await _update_task_status(redis, task_id, "completed", chat_id=chat_id, user_id=user_id, result=result)
 
         logger.info(f"Task {task_id} completed successfully: {public_url}")
         return {"status": "completed", "result": result}
@@ -324,7 +324,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
         logger.error(f"Task {task_id} failed: {error_msg}")
-        await _update_task_status(redis, task_id, "failed", error=error_msg, chat_id=chat_id)
+        await _update_task_status(redis, task_id, "failed", error=error_msg, chat_id=chat_id, user_id=params.get("user_id"))
         return {"status": "failed", "error": error_msg}
 
 
@@ -335,11 +335,13 @@ async def generate_avatar_task(ctx: dict[str, Any], task_id: str, params: dict) 
     positive_prompt = params["positive_prompt"]
     negative_prompt = params.get("negative_prompt", "")
     allow_nsfw = params.get("allow_nsfw", False)
+    user_id = params.get("user_id")
+    owner_meta = {"user_id": user_id} if user_id is not None else {}
 
     logger.info(f"Starting avatar generation task {task_id}")
 
     try:
-        await _update_task_status(redis, task_id, "generating")
+        await _update_task_status(redis, task_id, "generating", **owner_meta)
 
         image_url = await generate_image(
             model_type=model_type,
@@ -350,11 +352,11 @@ async def generate_avatar_task(ctx: dict[str, Any], task_id: str, params: dict) 
         )
 
         if not image_url:
-            await _update_task_status(redis, task_id, "failed", error="Generation failed")
+            await _update_task_status(redis, task_id, "failed", error="Generation failed", **owner_meta)
             return {"status": "failed", "error": "Generation failed"}
 
         result = {"url": image_url}
-        await _update_task_status(redis, task_id, "completed", result=result)
+        await _update_task_status(redis, task_id, "completed", result=result, **owner_meta)
 
         logger.info(f"Avatar task {task_id} completed: {image_url}")
         return {"status": "completed", "result": result}
@@ -362,7 +364,7 @@ async def generate_avatar_task(ctx: dict[str, Any], task_id: str, params: dict) 
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
         logger.error(f"Avatar task {task_id} failed: {error_msg}")
-        await _update_task_status(redis, task_id, "failed", error=error_msg)
+        await _update_task_status(redis, task_id, "failed", error=error_msg, **owner_meta)
         return {"status": "failed", "error": error_msg}
 
 
