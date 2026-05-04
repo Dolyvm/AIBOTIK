@@ -480,8 +480,8 @@
                         <div class="card-title">
                             {{ char.name }}<i v-if="char.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
-                            <div class="card-counters" v-if="char.chat_count !== undefined || char.like_count !== undefined">
-                                <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count || 0 }}</span>
+                            <div class="card-counters" v-if="char.message_count !== undefined || char.chat_count !== undefined || char.like_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count ?? 0 }}</span>
                                 <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count || 0 }}</span>
                             </div>
                         </div>
@@ -511,8 +511,8 @@
                         <div class="card-title">
                             {{ world.name }}<i v-if="world.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
-                            <div class="card-counters" v-if="world.chat_count !== undefined">
-                                <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count || 0 }}</span>
+                            <div class="card-counters" v-if="world.message_count !== undefined || world.chat_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count ?? 0 }}</span>
                             </div>
                         </div>
                     </div>
@@ -585,8 +585,8 @@
                 <!-- Stats -->
                 <div class="stat-grid" v-if="myAuthorProfile">
                     <div class="stat-card">
-                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_chats }}</div>
-                        <div class="stat-card__label">Чатов</div>
+                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_messages ?? myAuthorProfile.stats.total_chats }}</div>
+                        <div class="stat-card__label">Сообщений</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card__value">{{ myAuthorProfile.stats.total_likes }}</div>
@@ -752,7 +752,7 @@
                                     {{ char.name }}
                                     <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count }}</span>
                                         <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
                                     </div>
                                 </div>
@@ -770,7 +770,7 @@
                                     {{ world.name }}
                                     <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -827,8 +827,8 @@
                 <div class="profile-content">
                     <div class="stat-grid">
                         <div class="stat-card">
-                            <div class="stat-card__value">{{ authorProfileData.stats.total_chats }}</div>
-                            <div class="stat-card__label">Чатов</div>
+                            <div class="stat-card__value">{{ authorProfileData.stats.total_messages ?? authorProfileData.stats.total_chats }}</div>
+                            <div class="stat-card__label">Сообщений</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-card__value">{{ authorProfileData.stats.total_likes }}</div>
@@ -857,7 +857,7 @@
                                     {{ char.name }}
                                     <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count }}</span>
                                         <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
                                     </div>
                                 </div>
@@ -876,7 +876,7 @@
                                     {{ world.name }}
                                     <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count }}</span>
                                     </div>
                                 </div>
                             </div>
