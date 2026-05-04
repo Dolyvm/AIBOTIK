@@ -1,12 +1,14 @@
 import logging
 import uuid
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from sqlalchemy import select
 
 from shared.services.cache import get_cache
 from shared.services.subscription import get_subscription_service
 from shared.services.image_storage import save_world_cover, get_public_url
+from shared.config import IMAGES_STORAGE_PATH
 from shared.models import User, World
 from shared.database import get_session
 from auth.telegram_auth import get_current_user
@@ -16,6 +18,38 @@ from .cw_schemas import CreateWorldRequest
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+MAX_COVER_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_COVER_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _normalize_cover_image_url(cover_image_url: str | None) -> str | None:
+    if not cover_image_url:
+        return None
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(cover_image_url)
+    if parsed.scheme and parsed.path.startswith("/images/"):
+        return parsed.path
+    return cover_image_url
+
+
+async def _resolve_cover_image(cover_image_url: str | None, world_id: str) -> str | None:
+    cover_image_url = _normalize_cover_image_url(cover_image_url)
+    if not cover_image_url:
+        return None
+
+    if cover_image_url.startswith("/images/"):
+        return cover_image_url
+
+    try:
+        cover_path = await save_world_cover(cover_image_url, world_id)
+        return get_public_url(cover_path)
+    except Exception as e:
+        logger.warning(f"Failed to save world cover: {e}, using provided URL")
+        return cover_image_url
 
 
 @router.post("/api/create_world")
@@ -45,6 +79,7 @@ async def create_world(
         scenarios = [
             {
                 "index": 0,
+                "title": (data.main_scenario_title or "Основной").strip() or "Основной",
                 "intro": data.intro_message,
                 "gm_instructions": data.gm_instructions or ""
             }
@@ -58,14 +93,7 @@ async def create_world(
                     "gm_instructions": alt.gm_instructions.strip()
                 })
 
-        cover_image = None
-        if data.cover_image_url:
-            try:
-                cover_path = await save_world_cover(data.cover_image_url, world_id)
-                cover_image = get_public_url(cover_path)
-            except Exception as e:
-                logger.warning(f"Failed to save world cover: {e}, using original URL")
-                cover_image = data.cover_image_url
+        cover_image = await _resolve_cover_image(data.cover_image_url, world_id)
 
         new_world = World(
             id=world_id,
@@ -126,6 +154,7 @@ async def update_world(
         scenarios = [
             {
                 "index": 0,
+                "title": (data.main_scenario_title or "Основной").strip() or "Основной",
                 "intro": data.intro_message,
                 "gm_instructions": data.gm_instructions or ""
             }
@@ -139,13 +168,10 @@ async def update_world(
                     "gm_instructions": alt.gm_instructions.strip()
                 })
 
-        if data.cover_image_url and data.cover_image_url != world.cover_image:
-            try:
-                cover_path = await save_world_cover(data.cover_image_url, world_id)
-                world.cover_image = get_public_url(cover_path)
-            except Exception as e:
-                logger.warning(f"Failed to save world cover: {e}, using provided URL")
-                world.cover_image = data.cover_image_url
+        cover_image_url = _normalize_cover_image_url(data.cover_image_url)
+        current_cover_image = _normalize_cover_image_url(world.cover_image)
+        if cover_image_url and cover_image_url != current_cover_image:
+            world.cover_image = await _resolve_cover_image(cover_image_url, world_id)
 
         world.name = data.name
         world.short_description = data.short_description or ""
@@ -165,3 +191,31 @@ async def update_world(
     logger.info(f"User {user.telegram_id} updated world '{world_id}'")
 
     return {"success": True}
+
+
+@router.post("/api/create_world/upload-cover")
+async def upload_world_cover(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    if file.content_type not in ALLOWED_COVER_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
+
+    content = await file.read()
+    if len(content) > MAX_COVER_SIZE:
+        raise HTTPException(status_code=400, detail="File size must be under 5MB")
+
+    import aiofiles
+
+    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    ext = ext_map.get(file.content_type, ".png")
+    temp_name = f"temp_{user.telegram_id}_{uuid.uuid4().hex[:12]}{ext}"
+
+    covers_dir = Path(IMAGES_STORAGE_PATH) / "world_covers"
+    covers_dir.mkdir(parents=True, exist_ok=True)
+
+    full_path = covers_dir / temp_name
+    async with aiofiles.open(full_path, "wb") as f:
+        await f.write(content)
+
+    return {"url": f"/images/world_covers/{temp_name}"}

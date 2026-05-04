@@ -3,10 +3,11 @@ from pathlib import Path
 import sys
 
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_session
+from shared.database.repositories import ChatRepository
 from shared.services.analytics import AnalyticsService
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -87,14 +88,14 @@ async def list_worlds(
     world_ids = [r["id"] for r in result]
     if world_ids:
         async with get_session() as session:
-            rows = await session.execute(
-                select(Chat.target_id, func.count(Chat.id))
-                .where(Chat.chat_type == "world", Chat.target_id.in_(world_ids))
-                .group_by(Chat.target_id)
-            )
-            chat_counts = {row[0]: int(row[1]) for row in rows.all()}
+            chat_repo = ChatRepository(session)
+            message_counts = await chat_repo.get_message_counts_batch("world", world_ids)
+            chat_session_counts = await chat_repo.get_chat_counts_batch("world", world_ids)
         for r in result:
-            r["chat_count"] = chat_counts.get(r["id"], 0)
+            message_count = message_counts.get(r["id"], 0)
+            r["message_count"] = message_count
+            r["chat_count"] = message_count
+            r["chat_session_count"] = chat_session_counts.get(r["id"], 0)
 
     return {"worlds": result}
 
@@ -132,6 +133,7 @@ async def get_world_for_edit(
         "name": world["name"],
         "short_description": world.get("short_description", ""),
         "description": world["description"],
+        "main_scenario_title": world.get("main_scenario_title", "Основной"),
         "gm_instructions": world.get("gm_instructions", ""),
         "intro_message": world.get("intro_message", ""),
         "alternate_scenarios": world.get("alternate_scenarios", []),
@@ -150,7 +152,7 @@ async def get_world_detail(world_id: str, user: User = Depends(get_current_user)
 
     scenarios = [{
         "index": 0,
-        "name": "Основной",
+        "name": world.get("main_scenario_title") or "Основной",
         "preview": world.get("intro_message", "")
     }]
 
@@ -173,10 +175,18 @@ async def get_world_detail(world_id: str, user: User = Depends(get_current_user)
             #     "": ""
             # }
         )
+        chat_repo = ChatRepository(session)
+        message_counts = await chat_repo.get_message_counts_batch("world", [world_id])
+        chat_session_counts = await chat_repo.get_chat_counts_batch("world", [world_id])
+
+    message_count = message_counts.get(world_id, 0)
 
     return {
         **world,
-        "scenarios": scenarios
+        "scenarios": scenarios,
+        "message_count": message_count,
+        "chat_count": message_count,
+        "chat_session_count": chat_session_counts.get(world_id, 0),
     }
 
 

@@ -332,6 +332,7 @@ async def generate_avatar(
         f"task:{task_id}",
         json.dumps({
             "status": "pending",
+            "user_id": user.telegram_id,
             "created_at": datetime.utcnow().isoformat()
         }),
         ex=3600

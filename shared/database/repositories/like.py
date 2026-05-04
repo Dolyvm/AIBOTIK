@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, text
 from sqlalchemy.exc import IntegrityError
 
 from shared.models import CharacterLike
@@ -40,6 +40,35 @@ class LikeRepository(BaseRepository[CharacterLike]):
         )
         await self.session.commit()
         return (result.rowcount or 0) > 0
+
+    async def toggle_like(self, user_id: int, character_id: str) -> tuple[bool, int]:
+        lock_key = f"character_like:{user_id}:{character_id}"
+        await self.session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended(CAST(:lock_key AS text), CAST(0 AS bigint))"
+                ")"
+            ),
+            {"lock_key": lock_key},
+        )
+
+        existing = await self.get_like(user_id, character_id)
+        if existing:
+            await self.session.execute(
+                delete(CharacterLike).where(
+                    CharacterLike.user_id == user_id,
+                    CharacterLike.character_id == character_id,
+                )
+            )
+            liked = False
+        else:
+            self.session.add(CharacterLike(user_id=user_id, character_id=character_id))
+            liked = True
+
+        await self.session.flush()
+        count = await self.get_like_count(character_id)
+        await self.session.commit()
+        return liked, count
 
     async def get_like_count(self, character_id: str) -> int:
         result = await self.session.execute(

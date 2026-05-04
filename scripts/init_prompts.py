@@ -100,6 +100,38 @@ PROMPT_METADATA = {
         "category": "image",
         "name": "NSFW Level 3 (Topless) - Negative"
     },
+    "nsfw_level_2_real": {
+        "category": "image",
+        "name": "Real NSFW Level 2 - Positive"
+    },
+    "nsfw_level_2_real_neg": {
+        "category": "image",
+        "name": "Real NSFW Level 2 - Negative"
+    },
+    "nsfw_level_2_real_female": {
+        "category": "image",
+        "name": "Real Female NSFW Level 2 - Positive"
+    },
+    "nsfw_level_2_real_female_neg": {
+        "category": "image",
+        "name": "Real Female NSFW Level 2 - Negative"
+    },
+    "nsfw_level_3_real": {
+        "category": "image",
+        "name": "Real NSFW Level 3 - Positive"
+    },
+    "nsfw_level_3_real_neg": {
+        "category": "image",
+        "name": "Real NSFW Level 3 - Negative"
+    },
+    "nsfw_level_3_real_female": {
+        "category": "image",
+        "name": "Real Female NSFW Level 3 - Positive"
+    },
+    "nsfw_level_3_real_female_neg": {
+        "category": "image",
+        "name": "Real Female NSFW Level 3 - Negative"
+    },
     "nsfw_level_4": {
         "category": "image",
         "name": "NSFW Level 4 (Nude) - Positive"
@@ -116,6 +148,38 @@ PROMPT_METADATA = {
         "category": "image",
         "name": "NSFW Level 5 (Explicit) - Negative"
     },
+    "nsfw_level_4_real": {
+        "category": "image",
+        "name": "Real NSFW Level 4 - Positive"
+    },
+    "nsfw_level_4_real_neg": {
+        "category": "image",
+        "name": "Real NSFW Level 4 - Negative"
+    },
+    "nsfw_level_4_real_female": {
+        "category": "image",
+        "name": "Real Female NSFW Level 4 - Positive"
+    },
+    "nsfw_level_4_real_female_neg": {
+        "category": "image",
+        "name": "Real Female NSFW Level 4 - Negative"
+    },
+    "nsfw_level_5_real": {
+        "category": "image",
+        "name": "Real NSFW Level 5 - Positive"
+    },
+    "nsfw_level_5_real_neg": {
+        "category": "image",
+        "name": "Real NSFW Level 5 - Negative"
+    },
+    "nsfw_level_5_real_female": {
+        "category": "image",
+        "name": "Real Female NSFW Level 5 - Positive"
+    },
+    "nsfw_level_5_real_female_neg": {
+        "category": "image",
+        "name": "Real Female NSFW Level 5 - Negative"
+    },
 
     "anime_base_positive": {
         "category": "image",
@@ -124,6 +188,30 @@ PROMPT_METADATA = {
     "anime_base_negative": {
         "category": "image",
         "name": "Anime Base Negative Prompt"
+    },
+    "real_base_positive": {
+        "category": "image",
+        "name": "Real Base Positive Prompt"
+    },
+    "real_base_negative": {
+        "category": "image",
+        "name": "Real Base Negative Prompt"
+    },
+    "real_base_positive_female": {
+        "category": "image",
+        "name": "Real Female Base Positive Prompt"
+    },
+    "real_base_negative_female": {
+        "category": "image",
+        "name": "Real Female Base Negative Prompt"
+    },
+    "real_base_positive_male": {
+        "category": "image",
+        "name": "Real Male Base Positive Prompt"
+    },
+    "real_base_negative_male": {
+        "category": "image",
+        "name": "Real Male Base Negative Prompt"
     },
     "manhwa_base_positive": {
         "category": "image",

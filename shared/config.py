@@ -13,22 +13,27 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 LLM_ACTIVE_MODEL_PROMPT_KEY = "llm_active_model"
+CHAT_MODEL = os.getenv("CHAT_MODEL", "deepseek/deepseek-v4-flash")
+STRUCTURED_MODEL = os.getenv("STRUCTURED_MODEL", "qwen/qwen3.6-flash")
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", CHAT_MODEL)
+PLAYER_MODEL = os.getenv("PLAYER_MODEL", CHAT_MODEL)
+
 LLM_MODEL_CHOICES = {
-    "deepseek": {
-        "label": "DeepSeek V3.2",
-        "model": "deepseek/deepseek-v3.2",
+    "deepseek_v4_flash": {
+        "label": "DeepSeek V4 Flash",
+        "model": "deepseek/deepseek-v4-flash",
     },
-    "grok": {
-        "label": "Grok 4.1 Fast",
-        "model": "x-ai/grok-4.1-fast",
+    "qwen3_6_flash": {
+        "label": "Qwen3.6 Flash (Structured)",
+        "model": "qwen/qwen3.6-flash",
     },
 }
-LLM_DEFAULT_PROVIDER = os.getenv("LLM_DEFAULT_PROVIDER", "grok")
+LLM_DEFAULT_PROVIDER = os.getenv("LLM_DEFAULT_PROVIDER", "deepseek_v4_flash")
 LLM_DEFAULT_ACTIVE_MODEL = LLM_MODEL_CHOICES.get(
     LLM_DEFAULT_PROVIDER,
-    LLM_MODEL_CHOICES["grok"],
+    LLM_MODEL_CHOICES["deepseek_v4_flash"],
 )["model"]
-LLM_MODEL = os.getenv("LLM_MODEL", LLM_DEFAULT_ACTIVE_MODEL)
+LLM_MODEL = os.getenv("LLM_MODEL", CHAT_MODEL)
 
 LLM_MAX_TOKENS_CHARACTER = 1200
 LLM_MAX_TOKENS_WORLD = 1200
@@ -41,9 +46,8 @@ MAX_HISTORY_LENGTH = 10
 
 
 SCENE_ANALYZER_ENABLED = os.getenv("SCENE_ANALYZER_ENABLED", "true").lower() == "true"
-SCENE_ANALYZER_MODEL = os.getenv("SCENE_ANALYZER_MODEL", LLM_DEFAULT_ACTIVE_MODEL) 
+SCENE_ANALYZER_MODEL = os.getenv("SCENE_ANALYZER_MODEL", STRUCTURED_MODEL)
 SCENE_ANALYZER_TIMEOUT = int(os.getenv("SCENE_ANALYZER_TIMEOUT", "10"))
-STRUCTURED_MODEL = os.getenv("STRUCTURED_MODEL", "qwen/qwen3-30b-a3b-instruct-2507")
 
 IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  

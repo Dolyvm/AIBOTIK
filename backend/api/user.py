@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -10,14 +8,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, UserRepository, LikeRepository
-from shared.services.content_loader import get_character, get_world
 from shared.services.subscription import get_subscription_service
 from shared.subscription_plans import PLAN_LIMITS
-from shared.models import User, UserSettings, Character, World, Chat
+from shared.models import User, UserSettings, Character, World
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_user_id_match
 
@@ -34,7 +31,7 @@ def _scenario_display_name(sc: dict) -> str:
     """Generate human-readable scenario name (mirrors characters.py logic)."""
     idx = sc.get("index", 0)
     if idx == 0:
-        return "Основной"
+        return sc.get("title") or "Основной"
     return sc.get("title") or f"Сценарий {idx}"
 
 
@@ -181,19 +178,12 @@ async def get_author_profile(
         world_ids = [w.id for w in worlds]
 
         like_repo = LikeRepository(session)
+        chat_repo = ChatRepository(session)
 
-        async def _chat_counts(chat_type: str, ids: list[str]) -> dict[str, int]:
-            if not ids:
-                return {}
-            rows = await session.execute(
-                select(Chat.target_id, func.count(Chat.id))
-                .where(Chat.chat_type == chat_type, Chat.target_id.in_(ids))
-                .group_by(Chat.target_id)
-            )
-            return {row[0]: int(row[1]) for row in rows.all()}
-
-        chat_counts_chars = await _chat_counts("character", char_ids)
-        chat_counts_worlds = await _chat_counts("world", world_ids)
+        message_counts_chars = await chat_repo.get_message_counts_batch("character", char_ids)
+        message_counts_worlds = await chat_repo.get_message_counts_batch("world", world_ids)
+        chat_session_counts_chars = await chat_repo.get_chat_counts_batch("character", char_ids)
+        chat_session_counts_worlds = await chat_repo.get_chat_counts_batch("world", world_ids)
         like_counts = await like_repo.get_like_counts_batch(char_ids)
         user_likes = await like_repo.get_liked_character_ids(user.telegram_id, char_ids)
 
@@ -217,6 +207,7 @@ async def get_author_profile(
     characters_payload = []
     for c in characters:
         visual = c.visual_data or {}
+        message_count = message_counts_chars.get(c.id, 0)
         characters_payload.append({
             "id": c.id,
             "name": c.name,
@@ -227,13 +218,16 @@ async def get_author_profile(
             "gender": visual.get("gender", "female"),
             "is_nsfw": c.is_nsfw,
             "is_public": bool(c.is_public),
-            "chat_count": chat_counts_chars.get(c.id, 0),
+            "message_count": message_count,
+            "chat_count": message_count,
+            "chat_session_count": chat_session_counts_chars.get(c.id, 0),
             "like_count": like_counts.get(c.id, 0),
             "is_liked": c.id in user_likes,
         })
 
     worlds_payload = []
     for w in worlds:
+        message_count = message_counts_worlds.get(w.id, 0)
         worlds_payload.append({
             "id": w.id,
             "name": w.name,
@@ -241,12 +235,17 @@ async def get_author_profile(
             "cover_image": w.cover_image or "",
             "tags": w.tags or [],
             "is_nsfw": w.is_nsfw,
-            "chat_count": chat_counts_worlds.get(w.id, 0),
+            "message_count": message_count,
+            "chat_count": message_count,
+            "chat_session_count": chat_session_counts_worlds.get(w.id, 0),
         })
 
     total_likes = sum(c["like_count"] for c in characters_payload)
-    total_chats = sum(c["chat_count"] for c in characters_payload) + sum(
-        w["chat_count"] for w in worlds_payload
+    total_messages = sum(c["message_count"] for c in characters_payload) + sum(
+        w["message_count"] for w in worlds_payload
+    )
+    total_chat_sessions = sum(c["chat_session_count"] for c in characters_payload) + sum(
+        w["chat_session_count"] for w in worlds_payload
     )
 
     return {
@@ -260,7 +259,9 @@ async def get_author_profile(
         },
         "stats": {
             "total_likes": total_likes,
-            "total_chats": total_chats,
+            "total_messages": total_messages,
+            "total_chats": total_messages,
+            "total_chat_sessions": total_chat_sessions,
             "characters_count": len(characters_payload),
             "worlds_count": len(worlds_payload),
         },

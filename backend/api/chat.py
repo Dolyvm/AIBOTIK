@@ -24,6 +24,7 @@ from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
+from shared.config import CHAT_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
@@ -40,7 +41,11 @@ def _get_display_name(user: User) -> str:
     return user.username or "User"
 
 
-llm_client = LLMClient()
+llm_client = LLMClient(
+    model=CHAT_MODEL,
+    provider={"sort": "throughput"},
+    reasoning={"enabled": False},
+)
 context_manager = ContextManager(llm_client)
 
 
@@ -157,9 +162,6 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
         return {
             "response": result["text"],
-            "image_url": result.get("image_url"),
-            "nsfw_level": result.get("nsfw_level"),
-            "image_task_id": result.get("image_task_id")
         }
 
     except (UsageLimitExceeded, HTTPException):
@@ -333,9 +335,6 @@ async def auto_continue_dialogue(chat_id: int, user: User = Depends(get_current_
         return {
             "player_message": result["player_message"],
             "character_response": result["character_response"],
-            "image_url": result.get("image_url"),
-            "nsfw_level": result.get("nsfw_level"),
-            "image_task_id": result.get("image_task_id"),
             "affinity": result["affinity"],
             "arousal": result["arousal"],
             "mood": chat.current_mood,

@@ -480,8 +480,8 @@
                         <div class="card-title">
                             {{ char.name }}<i v-if="char.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
-                            <div class="card-counters" v-if="char.chat_count !== undefined || char.like_count !== undefined">
-                                <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count || 0 }}</span>
+                            <div class="card-counters" v-if="char.message_count !== undefined || char.chat_count !== undefined || char.like_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count ?? 0 }}</span>
                                 <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count || 0 }}</span>
                             </div>
                         </div>
@@ -511,8 +511,8 @@
                         <div class="card-title">
                             {{ world.name }}<i v-if="world.is_verified" class="fas fa-check-circle verified-badge"></i>
                             <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
-                            <div class="card-counters" v-if="world.chat_count !== undefined">
-                                <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count || 0 }}</span>
+                            <div class="card-counters" v-if="world.message_count !== undefined || world.chat_count !== undefined">
+                                <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count ?? 0 }}</span>
                             </div>
                         </div>
                     </div>
@@ -525,6 +525,7 @@
                          class="chat-row"
                          :style="chatSwipeStyles[chat.id] || {}"
                          @click="handleChatRowClick(chat.id)"
+                         @contextmenu.prevent.stop="requestChatDelete(chat.id)"
                          @touchstart.passive="onChatSwipeStart($event, chat.id)"
                          @touchmove.passive="onChatSwipeMove($event, chat.id)"
                          @touchend="onChatSwipeEnd($event, chat.id)">
@@ -585,8 +586,8 @@
                 <!-- Stats -->
                 <div class="stat-grid" v-if="myAuthorProfile">
                     <div class="stat-card">
-                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_chats }}</div>
-                        <div class="stat-card__label">Чатов</div>
+                        <div class="stat-card__value">{{ myAuthorProfile.stats.total_messages ?? myAuthorProfile.stats.total_chats }}</div>
+                        <div class="stat-card__label">Сообщений</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-card__value">{{ myAuthorProfile.stats.total_likes }}</div>
@@ -752,7 +753,7 @@
                                     {{ char.name }}
                                     <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count }}</span>
                                         <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
                                     </div>
                                 </div>
@@ -770,7 +771,7 @@
                                     {{ world.name }}
                                     <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -827,8 +828,8 @@
                 <div class="profile-content">
                     <div class="stat-grid">
                         <div class="stat-card">
-                            <div class="stat-card__value">{{ authorProfileData.stats.total_chats }}</div>
-                            <div class="stat-card__label">Чатов</div>
+                            <div class="stat-card__value">{{ authorProfileData.stats.total_messages ?? authorProfileData.stats.total_chats }}</div>
+                            <div class="stat-card__label">Сообщений</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-card__value">{{ authorProfileData.stats.total_likes }}</div>
@@ -857,7 +858,7 @@
                                     {{ char.name }}
                                     <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count }}</span>
                                         <span class="card-counter"><i class="fas fa-heart"></i> {{ char.like_count }}</span>
                                     </div>
                                 </div>
@@ -876,7 +877,7 @@
                                     {{ world.name }}
                                     <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                                     <div class="card-counters">
-                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.chat_count }}</span>
+                                        <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1106,7 +1107,14 @@
                 <!-- Шаг 3: Внешность и аватар -->
                 <div v-if="ccStep === 2">
                     <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Внешность и аватар</h3>
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+                            <h3 class="cc-summary-title" style="margin:0;">Внешность и аватар</h3>
+                            <button class="change-step-button secondary"
+                                    @click="openAppearanceInstruction"
+                                    style="padding:8px 10px; min-width:auto; font-size:12px; flex-shrink:0;">
+                                <i class="fas fa-file-pdf"></i> Инструкция заполнения
+                            </button>
+                        </div>
 
                         <div class="cc-field">
                             <label>Внешность (EN): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
@@ -1261,8 +1269,13 @@
                         <h3 class="cc-summary-title">Сценарий и введение</h3>
 
                         <div class="cc-field">
-                            <label>Вступительное сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Вступительное сообщение, когда игрок входит в мир..."></textarea>
+                            <label>Название основного сценария:</label>
+                            <input v-model="createWorldData.main_scenario_title" type="text" class="cc-name-input" placeholder="Основной">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Стартовое сообщение основного сценария: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Сообщение, которое игрок увидит при входе в основной сценарий..."></textarea>
                         </div>
 
                         <div class="cc-field">
@@ -1279,8 +1292,8 @@
                                     <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название сценария">
                                 </div>
                                 <div class="cc-field" style="margin-bottom: 8px;">
-                                    <label style="font-size: 13px;">Вступление:</label>
-                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Вступительное сообщение сценария..."></textarea>
+                                    <label style="font-size: 13px;">Стартовое сообщение:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Сообщение, которое игрок увидит при входе в этот сценарий..."></textarea>
                                 </div>
                                 <div class="cc-field">
                                     <label style="font-size: 13px;">Инструкции для ГМ:</label>
@@ -1300,8 +1313,19 @@
                         <h3 class="cc-summary-title">Обложка и финал</h3>
 
                         <div class="cc-field">
-                            <label>URL обложки:</label>
-                            <input v-model="createWorldData.cover_image_url" type="url" class="cc-name-input" placeholder="https://example.com/image.jpg">
+                            <label>Обложка мира:</label>
+                            <button class="change-step-button"
+                                    :disabled="isUploadingWorldCover"
+                                    @click="$refs.worldCoverInput.click()"
+                                    style="width: 100%; font-size: 13px;">
+                                <i :class="isUploadingWorldCover ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
+                                {{ isUploadingWorldCover ? 'Загружаю...' : (createWorldData.cover_image_url ? 'Заменить фото' : 'Загрузить фото') }}
+                            </button>
+                            <input type="file"
+                                   ref="worldCoverInput"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   style="display: none;"
+                                   @change="handleWorldCoverUpload($event)">
                         </div>
 
                         <div v-if="createWorldData.cover_image_url" class="cc-preview-section" style="margin-top: 8px; margin-bottom: 16px;">
@@ -1535,6 +1559,7 @@
 
                 // Chat State
                 const currentChatId = ref(null);
+                const currentChatSessionId = ref(0);
                 const currentChatName = ref('');
                 const currentChatAvatar = ref('');
                 const currentChatType = ref('character');
@@ -1569,7 +1594,7 @@
                 // Create World
                 const defaultCreateWorldData = () => ({
                     name: '', short_description: '', description: '', gm_instructions: '',
-                    intro_message: '', alternate_scenarios: [],
+                    main_scenario_title: 'Основной', intro_message: '', alternate_scenarios: [],
                     cover_image_url: '', tags_str: '',
                     is_public: true,
                 });
@@ -1577,6 +1602,8 @@
                 const cwStep = ref(0);
                 const editingWorldId = ref(null);
                 const isCreatingWorld = ref(false);
+                const isUploadingWorldCover = ref(false);
+                const worldCoverInput = ref(null);
 
                 const undoTargetIndex = computed(() => {
                     if (isWaitingResponse.value || isStreaming.value || isUndoing.value) return -1;
@@ -1714,6 +1741,21 @@
 
                 const openSupport = () => {
                     tg.openTelegramLink('https://t.me/d0lyvm');
+                };
+
+                const openAppearanceInstruction = async () => {
+                    const url = `${window.location.origin}/character-appearance-guide.pdf`;
+                    try {
+                        const res = await fetch(url, { method: 'HEAD' });
+                        if (!res.ok) {
+                            showToast('Инструкция будет добавлена позже', 'error');
+                            return;
+                        }
+                        if (tg.openLink) tg.openLink(url);
+                        else window.open(url, '_blank');
+                    } catch (e) {
+                        showToast('Инструкция будет добавлена позже', 'error');
+                    }
                 };
 
                 // Age confirmation
@@ -2335,7 +2377,7 @@
                             ...chatSwipeStyles.value,
                             [chatId]: { transform: 'translateX(-80px)', transition: 'transform 0.2s ease' }
                         };
-                        confirmDeleteChatId.value = chatId;
+                        requestChatDelete(chatId);
                     } else {
                         chatSwipeStyles.value = {
                             ...chatSwipeStyles.value,
@@ -2347,6 +2389,13 @@
                             chatSwipeStyles.value = s;
                         }, 300);
                     }
+                };
+
+                const requestChatDelete = (chatId) => {
+                    if (!chatId) return;
+                    chatWasSwiped.value[chatId] = true;
+                    setTimeout(() => { delete chatWasSwiped.value[chatId]; }, 100);
+                    confirmDeleteChatId.value = chatId;
                 };
 
                 const confirmChatDelete = async () => {
@@ -2391,8 +2440,23 @@
                     openChat(chatId);
                 };
 
-                const openChat = async (chatId, metaOverride = null) => {
+                const startChatSession = (chatId = null) => {
+                    currentChatSessionId.value += 1;
                     currentChatId.value = chatId;
+                    isUndoing.value = false;
+                    return currentChatSessionId.value;
+                };
+
+                const isCurrentChatSession = (chatId, sessionId) => {
+                    return currentChatId.value === chatId && currentChatSessionId.value === sessionId;
+                };
+
+                const isActiveChat = (chatId, sessionId) => {
+                    return isCurrentChatSession(chatId, sessionId) && currentView.value === 'chat';
+                };
+
+                const openChat = async (chatId, metaOverride = null) => {
+                    const sessionId = startChatSession(chatId);
                     isWaitingResponse.value = true;
 
                     // Если передали мета-данные (при создании), используем их
@@ -2412,6 +2476,7 @@
 
                     try {
                         const res = await axios.get(`/api/chat/${chatId}/history`);
+                        if (!isCurrentChatSession(chatId, sessionId)) return;
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
                         currentChatCustomAvatar.value = res.data.custom_avatar || false;
@@ -2419,10 +2484,13 @@
                         await nextTick();
                         scrollToBottom();
                     } catch (e) {
+                        if (!isCurrentChatSession(chatId, sessionId)) return;
                         showToast('Ошибка открытия чата');
                         currentView.value = 'selection';
                     } finally {
-                        isWaitingResponse.value = false;
+                        if (isCurrentChatSession(chatId, sessionId)) {
+                            isWaitingResponse.value = false;
+                        }
                     }
                 };
 
@@ -2456,17 +2524,22 @@
                 };
 
                 const backToMenu = () => {
+                    startChatSession(null);
                     currentView.value = 'selection';
                     chatHistory.value = [];
                     currentCharacterId.value = null;
                     currentChatCustomAvatar.value = false;
+                    isWaitingResponse.value = false;
+                    isStreaming.value = false;
                     loadChats(); // Refresh list to update dates
                 };
 
                 // --- CHAT LOGIC ---
                 const sendMessage = async () => {
                     const text = inputMessage.value.trim();
-                    if (!text || isWaitingResponse.value || isStreaming.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || !text || isWaitingResponse.value || isStreaming.value) return;
 
                     chatHistory.value.push({ role: 'user', content: text });
                     inputMessage.value = '';
@@ -2475,60 +2548,25 @@
                     scrollToBottom();
 
                     try {
-                        const res = await axios.post(`/api/chat/${currentChatId.value}/send`, { text });
+                        const res = await axios.post(`/api/chat/${sourceChatId}/send`, { text });
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
-                        await typeWriter(res.data.response);
-
-                        // Handle auto-photo task if present
-                        if (res.data.image_task_id) {
-                            // Add placeholder for generating image
-                            const placeholderIndex = chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: null,
-                                isGenerating: true,
-                                nsfw_level: 0
-                            }) - 1;
-                            scrollToBottom();
-
-                            // Poll for image completion in background
-                            pollImageTask(
-                                res.data.image_task_id,
-                                (result) => {
-                                    chatHistory.value[placeholderIndex] = {
-                                        role: 'assistant',
-                                        avatar: result.url,
-                                        nsfw_level: result.nsfw_level || 0
-                                    };
-                                    scrollToBottom();
-                                },
-                                (error) => {
-                                    // Remove placeholder on error
-                                    chatHistory.value.splice(placeholderIndex, 1);
-                                    console.error('Auto-photo failed:', error);
-                                }
-                            );
-                        } else if (res.data.image_url) {
-                            // Sync fallback - got URL directly
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: res.data.image_url,
-                                nsfw_level: res.data.nsfw_level || 0
-                            });
-                            scrollToBottom();
-                        }
+                        await typeWriter(res.data.response, sourceChatId, sourceSessionId);
                     } catch (e) {
-                        if (e.response?.status !== 429) {
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
                             chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
                         }
                     } finally {
-                        isWaitingResponse.value = false;
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                            isStreaming.value = false;
+                        }
                     }
                 };
 
                 // Poll for image task completion
-                const pollImageTask = async (taskId, onComplete, onError) => {
+                const pollImageTask = async (taskId, onComplete, onError, options = {}) => {
                     const maxAttempts = 300; // 15 minutes max (RunPod Serverless cold starts can be slow)
                     let attempts = 0;
 
@@ -2538,7 +2576,13 @@
                             const status = statusRes.data.status;
 
                             if (status === 'completed') {
-                                onComplete(statusRes.data.result);
+                                const result = statusRes.data.result || {};
+                                const resultChatId = statusRes.data.chat_id ?? result.chat_id;
+                                if (options.expectedChatId !== undefined && Number(resultChatId) !== Number(options.expectedChatId)) {
+                                    onError('Task chat mismatch');
+                                    return;
+                                }
+                                onComplete(result);
                                 return;
                             } else if (status === 'failed') {
                                 onError(statusRes.data.error || 'Generation failed');
@@ -2559,26 +2603,38 @@
                 };
 
                 const requestPhoto = async () => {
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || !isActiveChat(sourceChatId, sourceSessionId)) return;
+
                     isWaitingResponse.value = true;
                     try {
-                        const res = await axios.post(`/api/image-gen/${currentChatId.value}/generate`);
+                        const res = await axios.post(`/api/image-gen/${sourceChatId}/generate`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         // Check if we got task_id (async) or url (sync fallback)
                         if (res.data.task_id) {
+                            const clientTaskId = res.data.task_id;
                             // Add placeholder message
-                            const placeholderIndex = chatHistory.value.push({
+                            chatHistory.value.push({
                                 role: 'assistant',
                                 avatar: null,
                                 isGenerating: true,
-                                nsfw_level: 0
-                            }) - 1;
+                                nsfw_level: 0,
+                                clientTaskId,
+                                task_id: clientTaskId
+                            });
                             scrollToBottom();
                             isWaitingResponse.value = false;
 
                             // Start polling in background
                             pollImageTask(
-                                res.data.task_id,
+                                clientTaskId,
                                 (result) => {
+                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                                    if (result.chat_id !== undefined && Number(result.chat_id) !== Number(sourceChatId)) return;
+                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
+                                    if (placeholderIndex === -1) return;
                                     // Update placeholder with actual image
                                     chatHistory.value[placeholderIndex] = {
                                         role: 'assistant',
@@ -2589,13 +2645,19 @@
                                     isWaitingResponse.value = false;
                                 },
                                 (error) => {
+                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
                                     // Remove placeholder and show error
-                                    chatHistory.value.splice(placeholderIndex, 1);
+                                    if (placeholderIndex !== -1) {
+                                        chatHistory.value.splice(placeholderIndex, 1);
+                                    }
                                     showToast('Не удалось создать фото: ' + error);
                                     isWaitingResponse.value = false;
-                                }
+                                },
+                                { expectedChatId: sourceChatId }
                             );
                         } else if (res.data.url) {
+                            if (res.data.chat_id !== undefined && Number(res.data.chat_id) !== Number(sourceChatId)) return;
                             // Sync fallback - got URL directly
                             chatHistory.value.push({
                                 role: 'assistant',
@@ -2609,30 +2671,43 @@
                             isWaitingResponse.value = false;
                         }
                     } catch (e) {
-                        if (e.response?.status !== 429) {
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
                             showToast('Не удалось создать фото');
                         }
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                        }
                     }
                 };
 
                 const resetChat = async () => {
                     if (!confirm('Начать сценарий заново? Память будет очищена.')) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/reset`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/reset`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         chatHistory.value = response.data.first_message
                             ? [{ role: 'assistant', content: response.data.first_message }]
                             : [];
                         await nextTick();
                         scrollToBottom();
                         showToast('Сценарий сброшен', 'success');
-                    } catch (e) { showToast('Ошибка сброса'); }
+                    } catch (e) {
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка сброса');
+                        }
+                    }
                 };
 
                 const undoLastTurn = async () => {
                     const idx = undoTargetIndex.value;
                     if (idx < 1 || isUndoing.value) return;
                     if (!confirm('Удалить последние два сообщения?')) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
 
                     isUndoing.value = true;
                     const h = chatHistory.value;
@@ -2644,19 +2719,28 @@
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
 
                     try {
-                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
-                        showToast('Сообщения удалены', 'success');
+                        await axios.delete(`/api/chat/${sourceChatId}/undo`);
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Сообщения удалены', 'success');
+                        }
                     } catch (e) {
-                        chatHistory.value.splice(userIdx, 0, ...removed);
-                        showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            chatHistory.value.splice(userIdx, 0, ...removed);
+                            showToast(e.response?.data?.detail || 'Ошибка отмены', 'error');
+                        }
                     } finally {
-                        isUndoing.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isUndoing.value = false;
+                        }
                     }
                 };
 
                 const editLastMessage = async () => {
                     const idx = undoTargetIndex.value;
                     if (idx < 1 || isUndoing.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId) return;
 
                     const h = chatHistory.value;
                     const userIdx = idx - 1;
@@ -2670,7 +2754,8 @@
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
 
                     try {
-                        await axios.delete(`/api/chat/${currentChatId.value}/undo`);
+                        await axios.delete(`/api/chat/${sourceChatId}/undo`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
                         inputMessage.value = oldText;
                         await nextTick();
                         if (inputField.value) {
@@ -2678,23 +2763,35 @@
                             autoResizeTextarea();
                         }
                     } catch (e) {
-                        chatHistory.value.splice(userIdx, 0, ...removed);
-                        showToast(e.response?.data?.detail || 'Ошибка', 'error');
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            chatHistory.value.splice(userIdx, 0, ...removed);
+                            showToast(e.response?.data?.detail || 'Ошибка', 'error');
+                        }
                     } finally {
-                        isUndoing.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isUndoing.value = false;
+                        }
                     }
                 };
 
                 // --- UTILS ---
-                const typeWriter = async (text) => {
-                    const msgIndex = chatHistory.value.push({ role: 'assistant', content: "" }) - 1;
+                const typeWriter = async (text, sourceChatId, sourceSessionId) => {
+                    if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
+                    text = String(text || '');
+                    const message = { role: 'assistant', content: "" };
+                    chatHistory.value.push(message);
                     const chunk = 5; // chars per tick
                     for (let i = 0; i < text.length; i += chunk) {
-                        chatHistory.value[msgIndex].content += text.slice(i, i + chunk);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
+                        if (!chatHistory.value.includes(message)) return false;
+                        message.content += text.slice(i, i + chunk);
                         if (i % 20 === 0) scrollToBottom();
                         await new Promise(r => setTimeout(r, 15));
                     }
-                    scrollToBottom();
+                    if (isActiveChat(sourceChatId, sourceSessionId)) {
+                        scrollToBottom();
+                    }
+                    return true;
                 };
 
                 const scrollToBottom = () => {
@@ -2799,12 +2896,15 @@
 
                 // --- AUTO CONTINUE ---
                 const autoContinue = async () => {
-                    if (!currentChatId.value || isWaitingResponse.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || isWaitingResponse.value) return;
 
                     isWaitingResponse.value = true;
 
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/auto-continue`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/auto-continue`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         const data = response.data;
 
@@ -2817,56 +2917,62 @@
 
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
-                        await typeWriter(data.character_response);
-
-                        if (data.image_url) {
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: data.image_url,
-                                nsfw_level: data.nsfw_level || 0,
-                                timestamp: new Date().toISOString()
-                            });
-                        }
+                        await typeWriter(data.character_response, sourceChatId, sourceSessionId);
 
                         if (data.affinity !== undefined) {
                         }
                         if (data.arousal !== undefined) {
                         }
 
-                        await nextTick();
-                        scrollToBottom();
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            await nextTick();
+                            scrollToBottom();
+                        }
 
                     } catch (error) {
                         console.error('Auto-continue failed:', error);
                         const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
-                        showToast('Ошибка: ' + errorMsg);
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка: ' + errorMsg);
+                            isWaitingResponse.value = false;
+                        }
                     } finally {
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isStreaming.value = false;
+                        }
                     }
                 };
 
                 const generateAutoReply = async () => {
-                    if (!currentChatId.value || isWaitingResponse.value) return;
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || isWaitingResponse.value) return;
                     inputMessage.value = ''
                     isWaitingResponse.value = true;
 
                     try {
-                        const response = await axios.post(`/api/chat/${currentChatId.value}/generate-auto-reply`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/generate-auto-reply`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
                         const data = response.data;
                         inputMessage.value = data.player_message;
                         await nextTick();
-                        autoResizeTextarea();
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            autoResizeTextarea();
+                        }
 
                     } catch (error) {
                         console.error('Auto-continue failed:', error);
                         const errorMsg = error.response?.data?.detail || error.message || 'Ошибка генерации';
-                        showToast('Ошибка: ' + errorMsg);
-                        isWaitingResponse.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            showToast('Ошибка: ' + errorMsg);
+                            isWaitingResponse.value = false;
+                        }
                     } finally {
-                        isWaitingResponse.value = false;
-                        isStreaming.value = false;
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isWaitingResponse.value = false;
+                            isStreaming.value = false;
+                        }
                     }
                 };
 
@@ -3201,6 +3307,7 @@
                             short_description: w.short_description || '',
                             description: w.description,
                             gm_instructions: w.gm_instructions || '',
+                            main_scenario_title: w.main_scenario_title || 'Основной',
                             intro_message: w.intro_message || '',
                             alternate_scenarios: (w.alternate_scenarios || []).map(a => ({
                                 title: a.title || '', intro: a.intro || '', gm_instructions: a.gm_instructions || ''
@@ -3273,6 +3380,31 @@
                     createWorldData.value.alternate_scenarios.splice(idx, 1);
                 }
 
+                const handleWorldCoverUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                        showToast('Файл слишком большой (макс. 5MB)');
+                        event.target.value = '';
+                        return;
+                    }
+                    isUploadingWorldCover.value = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await axios.post('/api/create_world/upload-cover', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        createWorldData.value.cover_image_url = res.data.url;
+                        showToast('Фото загружено!');
+                    } catch (e) {
+                        showToast('Ошибка загрузки фото');
+                    } finally {
+                        isUploadingWorldCover.value = false;
+                        event.target.value = '';
+                    }
+                };
+
                 const createWorldFinal = async () => {
                     const d = createWorldData.value;
                     if (!d.name || !d.description || !d.intro_message) {
@@ -3288,6 +3420,7 @@
                             short_description: d.short_description,
                             description: d.description,
                             gm_instructions: d.gm_instructions,
+                            main_scenario_title: d.main_scenario_title || 'Основной',
                             intro_message: d.intro_message,
                             alternate_scenarios: d.alternate_scenarios.filter(a => a.title.trim() || a.intro.trim()),
                             cover_image_url: d.cover_image_url || null,
@@ -3370,6 +3503,7 @@
                     createWorldOnClick, editWorldOnClick, deleteWorld, editingWorldId, createWorldData,
                     cwStep, cwNextStep, cwPrevStep, cwGoToStep,
                     addAlternateScenario, removeAlternateScenario,
+                    handleWorldCoverUpload, isUploadingWorldCover, worldCoverInput,
                     isCreatingWorld, createWorldFinal,
                     // Profile
                     userProfile, profileSettings, loadProfile,
@@ -3380,7 +3514,7 @@
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
                     // Documents & Support
-                    openDocument, openSupport,
+                    openDocument, openSupport, openAppearanceInstruction,
                     // Age confirmation
                     showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur
@@ -3389,7 +3523,7 @@
                     // Swipe to delete chat
                     chatSwipeStyles, handleChatRowClick,
                     onChatSwipeStart, onChatSwipeMove, onChatSwipeEnd,
-                    confirmDeleteChatId, confirmChatDelete, cancelChatDelete
+                    requestChatDelete, confirmDeleteChatId, confirmChatDelete, cancelChatDelete
                 };
             }
         }).mount('#app');

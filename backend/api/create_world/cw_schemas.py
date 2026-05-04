@@ -13,6 +13,7 @@ class CreateWorldRequest(BaseModel):
     short_description: Optional[str] = None
     description: str
     gm_instructions: Optional[str] = ""
+    main_scenario_title: Optional[str] = "Основной"
     intro_message: str
     alternate_scenarios: list[AlternateScenario] = []
     cover_image_url: Optional[str] = None

@@ -1,30 +1,128 @@
-import hashlib
 import json
 import logging
 import re
-from datetime import datetime
 from typing import Optional
-from uuid import uuid4
 
 from shared.services.llm import LLMClient, LLMError, LLMResponse
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
 from shared.services.cache import get_cache
-from shared.services.redis_client import get_redis
 from shared.config import (
     SUMMARY_THRESHOLD,
     MAX_HISTORY_LENGTH,
     LLM_MAX_TOKENS_CHARACTER,
     LLM_MAX_TOKENS_WORLD,
+    SUMMARY_MODEL,
+    PLAYER_MODEL,
 )
 from shared.database import get_session
-from shared.database.repositories import ChatRepository, MessageRepository, GeneratedImageRepository
+from shared.database.repositories import ChatRepository, MessageRepository
 from shared.models import Chat
-from shared.services.model_types import validate_model_gender
+
+logger = logging.getLogger(__name__)
+
+PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT = (
+    "Ты генерируешь только одно следующее сообщение игрока для интерактивного "
+    "романа. Ответ должен быть от первого лица игрока на русском языке, без "
+    "JSON, meta, заголовков, role labels, пояснений и текста персонажа."
+)
+PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION = """
+ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОТКЛОНЁН:
+{bad_response}
+
+Исправь ошибку. Верни только одну короткую реплику или действие игрока от первого лица.
+Запрещено писать за персонажа, использовать "он/она сказала", <meta>, JSON, markdown или role labels.
+"""
+PLAYER_AUTO_MESSAGE_FALLBACK = "Я смотрю внимательнее и тихо отвечаю: «Я слушаю.»"
+
+_PLAYER_ROLE_LABEL_RE = re.compile(
+    r"(?im)^\s*(?:system|assistant|developer|user|player|персонаж|игрок|"
+    r"ассистент|пользователь|роль|контекст|инструкции|задача)\s*[:#]"
+)
+_PLAYER_LEADING_LABEL_RE = re.compile(
+    r"(?i)^\s*(?:игрок|player|user|пользователь)\s*[:：-]\s*"
+)
+_CHARACTER_ATTRIBUTION_RE = re.compile(
+    r"\b(?:сказал|сказала|ответил|ответила|произн[её]с|произнесла|"
+    r"прошептал|прошептала|проговорил|проговорила|усмехнулся|усмехнулась|"
+    r"улыбнулся|улыбнулась|вздохнул|вздохнула|кивнул|кивнула)\s+(?:он|она)\b"
+    r"|\b(?:он|она)\s+(?:сказал|сказала|ответил|ответила|произн[её]с|"
+    r"произнесла|прошептал|прошептала|проговорил|проговорила|усмехнулся|"
+    r"усмехнулась|улыбнулся|улыбнулась|вздохнул|вздохнула|кивнул|кивнула)\b",
+    re.IGNORECASE,
+)
+_PLAYER_SYSTEM_MARKERS = (
+    "###",
+    "<meta",
+    "</meta",
+    "system prompt",
+    "developer message",
+    "системный протокол",
+    "системное сообщение",
+    "инструкции",
+    "роль",
+    "контекст",
+    "задача",
+)
+
+
+def _clean_generated_player_message(content: str) -> str:
+    text = (content or "").strip()
+    text = re.sub(r"```(?:[a-zA-Z0-9_-]+)?\s*", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?is)<meta\b[^>]*>.*?</meta>\s*", "", text)
+    text = _PLAYER_LEADING_LABEL_RE.sub("", text).strip()
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip(" \n\t\"'")
+
+
+def _invalid_player_message_reason(content: str) -> Optional[str]:
+    text = (content or "").strip()
+    if not text:
+        return "empty"
+
+    if len(text) > 700:
+        return "too_long"
+
+    if text.count("\n\n") > 2:
+        return "too_many_paragraphs"
+
+    if text[:1] in ("{", "["):
+        return "structured_output"
+
+    if _PLAYER_ROLE_LABEL_RE.search(text):
+        return "role_label"
+
+    lowered = text.casefold()
+    for marker in _PLAYER_SYSTEM_MARKERS:
+        if marker in lowered:
+            return "system_marker"
+
+    if _CHARACTER_ATTRIBUTION_RE.search(text):
+        return "character_attribution"
+
+    return None
+
+
+def _prepare_generated_player_message(content: str) -> tuple[str, Optional[str]]:
+    text = _clean_generated_player_message(content)
+    return text, _invalid_player_message_reason(text)
+
 
 class ContextManager:
 
     def __init__(self, llm_client: LLMClient, summary_threshold: int = None):
         self.llm = llm_client
+        self.summary_llm = LLMClient(
+            model=SUMMARY_MODEL,
+            provider={"sort": "throughput"},
+            reasoning={"enabled": False},
+        )
+        self.player_llm = LLMClient(
+            model=PLAYER_MODEL,
+            provider={"sort": "throughput"},
+            reasoning={"enabled": False},
+        )
         self.summary_threshold = summary_threshold or SUMMARY_THRESHOLD
 
     async def process_turn(
@@ -97,7 +195,14 @@ class ContextManager:
                 )
             elif world:
                 max_tokens = LLM_MAX_TOKENS_WORLD
-                system_prompt = await build_world_prompt(world, chat.summary, user_name, allow_nsfw, location=chat.current_location or "")
+                system_prompt = await build_world_prompt(
+                    world,
+                    chat.summary,
+                    user_name,
+                    allow_nsfw,
+                    location=chat.current_location or "",
+                    scenario_index=chat.scenario_index or 0,
+                )
             else:
                 raise ValueError("Either character or world must be provided")
 
@@ -156,41 +261,8 @@ class ContextManager:
                 tokens_used=response.completion_tokens,
             )
 
-            photo_history = history + [{"role": "assistant", "content": clean_text}]
-
-            image_url = None
-            nsfw_level = None
-            image_task_id = None
-            char_custom_avatar = (character or {}).get("visual", {}).get("custom_avatar", False)
-            if state_updates.get("send_photo", False) and character is not None and not char_custom_avatar:
-                msgs_since_photo = chat.msgs_since_summary - chat.last_auto_photo_at
-                if msgs_since_photo >= 5:
-                    logging.info(f"Triggering auto-photo generation (msgs_since_photo={msgs_since_photo})")
-                    photo_result = await self._trigger_photo_generation(
-                        chat, character, world, photo_history, session, allow_nsfw
-                    )
-                    if photo_result:
-                        if isinstance(photo_result, dict):
-                            if "image_task_id" in photo_result:
-                                image_task_id = photo_result.get("image_task_id")
-                            else:
-                                image_url = photo_result.get("url")
-                                nsfw_level = photo_result.get("nsfw_level")
-                        else:
-                            image_url = photo_result
-                        await chat_repo.update_metrics(
-                            chat.id,
-                            {"last_auto_photo_at": chat.msgs_since_summary}
-                        )
-                        chat.last_auto_photo_at = chat.msgs_since_summary
-                else:
-                    logging.info(f"Auto-photo skipped due to cooldown (msgs_since_photo={msgs_since_photo})")
-
         return {
             "text": clean_text,
-            "image_url": image_url,
-            "nsfw_level": nsfw_level,
-            "image_task_id": image_task_id
         }
 
     async def _generate_complete_story_response(
@@ -270,7 +342,7 @@ class ContextManager:
             messages=self._format_messages_for_summary(messages_to_summarize)
         )
 
-        summary_response = await self.llm.generate(
+        summary_response = await self.summary_llm.generate(
             system_prompt=summary_prompt,
             messages=[],
             max_tokens=600,
@@ -284,7 +356,6 @@ class ContextManager:
                 {
                     "summary": summary,
                     "msgs_since_summary": 0,
-                    "last_auto_photo_at": 0
                 }
             )
         else:
@@ -295,13 +366,11 @@ class ContextManager:
                     {
                         "summary": summary,
                         "msgs_since_summary": 0,
-                        "last_auto_photo_at": 0
                     }
                 )
 
         chat.summary = summary
         chat.msgs_since_summary = 0
-        chat.last_auto_photo_at = 0
 
     def _format_messages_for_summary(self, messages: list) -> str:
         formatted = []
@@ -309,202 +378,6 @@ class ContextManager:
             role = "Пользователь" if msg["role"] == "user" else "Персонаж"
             formatted.append(f"{role}: {msg['content']}")
         return "\n".join(formatted)
-
-    async def _trigger_photo_generation(
-        self,
-        chat: Chat,
-        character: Optional[dict],
-        world: Optional[dict],
-        history: list,
-        session=None,
-        allow_nsfw: bool = True
-    ) -> Optional[str]:
-        try:
-            import sys
-            from pathlib import Path
-
-            backend_path = Path(__file__).parent.parent.parent / "backend" / "api"
-            if str(backend_path) not in sys.path:
-                sys.path.insert(0, str(backend_path))
-
-            from image_gen.schemas.generate import Prompt
-            from image_gen.services.scene_analyzer import (
-                SceneAnalyzer,
-                calculate_nsfw_fallback,
-                calculate_sfw_fallback
-            )
-            from shared.config import SCENE_ANALYZER_ENABLED
-
-            content = character or world
-            if not content:
-                return None
-
-            state_meta = chat.state_meta or {}
-            nsfw_level = 0
-            outfit_key = "default_outfit"
-            environment = ""
-            pose = ""
-            scene_description = ""
-            nsfw_tags = ""
-            emotion = ""
-
-            if SCENE_ANALYZER_ENABLED and history:
-                try:
-                    scene_llm = LLMClient()
-                    analyzer = SceneAnalyzer(scene_llm)
-
-                    visual = content.get("visual", {})
-                    wardrobe = visual.get("wardrobe", {})
-                    if not isinstance(wardrobe, dict):
-                        wardrobe = {}
-                    available_outfits = {"default_outfit": visual.get("default_outfit", "")}
-                    for key, desc in wardrobe.items():
-                        available_outfits[key] = desc
-
-                    scene = await analyzer.analyze(
-                        history=history,
-                        character_name=content["name"],
-                        available_outfits=available_outfits,
-                        allow_nsfw=allow_nsfw,
-                        chat_id=chat.id,
-                        mood=chat.current_mood or "neutral",
-                        affinity=chat.affinity,
-                        arousal=chat.arousal,
-                        current_location=chat.current_location or "",
-                        model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
-                        gender=content.get("visual", {}).get("gender", "female"),
-                    )
-
-                    nsfw_level = scene.nsfw_level
-                    outfit_key = scene.outfit_key
-                    pose = scene.pose
-                    environment = scene.location
-                    scene_description = scene.scene_description
-                    nsfw_tags = scene.nsfw_tags
-                    emotion = scene.emotion
-
-                    logging.info(f"Auto-photo scene analysis: {scene.reasoning}")
-
-                except Exception as e:
-                    logging.warning(f"Scene analysis failed for auto-photo, using fallback: {e}")
-                    if allow_nsfw:
-                        nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-                    else:
-                        nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
-                    if nsfw_level >= 4:
-                        outfit_key = "nude"
-                    elif nsfw_level >= 2:
-                        outfit_key = "underwear"
-                    environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
-            else:
-                if allow_nsfw:
-                    nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-                else:
-                    nsfw_level = calculate_sfw_fallback(chat.arousal, chat.affinity)
-                if nsfw_level >= 4:
-                    outfit_key = "nude"
-                elif nsfw_level >= 2:
-                    outfit_key = "underwear"
-                environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
-
-            if not allow_nsfw:
-                nsfw_level = min(nsfw_level, 1)
-
-            environment = chat.current_location or environment
-
-            prompt = Prompt.from_character(
-                character=content,
-                outfit_key=outfit_key,
-                nsfw_level=nsfw_level,
-                environment=environment,
-            )
-
-            prompt.action = pose or state_meta.get("action", "")
-            # scene_description убран из промпта — дублирует environment и перегружает CLIP
-            # if scene_description:
-            #     prompt.scene_details = scene_description
-            if emotion and emotion != "neutral":
-                prompt.facial_expression = emotion
-            # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
-            if nsfw_level >= 4 and nsfw_tags:
-                prompt.body_state = nsfw_tags
-            char_gender = content.get("visual", {}).get("gender", "female")
-            pos, neg = await prompt.build_prompt(content.get("model_type"), gender=char_gender)
-
-            logging.info(f"Auto-photo generation: {pos=}")
-
-            model_type = content.get("model_type")
-            try:
-                validate_model_gender(model_type, char_gender)
-            except ValueError as e:
-                logging.warning(f"Unsupported model type for auto-photo: {e}")
-                return None
-
-            # Create task and enqueue for background processing
-            task_id = str(uuid4())
-
-            char_id = (character or {}).get("id") or content.get("name", "")
-            seed = int(hashlib.md5(str(char_id).encode()).hexdigest()[:8], 16) % (2**31)
-
-            task_params = {
-                "chat_id": chat.id,
-                "user_id": chat.user_id,
-                "character_id": (character or {}).get("id"),
-                "world_id": (world or {}).get("id"),
-                "model_type": model_type,
-                "positive_prompt": pos,
-                "negative_prompt": neg,
-                "allow_nsfw": allow_nsfw,
-                "nsfw_level": nsfw_level,
-                "pose": pose,
-                "seed": seed,
-            }
-
-            # Store initial task status in Redis
-            redis = await get_redis()
-            await redis.set(
-                f"task:{task_id}",
-                json.dumps({
-                    "status": "pending",
-                    "chat_id": chat.id,
-                    "created_at": datetime.utcnow().isoformat()
-                }),
-                ex=3600
-            )
-
-            # Try to enqueue task via arq
-            try:
-                from main import app
-                arq_pool = getattr(app.state, "arq_pool", None)
-                if arq_pool:
-                    await arq_pool.enqueue_job("generate_image_task", task_id, task_params)
-                    logging.info(f"Auto-photo task {task_id} enqueued for chat {chat.id}")
-                    return {"image_task_id": task_id}
-                else:
-                    # Fallback: execute synchronously if arq not configured
-                    logging.warning("arq pool not configured for auto-photo, executing synchronously")
-                    from shared.queue.tasks import generate_image_task
-                    ctx = {"redis": redis, "get_session": get_session}
-                    result = await generate_image_task(ctx, task_id, task_params)
-                    if result.get("status") == "completed":
-                        return result.get("result", {})
-                    return None
-            except Exception as e:
-                logging.error(f"Failed to enqueue auto-photo task: {e}")
-                # Fallback to synchronous execution
-                try:
-                    from shared.queue.tasks import generate_image_task
-                    ctx = {"redis": redis, "get_session": get_session}
-                    result = await generate_image_task(ctx, task_id, task_params)
-                    if result.get("status") == "completed":
-                        return result.get("result", {})
-                except Exception as inner_e:
-                    logging.error(f"Fallback auto-photo generation also failed: {inner_e}")
-                return None
-
-        except Exception as e:
-            logging.error(f"Auto-photo generation failed: {e}")
-            return None
 
     def _parse_meta(self, response_text: str) -> tuple[str, dict]:
         state_updates = {}
@@ -597,13 +470,7 @@ class ContextManager:
             user_name=user_name
         )
 
-        player_response = await self.llm.generate(
-            system_prompt=player_prompt,
-            messages=[],
-            max_tokens=100,
-            temperature=0.9
-        )
-        player_action = player_response.content.strip()
+        player_action = await self._generate_player_action(player_prompt)
 
         if only_user_reply:
             return {
@@ -622,9 +489,44 @@ class ContextManager:
         return {
             "player_message": player_action,
             "character_response": result["text"],
-            "image_url": result.get("image_url"),
-            "nsfw_level": result.get("nsfw_level"),
-            "image_task_id": result.get("image_task_id"),
             "affinity": chat.affinity,
             "arousal": chat.arousal
         }
+
+    async def _generate_player_action(self, player_prompt: str) -> str:
+        player_response = await self.player_llm.generate(
+            system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": player_prompt}],
+            max_tokens=100,
+            temperature=0.7
+        )
+        player_action, reason = _prepare_generated_player_message(player_response.content)
+        if not reason:
+            return player_action
+
+        logger.warning(
+            "Rejected generated player auto-message: reason=%s sample=%r",
+            reason,
+            (player_response.content or "")[:300],
+        )
+
+        retry_prompt = (
+            f"{player_prompt.rstrip()}\n\n"
+            f"{PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION.format(bad_response=(player_response.content or '')[:500]).strip()}"
+        )
+        retry_response = await self.player_llm.generate(
+            system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": retry_prompt}],
+            max_tokens=80,
+            temperature=0.4
+        )
+        player_action, retry_reason = _prepare_generated_player_message(retry_response.content)
+        if not retry_reason:
+            return player_action
+
+        logger.error(
+            "Rejected retry player auto-message, using fallback: reason=%s sample=%r",
+            retry_reason,
+            (retry_response.content or "")[:300],
+        )
+        return PLAYER_AUTO_MESSAGE_FALLBACK

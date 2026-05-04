@@ -71,10 +71,12 @@ def world_to_dict(world: World) -> dict:
 
     intro_message = ""
     gm_instructions = ""
+    main_scenario_title = "Основной"
     alternate_scenarios = []
 
     for scenario in scenarios:
         if scenario.get("index") == 0:
+            main_scenario_title = scenario.get("title", "") or "Основной"
             intro_message = scenario.get("intro", "")
             gm_instructions = scenario.get("gm_instructions", "")
         elif scenario.get("index", -1) > 0:
@@ -105,6 +107,7 @@ def world_to_dict(world: World) -> dict:
         "description": world.description,
         "cover_image": world.cover_image,
         "setting": setting,
+        "main_scenario_title": main_scenario_title,
         "intro_message": intro_message,
         "gm_instructions": gm_instructions,
         "alternate_scenarios": alternate_scenarios,

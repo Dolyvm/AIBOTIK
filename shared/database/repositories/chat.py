@@ -1,6 +1,6 @@
 """Репозиторий для работы с чатами."""
 from typing import Optional
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, func
 
 from shared.models import Chat, Message, GeneratedImage
 from .base import BaseRepository
@@ -91,6 +91,31 @@ class ChatRepository(BaseRepository[Chat]):
             .order_by(Chat.updated_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_chat_counts_batch(self, chat_type: str, target_ids: list[str]) -> dict[str, int]:
+        chat_type = validate_chat_type(chat_type)
+        if not target_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(Chat.target_id, func.count(Chat.id))
+            .where(Chat.chat_type == chat_type, Chat.target_id.in_(target_ids))
+            .group_by(Chat.target_id)
+        )
+        return {row[0]: int(row[1]) for row in result.all()}
+
+    async def get_message_counts_batch(self, chat_type: str, target_ids: list[str]) -> dict[str, int]:
+        chat_type = validate_chat_type(chat_type)
+        if not target_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(Chat.target_id, func.count(Message.id))
+            .join(Message, Message.chat_id == Chat.id)
+            .where(Chat.chat_type == chat_type, Chat.target_id.in_(target_ids))
+            .group_by(Chat.target_id)
+        )
+        return {row[0]: int(row[1]) for row in result.all()}
 
     async def set_active(self, user_id: int, chat_id: int) -> None:
         await self.session.execute(

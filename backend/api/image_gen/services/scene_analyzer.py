@@ -173,6 +173,18 @@ class SceneAnalyzer:
         self.llm = llm_client
 
     NEGATIVE_MOODS = {"angry", "furious", "disgusted", "sad", "crying", "scared", "offended", "irritated"}
+    REAL_SCENE_RULES_COMMON = """
+
+REAL MODEL EXTRA RULES:
+- The final image is a single-subject image of the named adult character only.
+- Keep pose, nsfw_tags, and scene_description focused on that character's body, expression, and lighting.
+- Do not invent age, nationality, face shape, breast shape, or nipple shape here; those are handled by the character prompt.
+"""
+    REAL_SCENE_RULES_FEMALE = """
+- For female characters, NEVER put male anatomy terms in pose/nsfw_tags: no penis, cock, dick, testicles, futanari, bulge, strap-on.
+- For female characters at nsfw_level 4-5, describe only anatomically female nude details and her own pose/expression.
+- For real female characters, prefer idealized attractive adult proportions: fit body, smooth firm skin, no cellulite, no sagging, no belly folds.
+"""
 
     @staticmethod
     def _format_outfits(outfits) -> str:
@@ -182,6 +194,16 @@ class SceneAnalyzer:
                 for k, v in outfits.items()
             )
         return ", ".join(outfits)
+
+    @classmethod
+    def _apply_model_specific_rules(cls, prompt: str, model_type: str, gender: str) -> str:
+        if model_type != "real":
+            return prompt
+
+        rules = cls.REAL_SCENE_RULES_COMMON
+        if gender == "male":
+            return prompt + rules
+        return prompt + rules + cls.REAL_SCENE_RULES_FEMALE
 
     async def analyze(
         self,
@@ -201,7 +223,10 @@ class SceneAnalyzer:
 
         recent_messages = history[-2:] if len(history) > 2 else history
 
-        context_str = f"{character_name}:{allow_nsfw}:{recent_messages}"
+        scene_prompt_profile = (
+            f"real-rules-v2:{gender}" if model_type == "real" else f"base-v1:{model_type}:{gender}"
+        )
+        context_str = f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{recent_messages}"
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
 
         cache = get_cache()
@@ -245,13 +270,15 @@ class SceneAnalyzer:
             pose_examples=pose_examples,
             nsfw_level_3_desc=nsfw_level_3_desc,
         )
+        prompt = self._apply_model_specific_rules(prompt, model_type, gender)
 
         try:
             llm_response = await self.llm.generate(
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=350,
-                temperature=0.1
+                temperature=0.1,
+                extra_payload={"response_format": {"type": "json_object"}},
             )
             response = llm_response.content
 
