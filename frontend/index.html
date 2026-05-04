@@ -1301,8 +1301,19 @@
                         <h3 class="cc-summary-title">Обложка и финал</h3>
 
                         <div class="cc-field">
-                            <label>URL обложки:</label>
-                            <input v-model="createWorldData.cover_image_url" type="url" class="cc-name-input" placeholder="https://example.com/image.jpg">
+                            <label>Обложка мира:</label>
+                            <button class="change-step-button"
+                                    :disabled="isUploadingWorldCover"
+                                    @click="$refs.worldCoverInput.click()"
+                                    style="width: 100%; font-size: 13px;">
+                                <i :class="isUploadingWorldCover ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
+                                {{ isUploadingWorldCover ? 'Загружаю...' : (createWorldData.cover_image_url ? 'Заменить фото' : 'Загрузить фото') }}
+                            </button>
+                            <input type="file"
+                                   ref="worldCoverInput"
+                                   accept="image/jpeg,image/png,image/webp"
+                                   style="display: none;"
+                                   @change="handleWorldCoverUpload($event)">
                         </div>
 
                         <div v-if="createWorldData.cover_image_url" class="cc-preview-section" style="margin-top: 8px; margin-bottom: 16px;">
@@ -1579,6 +1590,8 @@
                 const cwStep = ref(0);
                 const editingWorldId = ref(null);
                 const isCreatingWorld = ref(false);
+                const isUploadingWorldCover = ref(false);
+                const worldCoverInput = ref(null);
 
                 const undoTargetIndex = computed(() => {
                     if (isWaitingResponse.value || isStreaming.value || isUndoing.value) return -1;
@@ -3339,6 +3352,31 @@
                     createWorldData.value.alternate_scenarios.splice(idx, 1);
                 }
 
+                const handleWorldCoverUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                        showToast('Файл слишком большой (макс. 5MB)');
+                        event.target.value = '';
+                        return;
+                    }
+                    isUploadingWorldCover.value = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await axios.post('/api/create_world/upload-cover', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        createWorldData.value.cover_image_url = res.data.url;
+                        showToast('Фото загружено!');
+                    } catch (e) {
+                        showToast('Ошибка загрузки фото');
+                    } finally {
+                        isUploadingWorldCover.value = false;
+                        event.target.value = '';
+                    }
+                };
+
                 const createWorldFinal = async () => {
                     const d = createWorldData.value;
                     if (!d.name || !d.description || !d.intro_message) {
@@ -3436,6 +3474,7 @@
                     createWorldOnClick, editWorldOnClick, deleteWorld, editingWorldId, createWorldData,
                     cwStep, cwNextStep, cwPrevStep, cwGoToStep,
                     addAlternateScenario, removeAlternateScenario,
+                    handleWorldCoverUpload, isUploadingWorldCover, worldCoverInput,
                     isCreatingWorld, createWorldFinal,
                     // Profile
                     userProfile, profileSettings, loadProfile,
