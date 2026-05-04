@@ -79,6 +79,7 @@ async def create_world(
         scenarios = [
             {
                 "index": 0,
+                "title": (data.main_scenario_title or "Основной").strip() or "Основной",
                 "intro": data.intro_message,
                 "gm_instructions": data.gm_instructions or ""
             }
@@ -153,6 +154,7 @@ async def update_world(
         scenarios = [
             {
                 "index": 0,
+                "title": (data.main_scenario_title or "Основной").strip() or "Основной",
                 "intro": data.intro_message,
                 "gm_instructions": data.gm_instructions or ""
             }

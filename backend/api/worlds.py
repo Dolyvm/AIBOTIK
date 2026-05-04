@@ -133,6 +133,7 @@ async def get_world_for_edit(
         "name": world["name"],
         "short_description": world.get("short_description", ""),
         "description": world["description"],
+        "main_scenario_title": world.get("main_scenario_title", "Основной"),
         "gm_instructions": world.get("gm_instructions", ""),
         "intro_message": world.get("intro_message", ""),
         "alternate_scenarios": world.get("alternate_scenarios", []),
@@ -151,7 +152,7 @@ async def get_world_detail(world_id: str, user: User = Depends(get_current_user)
 
     scenarios = [{
         "index": 0,
-        "name": "Основной",
+        "name": world.get("main_scenario_title") or "Основной",
         "preview": world.get("intro_message", "")
     }]
 

@@ -1107,7 +1107,14 @@
                 <!-- Шаг 3: Внешность и аватар -->
                 <div v-if="ccStep === 2">
                     <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Внешность и аватар</h3>
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+                            <h3 class="cc-summary-title" style="margin:0;">Внешность и аватар</h3>
+                            <button class="change-step-button secondary"
+                                    @click="openAppearanceInstruction"
+                                    style="padding:8px 10px; min-width:auto; font-size:12px; flex-shrink:0;">
+                                <i class="fas fa-file-pdf"></i> Инструкция заполнения
+                            </button>
+                        </div>
 
                         <div class="cc-field">
                             <label>Внешность (EN): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
@@ -1262,8 +1269,13 @@
                         <h3 class="cc-summary-title">Сценарий и введение</h3>
 
                         <div class="cc-field">
-                            <label>Вступительное сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Вступительное сообщение, когда игрок входит в мир..."></textarea>
+                            <label>Название основного сценария:</label>
+                            <input v-model="createWorldData.main_scenario_title" type="text" class="cc-name-input" placeholder="Основной">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Стартовое сообщение основного сценария: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Сообщение, которое игрок увидит при входе в основной сценарий..."></textarea>
                         </div>
 
                         <div class="cc-field">
@@ -1280,8 +1292,8 @@
                                     <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название сценария">
                                 </div>
                                 <div class="cc-field" style="margin-bottom: 8px;">
-                                    <label style="font-size: 13px;">Вступление:</label>
-                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Вступительное сообщение сценария..."></textarea>
+                                    <label style="font-size: 13px;">Стартовое сообщение:</label>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Сообщение, которое игрок увидит при входе в этот сценарий..."></textarea>
                                 </div>
                                 <div class="cc-field">
                                     <label style="font-size: 13px;">Инструкции для ГМ:</label>
@@ -1582,7 +1594,7 @@
                 // Create World
                 const defaultCreateWorldData = () => ({
                     name: '', short_description: '', description: '', gm_instructions: '',
-                    intro_message: '', alternate_scenarios: [],
+                    main_scenario_title: 'Основной', intro_message: '', alternate_scenarios: [],
                     cover_image_url: '', tags_str: '',
                     is_public: true,
                 });
@@ -1729,6 +1741,21 @@
 
                 const openSupport = () => {
                     tg.openTelegramLink('https://t.me/dolyvm');
+                };
+
+                const openAppearanceInstruction = async () => {
+                    const url = `${window.location.origin}/character-appearance-guide.pdf`;
+                    try {
+                        const res = await fetch(url, { method: 'HEAD' });
+                        if (!res.ok) {
+                            showToast('Инструкция будет добавлена позже', 'error');
+                            return;
+                        }
+                        if (tg.openLink) tg.openLink(url);
+                        else window.open(url, '_blank');
+                    } catch (e) {
+                        showToast('Инструкция будет добавлена позже', 'error');
+                    }
                 };
 
                 // Age confirmation
@@ -3280,6 +3307,7 @@
                             short_description: w.short_description || '',
                             description: w.description,
                             gm_instructions: w.gm_instructions || '',
+                            main_scenario_title: w.main_scenario_title || 'Основной',
                             intro_message: w.intro_message || '',
                             alternate_scenarios: (w.alternate_scenarios || []).map(a => ({
                                 title: a.title || '', intro: a.intro || '', gm_instructions: a.gm_instructions || ''
@@ -3392,6 +3420,7 @@
                             short_description: d.short_description,
                             description: d.description,
                             gm_instructions: d.gm_instructions,
+                            main_scenario_title: d.main_scenario_title || 'Основной',
                             intro_message: d.intro_message,
                             alternate_scenarios: d.alternate_scenarios.filter(a => a.title.trim() || a.intro.trim()),
                             cover_image_url: d.cover_image_url || null,
@@ -3485,7 +3514,7 @@
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
                     // Documents & Support
-                    openDocument, openSupport,
+                    openDocument, openSupport, openAppearanceInstruction,
                     // Age confirmation
                     showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur

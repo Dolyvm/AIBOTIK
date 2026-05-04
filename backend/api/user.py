@@ -31,7 +31,7 @@ def _scenario_display_name(sc: dict) -> str:
     """Generate human-readable scenario name (mirrors characters.py logic)."""
     idx = sc.get("index", 0)
     if idx == 0:
-        return "Основной"
+        return sc.get("title") or "Основной"
     return sc.get("title") or f"Сценарий {idx}"
 
 

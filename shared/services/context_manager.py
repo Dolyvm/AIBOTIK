@@ -104,7 +104,14 @@ class ContextManager:
                 )
             elif world:
                 max_tokens = LLM_MAX_TOKENS_WORLD
-                system_prompt = await build_world_prompt(world, chat.summary, user_name, allow_nsfw, location=chat.current_location or "")
+                system_prompt = await build_world_prompt(
+                    world,
+                    chat.summary,
+                    user_name,
+                    allow_nsfw,
+                    location=chat.current_location or "",
+                    scenario_index=chat.scenario_index or 0,
+                )
             else:
                 raise ValueError("Either character or world must be provided")
 

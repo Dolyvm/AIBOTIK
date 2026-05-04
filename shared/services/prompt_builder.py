@@ -171,8 +171,10 @@ async def build_world_prompt(
         summary: str = "",
         user_name: str = "Игрок",
         allow_nsfw: bool = True,
-        location: str = ""
+        location: str = "",
+        scenario_index: int = 0
 ) -> str:
+    scenario_context = _build_world_scenario_context(world, scenario_index)
     template = await get_prompt("world_prompt_template")
     prompt = template.format(
         world_name=world['name'],
@@ -183,6 +185,8 @@ async def build_world_prompt(
         common_style_guide=await _get_common_style_guide(),
         meta_instruction=await _get_meta_instruction(allow_nsfw),
     )
+    if scenario_context:
+        prompt += f"\n\nВЫБРАННЫЙ СЦЕНАРИЙ\n{scenario_context}"
 
     if not allow_nsfw:
         try:
@@ -192,6 +196,29 @@ async def build_world_prompt(
             logging.warning("SFW content restriction prompt not found")
 
     return prompt
+
+
+def _build_world_scenario_context(world: dict, scenario_index: int = 0) -> str:
+    if scenario_index > 0:
+        scenarios = world.get("alternate_scenarios") or []
+        selected = scenarios[scenario_index - 1] if scenario_index <= len(scenarios) else {}
+        title = selected.get("title") or f"Сценарий {scenario_index}"
+        intro = selected.get("intro", "")
+        gm_instructions = selected.get("gm_instructions", "")
+    else:
+        title = world.get("main_scenario_title") or "Основной"
+        intro = world.get("intro_message", "")
+        gm_instructions = world.get("gm_instructions", "")
+
+    parts = [f"Название: {title}"]
+    if gm_instructions:
+        parts.append(f"Инструкции сценария:\n{gm_instructions}")
+    if intro:
+        parts.append(
+            "Стартовое сообщение сценария уже было показано игроку. "
+            f"Не повторяй его дословно, но учитывай заданную им стартовую сцену:\n{intro}"
+        )
+    return "\n\n".join(parts)
 
 async def build_player_prompt(
     character_name: str,
