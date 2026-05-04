@@ -251,7 +251,8 @@ class SceneAnalyzer:
                 system_prompt="Return ONLY flat JSON. No markdown. No nested objects. No explanations.",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=350,
-                temperature=0.1
+                temperature=0.1,
+                extra_payload={"response_format": {"type": "json_object"}},
             )
             response = llm_response.content
 

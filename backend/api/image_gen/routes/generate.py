@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import sys
@@ -11,23 +10,19 @@ from uuid import uuid4
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from fastapi import APIRouter, HTTPException, Body, Query, Depends, Request
+from fastapi import APIRouter, HTTPException, Query, Depends
 
-from shared.models import Chat, User
+from shared.models import User
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
 from shared.database import get_session
-from shared.database.repositories import MessageRepository, GeneratedImageRepository, ChatRepository
 from shared.services.content_loader import get_character, get_world
-from shared.services.llm import LLMClient
 from shared.services.redis_client import get_redis
-from shared.config import SCENE_ANALYZER_ENABLED
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.services.image_provider import generate_image as provider_generate_image
 from shared.services.model_types import validate_model_gender
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
-from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,145 +98,23 @@ async def gen(
         logging.error(f"Error loading content: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    async with get_session() as session:
-        message_repo = MessageRepository(session)
-        messages = await message_repo.get_history(chat_id)
-
-    history = [
-        {"role": msg.role.value, "content": msg.content}
-        for msg in messages
-    ]
-    state_meta = chat.state_meta or {}
-
-    nsfw_level = 0
-    outfit_key = outfit
-    environment = ""
-    scene_reasoning = ""
-    pose = ""
-    scene_description = ""
-    nsfw_tags = ""
-    emotion = "neutral"
-    if SCENE_ANALYZER_ENABLED and history:
-        try:
-            llm_client = LLMClient()
-            analyzer = SceneAnalyzer(llm_client)
-
-            visual = content.get("visual", {})
-            wardrobe = visual.get("wardrobe", {})
-            if not isinstance(wardrobe, dict):
-                wardrobe = {}
-            available_outfits = {"default_outfit": visual.get("default_outfit", "")}
-            for key, desc in wardrobe.items():
-                available_outfits[key] = desc
-
-            allow_nsfw = content.get("is_nsfw", True)
-
-            scene = await analyzer.analyze(
-                history=history,
-                character_name=content["name"],
-                available_outfits=available_outfits,
-                allow_nsfw=allow_nsfw,
-                chat_id=chat_id,
-                mood=chat.current_mood or "neutral",
-                affinity=chat.affinity,
-                arousal=chat.arousal,
-                current_location=chat.current_location or "",
-                model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
-                gender=content.get("visual", {}).get("gender", "female"),
-            )
-
-            nsfw_level = scene.nsfw_level
-            outfit_key = scene.outfit_key
-            pose = scene.pose
-            environment = scene.location
-            scene_reasoning = scene.reasoning
-            emotion = scene.emotion
-            scene_description = scene.scene_description
-            nsfw_tags = scene.nsfw_tags
-
-            logging.info(f"Scene analysis: {scene_reasoning}")
-
-        except Exception as e:
-
-            logging.warning(f"Scene analysis failed, using fallback: {e}")
-            allow_nsfw = content.get("is_nsfw", True)
-            nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-            if not allow_nsfw:
-                nsfw_level = min(nsfw_level, 1)
-            outfit_key = outfit
-            if nsfw_level >= 4:
-                outfit_key = "nude"
-            elif nsfw_level >= 2:
-                outfit_key = "underwear"
-            environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
-    else:
-        nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-        if nsfw_level >= 4:
-            outfit_key = "nude"
-        elif nsfw_level >= 2:
-            outfit_key = "underwear"
-        environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
-
-    logging.info(f"{nsfw_level=}")
-    environment = chat.current_location or environment
-    prompt = Prompt.from_character(
-        character=content,
-        outfit_key=outfit_key,
-        nsfw_level=nsfw_level,
-        environment=environment,
-    )
-    logging.info(f"Chat metrics: affinity={chat.affinity}, arousal={chat.arousal}, location={chat.current_location}")
-    prompt.action = pose or state_meta.get("action", "")
-    # scene_description убран из промпта — дублирует environment и перегружает CLIP
-    # if scene_description:
-    #     prompt.scene_details = scene_description
-    if emotion and emotion != "neutral":
-        prompt.facial_expression = emotion
-    # nsfw_tags — compact context-specific tags from scene analyzer (levels 4-5)
-    if nsfw_level >= 4 and nsfw_tags:
-        prompt.body_state = nsfw_tags
-
-    logging.info(f"=== PROMPT COMPONENTS for chat {chat_id} ===")
-    logging.info(f"  outfit_key={outfit_key}")
-    logging.info(f"  clothing={prompt.clothing}")
-    logging.info(f"  nsfw_level={nsfw_level}")
-    logging.info(f"  scene_description={scene_description}")
-    logging.info(f"  nsfw_tags={nsfw_tags}")
-    logging.info(f"  emotion={emotion}")
-    logging.info(f"  pose/action={prompt.action}")
-    logging.info(f"  environment={prompt.environment}")
-    logging.info(f"  character_base={prompt.character_base}")
-    logging.info(f"  scene_reasoning={scene_reasoning}")
-    logging.info(f"=== END COMPONENTS ===")
-
-    char_gender = content.get("visual", {}).get("gender", "female")
-    pos, neg = await prompt.build_prompt(content.get("model_type"), gender=char_gender)
-    logging.info(f"{pos=}")
-    logging.info(f"{neg=}")
-    logging.info(f"{content=}")
-
     model_type = content.get("model_type")
+    char_gender = content.get("visual", {}).get("gender", "female")
     try:
         validate_model_gender(model_type, char_gender)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
     task_id = str(uuid4())
 
-    char_id = (character or {}).get("id") or content.get("name", "")
-    seed = int(hashlib.md5(str(char_id).encode()).hexdigest()[:8], 16) % (2**31)
-
     task_params = {
+        "prepare_prompt": True,
         "chat_id": chat.id,
         "user_id": chat.user_id,
         "character_id": (character or {}).get("id"),
         "world_id": (world or {}).get("id"),
-        "model_type": model_type,
-        "positive_prompt": pos,
-        "negative_prompt": neg,
+        "outfit": outfit,
         "allow_nsfw": content.get("is_nsfw", True),
-        "nsfw_level": nsfw_level,
-        "pose": pose,
-        "seed": seed,
     }
 
     redis = await get_redis()
@@ -271,6 +144,8 @@ async def gen(
                     await sub_service.increment_usage(user.telegram_id, "images", session)
                 return result.get("result", {})
             raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Failed to enqueue task: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start generation: {e}")

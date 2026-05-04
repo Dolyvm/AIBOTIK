@@ -74,11 +74,24 @@ class LLMClient:
             cls._http_client = None
             logger.info("Closed httpx client")
 
-    def __init__(self, api_key: str = None, model: str = None, override_payload: dict = None):
+    def __init__(
+        self,
+        api_key: str = None,
+        model: str = None,
+        override_payload: dict = None,
+        provider: dict = None,
+        reasoning: dict = None,
+        timeout: float = None,
+        max_retries: int = None,
+    ):
         self.api_key = api_key or OPENROUTER_API_KEY
         self.model = model
         self.base_url = OPENROUTER_BASE_URL
         self.override_payload = override_payload or dict()
+        self.provider = provider
+        self.reasoning = {"enabled": False} if reasoning is None else reasoning
+        self.timeout = timeout
+        self.max_retries = max_retries or self.MAX_RETRIES
 
         if not self.api_key:
             logger.warning("OPENROUTER_API_KEY не установлен!")
@@ -107,6 +120,9 @@ class LLMClient:
         messages: list[dict],
         max_tokens: int = 300,
         temperature: float = None,
+        provider: dict = None,
+        reasoning: dict = None,
+        extra_payload: dict = None,
     ) -> LLMResponse:
         temperature = temperature if temperature is not None else LLM_TEMPERATURE
         
@@ -122,7 +138,17 @@ class LLMClient:
             "top_p": LLM_TOP_P,
             "repetition_penalty": LLM_REPETITION_PENALTY,
         }
+        active_provider = self.provider if provider is None else provider
+        if active_provider is not None:
+            payload["provider"] = active_provider
+
+        active_reasoning = self.reasoning if reasoning is None else reasoning
+        if active_reasoning is not None:
+            payload["reasoning"] = active_reasoning
+
         payload.update(self.override_payload)
+        if extra_payload:
+            payload.update(extra_payload)
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -133,27 +159,30 @@ class LLMClient:
         
         client = self.get_http_client()
 
-        for attempt in range(1, self.MAX_RETRIES + 1):
+        for attempt in range(1, self.max_retries + 1):
             try:
-                logger.debug(f"LLM запрос (попытка {attempt}/{self.MAX_RETRIES}): model={resolved_model}")
+                logger.debug(f"LLM запрос (попытка {attempt}/{self.max_retries}): model={resolved_model}")
 
-                response = await client.post(
-                    self.base_url,
-                    json=payload,
-                    headers=headers,
-                )
+                request_kwargs = {
+                    "json": payload,
+                    "headers": headers,
+                }
+                if self.timeout is not None:
+                    request_kwargs["timeout"] = self.timeout
+
+                response = await client.post(self.base_url, **request_kwargs)
 
                 if response.status_code == 429:
-                    logger.warning(f"Rate limit (429), попытка {attempt}/{self.MAX_RETRIES}")
-                    if attempt < self.MAX_RETRIES:
+                    logger.warning(f"Rate limit (429), попытка {attempt}/{self.max_retries}")
+                    if attempt < self.max_retries:
                         import asyncio
                         await asyncio.sleep(self.RETRY_DELAY * attempt)  
                         continue
                     raise LLMRateLimitError("Превышен лимит запросов к API")
                 
                 if response.status_code >= 500:
-                    logger.warning(f"Серверная ошибка ({response.status_code}), попытка {attempt}/{self.MAX_RETRIES}")
-                    if attempt < self.MAX_RETRIES:
+                    logger.warning(f"Серверная ошибка ({response.status_code}), попытка {attempt}/{self.max_retries}")
+                    if attempt < self.max_retries:
                         import asyncio
                         await asyncio.sleep(self.RETRY_DELAY)
                         continue
@@ -212,9 +241,9 @@ class LLMClient:
                 return llm_response
                 
             except httpx.TimeoutException as e:
-                logger.warning(f"Таймаут запроса, попытка {attempt}/{self.MAX_RETRIES}: {e}")
+                logger.warning(f"Таймаут запроса, попытка {attempt}/{self.max_retries}: {e}")
                 last_error = LLMTimeoutError(f"Таймаут запроса: {e}")
-                if attempt < self.MAX_RETRIES:
+                if attempt < self.max_retries:
                     import asyncio
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue
@@ -222,7 +251,7 @@ class LLMClient:
             except httpx.RequestError as e:
                 logger.error(f"Ошибка сети: {e}")
                 last_error = LLMError(f"Ошибка сети: {e}")
-                if attempt < self.MAX_RETRIES:
+                if attempt < self.max_retries:
                     import asyncio
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue

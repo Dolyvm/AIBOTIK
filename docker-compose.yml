@@ -58,6 +58,12 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
+      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
+      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
+      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_MODEL=${SCENE_ANALYZER_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_TIMEOUT=${SCENE_ANALYZER_TIMEOUT:-10}
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
       - FAL_KEY=${FAL_KEY}
       - RUNPOD_API_KEY=${RUNPOD_API_KEY}
@@ -114,6 +120,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
       - REDIS_URL=redis://redis:6379/0
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
+      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
+      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
+      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_MODEL=${SCENE_ANALYZER_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_TIMEOUT=${SCENE_ANALYZER_TIMEOUT:-10}
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
       - FAL_KEY=${FAL_KEY}
       - RUNPOD_API_KEY=${RUNPOD_API_KEY}
@@ -146,6 +159,12 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
+      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
+      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
+      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_MODEL=${SCENE_ANALYZER_MODEL:-qwen/qwen3.6-flash}
+      - SCENE_ANALYZER_TIMEOUT=${SCENE_ANALYZER_TIMEOUT:-10}
       - WEBAPP_URL=${WEBAPP_URL}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
       - WEBHOOK_URL=${WEBHOOK_URL}

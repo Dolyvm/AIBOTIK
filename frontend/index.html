@@ -2479,44 +2479,6 @@
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
                         await typeWriter(res.data.response);
-
-                        // Handle auto-photo task if present
-                        if (res.data.image_task_id) {
-                            // Add placeholder for generating image
-                            const placeholderIndex = chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: null,
-                                isGenerating: true,
-                                nsfw_level: 0
-                            }) - 1;
-                            scrollToBottom();
-
-                            // Poll for image completion in background
-                            pollImageTask(
-                                res.data.image_task_id,
-                                (result) => {
-                                    chatHistory.value[placeholderIndex] = {
-                                        role: 'assistant',
-                                        avatar: result.url,
-                                        nsfw_level: result.nsfw_level || 0
-                                    };
-                                    scrollToBottom();
-                                },
-                                (error) => {
-                                    // Remove placeholder on error
-                                    chatHistory.value.splice(placeholderIndex, 1);
-                                    console.error('Auto-photo failed:', error);
-                                }
-                            );
-                        } else if (res.data.image_url) {
-                            // Sync fallback - got URL directly
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: res.data.image_url,
-                                nsfw_level: res.data.nsfw_level || 0
-                            });
-                            scrollToBottom();
-                        }
                     } catch (e) {
                         if (e.response?.status !== 429) {
                             chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
@@ -2818,15 +2780,6 @@
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
                         await typeWriter(data.character_response);
-
-                        if (data.image_url) {
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: data.image_url,
-                                nsfw_level: data.nsfw_level || 0,
-                                timestamp: new Date().toISOString()
-                            });
-                        }
 
                         if (data.affinity !== undefined) {
                         }
