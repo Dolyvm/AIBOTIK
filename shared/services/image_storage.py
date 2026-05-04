@@ -3,6 +3,8 @@ import os
 import uuid
 import shutil
 import logging
+import base64
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -26,6 +28,43 @@ class ImageStorageError(Exception):
     pass
 
 
+DATA_URL_RE = re.compile(r"^data:(?P<content_type>image/[a-zA-Z0-9.+-]+);base64,(?P<data>.+)$", re.DOTALL)
+
+
+async def _save_image_bytes(
+    content: bytes,
+    content_type: str,
+    directory: Path,
+    local_dir: str,
+    filename_prefix: str = "",
+) -> Tuple[str, int, str]:
+    directory.mkdir(parents=True, exist_ok=True)
+    extension = ALLOWED_CONTENT_TYPES.get(content_type, ".png")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = uuid.uuid4().hex[:8]
+    filename = f"{filename_prefix}{timestamp}_{unique_id}{extension}"
+    full_path = directory / filename
+
+    async with aiofiles.open(full_path, "wb") as f:
+        await f.write(content)
+
+    return f"{local_dir}/{filename}", len(content), content_type
+
+
+def _decode_data_url(data_url: str) -> tuple[bytes, str] | None:
+    match = DATA_URL_RE.match(data_url)
+    if not match:
+        return None
+    content_type = match.group("content_type").split(";")[0].strip()
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        content_type = "image/png"
+    try:
+        data = "".join(match.group("data").split())
+        return base64.b64decode(data, validate=True), content_type
+    except Exception as e:
+        raise ImageStorageError(f"Invalid base64 image data: {e}") from e
+
+
 async def download_and_save_image(
     provider_url: str,
     user_id: int,
@@ -34,6 +73,16 @@ async def download_and_save_image(
     Returns (local_path, file_size, content_type).
     """
     try:
+        decoded = _decode_data_url(provider_url)
+        if decoded:
+            content, content_type = decoded
+            return await _save_image_bytes(
+                content,
+                content_type,
+                Path(IMAGES_STORAGE_PATH) / str(user_id),
+                str(user_id),
+            )
+
         user_dir = Path(IMAGES_STORAGE_PATH) / str(user_id)
         user_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,19 +132,24 @@ async def save_avatar(provider_url: str, character_id: str) -> str:
         avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
         avatars_dir.mkdir(parents=True, exist_ok=True)
 
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(provider_url) as response:
-                if response.status != 200:
-                    raise ImageStorageError(
-                        f"Failed to download avatar: HTTP {response.status}"
-                    )
+        decoded = _decode_data_url(provider_url)
+        if decoded:
+            content, content_type = decoded
+            extension = ALLOWED_CONTENT_TYPES.get(content_type, ".png")
+        else:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(provider_url) as response:
+                    if response.status != 200:
+                        raise ImageStorageError(
+                            f"Failed to download avatar: HTTP {response.status}"
+                        )
 
-                content_type = response.headers.get("Content-Type", "image/png")
-                content_type = content_type.split(";")[0].strip()
-                extension = ALLOWED_CONTENT_TYPES.get(content_type, ".png")
+                    content_type = response.headers.get("Content-Type", "image/png")
+                    content_type = content_type.split(";")[0].strip()
+                    extension = ALLOWED_CONTENT_TYPES.get(content_type, ".png")
 
-                content = await response.read()
+                    content = await response.read()
 
         unique_suffix = uuid.uuid4().hex[:8]
         filename = f"{character_id}_{unique_suffix}{extension}"

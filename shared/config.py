@@ -48,3 +48,8 @@ STRUCTURED_MODEL = os.getenv("STRUCTURED_MODEL", "qwen/qwen3-30b-a3b-instruct-25
 IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  
 ADMIN_TELEGRAM_IDS = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip()]
+
+RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_KEY")
+RUNPOD_MANHWA_ENDPOINT_ID = os.getenv("RUNPOD_MANHWA_ENDPOINT_ID")
+RUNPOD_MANHWA_TIMEOUT_SECONDS = int(os.getenv("RUNPOD_MANHWA_TIMEOUT_SECONDS", "900"))
+RUNPOD_MANHWA_POLL_INTERVAL_SECONDS = int(os.getenv("RUNPOD_MANHWA_POLL_INTERVAL_SECONDS", "3"))

@@ -1,7 +1,19 @@
 import logging
+import asyncio
+import base64
+from typing import Any
 
 import replicate
 import fal_client
+import httpx
+
+from shared.config import (
+    RUNPOD_API_KEY,
+    RUNPOD_MANHWA_ENDPOINT_ID,
+    RUNPOD_MANHWA_POLL_INTERVAL_SECONDS,
+    RUNPOD_MANHWA_TIMEOUT_SECONDS,
+)
+from shared.services.workflows.manhwa_illustrious import build_manhwa_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +54,8 @@ async def generate_image(
     """Generate an image and return the provider URL (or None on failure)."""
     if model_type == "anime":
         return await _submit_anime(positive_prompt, negative_prompt, seed=seed)
+    elif model_type == "manhwa":
+        return await _submit_manhwa(positive_prompt, negative_prompt, seed=seed)
     elif model_type == "real":
         return await _submit_real(positive_prompt, allow_nsfw, nsfw_level)
     else:
@@ -91,3 +105,111 @@ async def _submit_real(prompt: str, allow_nsfw: bool, nsfw_level: int = 0) -> st
     if result and "images" in result and result["images"]:
         return result["images"][0]["url"]
     return None
+
+
+def _as_data_url(value: str, mime_type: str = "image/png") -> str | None:
+    if not value:
+        return None
+    if value.startswith("http://") or value.startswith("https://") or value.startswith("data:image/"):
+        return value
+    value = "".join(value.split())
+    try:
+        base64.b64decode(value, validate=True)
+    except Exception:
+        return None
+    return f"data:{mime_type};base64,{value}"
+
+
+def _extract_runpod_image(output: Any) -> str | None:
+    """Normalize common RunPod/ComfyUI output shapes to URL or data URL."""
+    if isinstance(output, str):
+        return _as_data_url(output)
+
+    if isinstance(output, list):
+        for item in output:
+            found = _extract_runpod_image(item)
+            if found:
+                return found
+        return None
+
+    if not isinstance(output, dict):
+        return None
+
+    for key in ("url", "image_url", "uri"):
+        value = output.get(key)
+        if isinstance(value, str) and value:
+            return value
+
+    for key in ("base64", "image", "data", "b64_json"):
+        value = output.get(key)
+        if isinstance(value, str):
+            mime_type = output.get("mime_type") or output.get("content_type") or "image/png"
+            found = _as_data_url(value, mime_type)
+            if found:
+                return found
+
+    for key in ("images", "files", "output"):
+        found = _extract_runpod_image(output.get(key))
+        if found:
+            return found
+
+    return None
+
+
+async def _submit_manhwa(positive_prompt: str, negative_prompt: str, seed: int = -1) -> str | None:
+    if not RUNPOD_API_KEY or not RUNPOD_MANHWA_ENDPOINT_ID:
+        logger.error("RunPod manhwa provider is not configured")
+        return None
+
+    positive_prompt = _truncate_for_clip(positive_prompt, max_words=120)
+    negative_prompt = _truncate_for_clip(negative_prompt, max_words=120)
+    workflow = build_manhwa_workflow(positive_prompt, negative_prompt, seed=seed)
+
+    base_url = f"https://api.runpod.ai/v2/{RUNPOD_MANHWA_ENDPOINT_ID}"
+    headers = {"Authorization": f"Bearer {RUNPOD_API_KEY}"}
+    timeout = httpx.Timeout(30.0, connect=10.0)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+            f"{base_url}/run",
+            headers=headers,
+            json={
+                "input": {
+                    "workflow": workflow,
+                    "prompt": workflow,
+                    "return_base64": True,
+                }
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+
+        job_id = payload.get("id") or payload.get("job_id")
+        immediate = _extract_runpod_image(payload.get("output"))
+        if immediate:
+            return immediate
+        if not job_id:
+            logger.error(f"RunPod did not return job id: {payload}")
+            return None
+
+        deadline = asyncio.get_running_loop().time() + RUNPOD_MANHWA_TIMEOUT_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(RUNPOD_MANHWA_POLL_INTERVAL_SECONDS)
+            status_response = await client.get(f"{base_url}/status/{job_id}", headers=headers)
+            status_response.raise_for_status()
+            status_payload = status_response.json()
+            status = (status_payload.get("status") or "").upper()
+
+            if status == "COMPLETED":
+                image = _extract_runpod_image(status_payload.get("output"))
+                if image:
+                    return image
+                logger.error(f"RunPod completed without image output: {status_payload}")
+                return None
+
+            if status in {"FAILED", "CANCELLED", "TIMED_OUT"}:
+                logger.error(f"RunPod job {job_id} failed: {status_payload}")
+                return None
+
+        logger.error(f"RunPod job {job_id} timed out after {RUNPOD_MANHWA_TIMEOUT_SECONDS}s")
+        return None

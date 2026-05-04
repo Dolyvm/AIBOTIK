@@ -28,6 +28,8 @@ DEFAULT_PROMPTS = {
     LLM_ACTIVE_MODEL_PROMPT_KEY: LLM_DEFAULT_ACTIVE_MODEL,
     "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
     "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
+    "manhwa_base_positive": "masterpiece, best quality, amazing quality, very aesthetic, SemiNrealism, semi-realistic, male, 1boy, solo, male focus, adult man, bishounen, handsome man, korean manhwa style, soft niji style, watercolor-like rendering, painterly",
+    "manhwa_base_negative": "female, 1girl, woman, child, teen, shota, boyish, low quality, worst quality, blurry, bad anatomy, bad hands, extra fingers, missing fingers, deformed face, ugly, flat lighting, simple background, text, watermark, signature, censored",
     "behavior_affinity_cold": "Ты не доверяешь Игроку, держишь эмоциональную дистанцию, избегаешь откровенности и отвечаешь сдержанно или настороженно.\r\n",
     "behavior_affinity_love": "Ты испытываешь глубокую привязанность и любовь к Игроку, общаешься максимально открыто, искренне и эмоционально вовлечённо.\r\n\r\n\r\n\r\n",
     "behavior_affinity_neutral": "Ты воспринимаешь Игрока как знакомого, общаешься спокойно и нейтрально, допускаешь лёгкий юмор без интимности.\r\n",
@@ -1020,21 +1022,30 @@ async def reload_cache(key: str, content: str):
     logger.info(f"Prompt '{key}' updated in cache")
 
 
-def get_default_modifier(name: str, stage: int, is_nsfw: bool) -> str:
+def get_default_modifier(name: str, stage: int, is_nsfw: bool, gender: str = "female") -> str:
     """Дефолтные модификаторы в зависимости от стадии и типа"""
+    if gender == "male":
+        openness = "открыт"
+        in_love = "влюблён"
+        attached = "привязан"
+    else:
+        openness = "открыта"
+        in_love = "влюблена"
+        attached = "привязана"
+
     if is_nsfw:
         defaults = {
             1: f"{name} ведёт себя сдержанно, с осторожностью.|разговор, лёгкий флирт",
-            2: f"{name} более открыт(а), проявляет интерес.|разговор, флирт, прикосновения",
+            2: f"{name} более {openness}, проявляет интерес.|разговор, флирт, прикосновения",
             3: f"{name} доверяет, показывает привязанность.|всё из stage_2, объятия, поцелуи",
-            4: f"{name} полностью открыт(а) и влюблён(а).|без ограничений",
+            4: f"{name} полностью {openness} и {in_love}.|без ограничений",
         }
     else:
         defaults = {
             1: f"{name} ведёт себя сдержанно, соблюдает дистанцию.|вежливый разговор",
             2: f"{name} становится дружелюбнее, проявляет интерес.|дружеский разговор, улыбки",
             3: f"{name} доверяет и показывает привязанность.|всё из stage_2, объятия",
-            4: f"{name} полностью открыт(а), глубоко привязан(а).|глубокая близость",
+            4: f"{name} полностью {openness}, глубоко {attached}.|глубокая близость",
         }
     return defaults[stage]
 
@@ -1044,12 +1055,13 @@ async def create_or_update_character_modifiers(
     character_name: str,
     is_nsfw: bool,
     modifiers: dict,
-    db: AsyncSession
+    db: AsyncSession,
+    gender: str = "female",
 ):
     """Создать или обновить модификаторы стадий для персонажа"""
     for stage_num in range(1, 5):
         prompt_key = f"character_modifiers_{character_id}_stage_{stage_num}"
-        value = modifiers.get(stage_num) or get_default_modifier(character_name, stage_num, is_nsfw)
+        value = modifiers.get(stage_num) or get_default_modifier(character_name, stage_num, is_nsfw, gender)
 
         result = await db.execute(select(Prompt).where(Prompt.key == prompt_key))
         prompt = result.scalar_one_or_none()

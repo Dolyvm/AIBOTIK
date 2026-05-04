@@ -406,8 +406,8 @@
                             <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
                         </select>
                         <select v-model="characterFilters.style" @change="loadCharacters">
-                            <option :value="null">Anime/Real</option>
-                            <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ style }}</option>
+                            <option :value="null">Стиль</option>
+                            <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ modelTypeLabel(style) }}</option>
                         </select>
                     </div>
                     <div class="filters">
@@ -637,7 +637,7 @@
 
                         <div v-if="showFullSubscription" style="margin-top:14px;">
                             <div class="usage-bars" v-if="subscription.usage">
-                                <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'avatar_generations' && key !== 'messages_sent'">
+                                <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'messages_sent'">
                                     <div class="usage-bar-header">
                                         <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
                                         <span class="usage-bar-count">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
@@ -664,7 +664,7 @@
                             <div class="plan-preview" v-if="previewPlanData">
                                 <div class="plan-preview-title">{{ previewPlanData.display_name }} — лимиты:</div>
                                 <div class="plan-preview-limits">
-                                    <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key" v-if="key !== 'avatar_generations'">
+                                    <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key">
                                         <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
                                         <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
                                     </div>
@@ -991,8 +991,8 @@
                         <div class="cc-field">
                             <label>Пол: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
                             <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'female' }" @click="createCharacterData.gender = 'female'" style="flex: 1;">Женский</button>
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'male' }" @click="createCharacterData.gender = 'male'" style="flex: 1;">Мужской</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'female' }" @click="setCreateCharacterGender('female')" style="flex: 1;">Женский</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'male' }" @click="setCreateCharacterGender('male')" style="flex: 1;">Мужской</button>
                             </div>
                         </div>
 
@@ -1001,7 +1001,9 @@
                             <div style="display: flex; gap: 8px;">
                                 <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'anime' }" @click="createCharacterData.model_type = 'anime'" style="flex: 1;">Anime</button>
                                 <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'real' }" @click="createCharacterData.model_type = 'real'" style="flex: 1;">Real</button>
+                                <button v-if="createCharacterData.gender === 'male'" class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'manhwa' }" @click="createCharacterData.model_type = 'manhwa'" style="flex: 1;">Manhwa</button>
                             </div>
+                            <div v-if="createCharacterData.gender !== 'male'" style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Manhwa доступен для мужских персонажей.</div>
                         </div>
 
                         <div class="cc-field">
@@ -1165,14 +1167,14 @@
                             </div>
 
                             <button class="cc-generate-btn" @click="generateNewCharacterPreview"
-                                    :disabled="isGeneratingPreview || avatarGenCount >= avatarGenLimit">
+                                    :disabled="isGeneratingPreview || !avatarGenerationAllowed">
                                 <i class="fas fa-image"></i>
                                 <template v-if="isGeneratingPreview">Генерация...</template>
-                                <template v-else-if="avatarGenCount >= avatarGenLimit">Лимит исчерпан</template>
+                                <template v-else-if="!avatarGenerationAllowed">Лимит исчерпан</template>
                                 <template v-else>Сгенерировать аватар</template>
                             </button>
-                            <div v-if="avatarGenCount >= avatarGenLimit" class="cc-limit-hint">
-                                Лимит генераций аватара исчерпан (максимум {{ avatarGenLimit }})
+                            <div v-if="!avatarGenerationAllowed" class="cc-limit-hint">
+                                Лимит генераций аватара исчерпан
                             </div>
                         </div>
                     </div>
@@ -1559,7 +1561,6 @@
                 const generatedAvatars = ref([]);
                 const selectedAvatarIndex = ref(0);
                 const avatarGenCount = ref(0);
-                const avatarGenLimit = 10;
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
                 const isUploadingAvatar = ref(false);
@@ -1647,6 +1648,12 @@
                     content_edits: 'Редактирование',
                     avatar_generations: 'Генерации аватара',
                 };
+                const modelTypeLabel = (type) => ({
+                    anime: 'Anime',
+                    real: 'Real',
+                    manhwa: 'Manhwa',
+                }[type] || type);
+                const avatarGenerationAllowed = computed(() => checkUsageRemaining('avatar_generations'));
 
                 const loadSubscription = async () => {
                     try {
@@ -2130,7 +2137,6 @@
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
                             profileSettings.value.nickname = res.data.nickname || '';
                             autoRenew.value = res.data.subscription?.auto_renew || false;
-                            // avatarGenLimit is a per-session constant (10), not loaded from server
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -2523,7 +2529,7 @@
 
                 // Poll for image task completion
                 const pollImageTask = async (taskId, onComplete, onError) => {
-                    const maxAttempts = 60; // 3 minutes max (60 * 3s)
+                    const maxAttempts = 300; // 15 minutes max (RunPod Serverless cold starts can be slow)
                     let attempts = 0;
 
                     while (attempts < maxAttempts) {
@@ -2875,6 +2881,8 @@
                     characters_created: 'создания персонажей',
                     worlds_created: 'создания вселенных',
                     content_edits: 'редактирования',
+                    avatar_generations: 'генерации аватаров',
+                    images: 'изображений',
                 };
 
                 const blockIfLimitReached = (usageType) => {
@@ -2889,6 +2897,13 @@
                 };
 
                 // --- CREATE CHARACTER ---
+                const setCreateCharacterGender = (gender) => {
+                    createCharacterData.value.gender = gender;
+                    if (gender !== 'male' && createCharacterData.value.model_type === 'manhwa') {
+                        createCharacterData.value.model_type = 'anime';
+                    }
+                };
+
                 const createCharacterOnClick = () => {
                     if (blockIfLimitReached('characters_created')) return;
                     currentView.value = "create-character";
@@ -2972,6 +2987,10 @@
                             showToast('Введите имя персонажа');
                             return;
                         }
+                        if (d.model_type === 'manhwa' && d.gender !== 'male') {
+                            showToast('Manhwa доступен только для мужских персонажей');
+                            return;
+                        }
                     } else if (ccStep.value === 1) {
                         if (!d.description.trim() || !d.personality.trim() || !d.scenario.trim() || !d.first_message.trim()) {
                             showToast('Заполните все обязательные поля');
@@ -3017,6 +3036,7 @@
 
                 const generateNewCharacterPreview = async () => {
                     if (isGeneratingPreview.value) return;
+                    if (blockIfLimitReached('avatar_generations')) return;
                     isGeneratingPreview.value = true;
                     try {
                         const res = await axios.post('/api/create_character/generate-avatar', {
@@ -3034,6 +3054,7 @@
                             newCharacterPreview.value = url;
                             avatarGenCount.value++;
                             isGeneratingPreview.value = false;
+                            loadSubscription();
                         };
 
                         if (res.data.task_id) {
@@ -3085,6 +3106,10 @@
                     const d = createCharacterData.value;
                     if (!d.name || !d.description || !d.personality || !d.scenario || !d.first_message) {
                         showToast('Заполните все обязательные поля');
+                        return;
+                    }
+                    if (d.model_type === 'manhwa' && d.gender !== 'male') {
+                        showToast('Manhwa доступен только для мужских персонажей');
                         return;
                     }
 
@@ -3334,7 +3359,8 @@
                     toast, autoContinue, hideKeyboard,
                     createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
                     generateNewCharacterPreview, isGeneratingPreview,
-                    generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenLimit,
+                    generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenerationAllowed,
+                    modelTypeLabel, setCreateCharacterGender,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     handleCustomAvatarUpload, isUploadingAvatar, customAvatarInput,
                     addAlternateGreeting, removeAlternateGreeting,

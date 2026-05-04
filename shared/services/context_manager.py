@@ -19,6 +19,7 @@ from shared.config import (
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, MessageRepository, GeneratedImageRepository
 from shared.models import Chat
+from shared.services.model_types import validate_model_gender
 
 class ContextManager:
 
@@ -370,7 +371,7 @@ class ContextManager:
                         affinity=chat.affinity,
                         arousal=chat.arousal,
                         current_location=chat.current_location or "",
-                        model_type=content.get("model_type", "anime"),
+                        model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
                         gender=content.get("visual", {}).get("gender", "female"),
                     )
 
@@ -433,8 +434,10 @@ class ContextManager:
             logging.info(f"Auto-photo generation: {pos=}")
 
             model_type = content.get("model_type")
-            if model_type not in ("anime", "real"):
-                logging.warning(f"Unsupported model type for auto-photo: {model_type}")
+            try:
+                validate_model_gender(model_type, char_gender)
+            except ValueError as e:
+                logging.warning(f"Unsupported model type for auto-photo: {e}")
                 return None
 
             # Create task and enqueue for background processing

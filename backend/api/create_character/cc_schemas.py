@@ -12,7 +12,7 @@ class CreateCharacterRequest(BaseModel):
     heat_level: int = 0
     alternate_greetings: list[str] = []
     gender: Literal["female", "male"] = "female"
-    model_type: Literal["anime", "real"] = "anime"
+    model_type: Literal["anime", "real", "manhwa"] = "anime"
     appearance: Optional[str] = None
     visual_body: Optional[str] = None
     visual_face: Optional[str] = None

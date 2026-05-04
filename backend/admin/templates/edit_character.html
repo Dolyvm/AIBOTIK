@@ -133,6 +133,7 @@
                 required
                 style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
             >{{ visual_data_json }}</textarea>
+            <small style="color: #7f8c8d; font-size: 12px;">Для Manhwa укажите <code>"model_type": "manhwa"</code> и <code>"gender": "male"</code>.</small>
             <div id="jsonError" style="color: #e74c3c; font-size: 13px; margin-top: 5px; display: none;"></div>
         </div>
 
@@ -516,7 +517,7 @@
     }
 
     async function pollAvatarTask(taskId) {
-        const maxAttempts = 60;
+        const maxAttempts = 300;
         for (let i = 0; i < maxAttempts; i++) {
             const res = await fetch(`/api/tasks/${taskId}`);
             const data = await res.json();
