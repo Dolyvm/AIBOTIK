@@ -103,7 +103,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
                         user_id=user_id,
                         chat_id=chat_id,
                         prompt=positive_prompt,
-                        provider_url=image_url,
+                        provider_url=None if image_url.startswith("data:image/") else image_url,
                         local_path=local_path,
                         file_size=file_size,
                         content_type=content_type,

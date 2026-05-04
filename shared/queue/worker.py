@@ -38,7 +38,7 @@ class WorkerSettings:
     )
 
     max_jobs = 10
-    job_timeout = 300
+    job_timeout = int(os.getenv("IMAGE_JOB_TIMEOUT", "900"))
     keep_result = 3600
 
     on_startup = startup

@@ -9,6 +9,7 @@ from shared.services.cache import get_cache
 class ModelType(enum.Enum):
     real = "real"
     anime = "anime"
+    manhwa = "manhwa"
 
 class ImageSize(BaseModel):
     width: int = 1024
@@ -65,6 +66,20 @@ async def get_anime_base_positive() -> str:
 
 async def get_anime_base_negative() -> str:
     return await get_prompt("anime_base_negative")
+
+async def get_manhwa_base_positive() -> str:
+    from shared.services.workflows.manhwa_illustrious import MANHWA_BASE_POSITIVE
+    try:
+        return await get_prompt("manhwa_base_positive")
+    except KeyError:
+        return MANHWA_BASE_POSITIVE
+
+async def get_manhwa_base_negative() -> str:
+    from shared.services.workflows.manhwa_illustrious import MANHWA_BASE_NEGATIVE
+    try:
+        return await get_prompt("manhwa_base_negative")
+    except KeyError:
+        return MANHWA_BASE_NEGATIVE
 
 AGE_INTERVAL_MAP = {
     "18": "18-20 years old",
@@ -125,7 +140,7 @@ class Prompt(BaseModel):
 
         # Если appearance пуст - строим из отдельных полей (пользовательские персонажи)
         if not appearance and visual.get("age"):
-            if model_type == "anime":
+            if model_type in ("anime", "manhwa"):
                 if is_male:
                     parts = ["1boy", "anime boy"]
                 else:
@@ -186,7 +201,7 @@ class Prompt(BaseModel):
                         parts.append(f"and {visual['ass']}")
                 appearance = ", ".join(parts)
 
-        if model_type == "anime":
+        if model_type in ("anime", "manhwa"):
             character_base = appearance
             style = ""
         else:
@@ -197,7 +212,7 @@ class Prompt(BaseModel):
 
         # Принудительно добавить гендерный тег в начало, если его нет
         cb_lower = character_base.lower()
-        if model_type == "anime":
+        if model_type in ("anime", "manhwa"):
             if is_male and "1boy" not in cb_lower:
                 character_base = "1boy, " + character_base
             elif not is_male and "1girl" not in cb_lower:
@@ -217,6 +232,8 @@ class Prompt(BaseModel):
         )
 
     async def build_prompt(self, build_as_type: ModelType = None, gender: str = "female") -> tuple[str, str]:
+        if isinstance(build_as_type, ModelType):
+            build_as_type = build_as_type.value
         prompt_parts = []
         negative_parts = []
 
@@ -226,6 +243,9 @@ class Prompt(BaseModel):
                 base_positive = base_positive.replace("general, ", "")
             prompt_parts.append(base_positive)
             negative_parts.append(await get_anime_base_negative())
+        elif build_as_type == "manhwa":
+            prompt_parts.append(await get_manhwa_base_positive())
+            negative_parts.append(await get_manhwa_base_negative())
         nsfw_levels = await get_nsfw_levels()
 
         for field_name, _ in self.__class__.model_fields.items():
@@ -236,7 +256,7 @@ class Prompt(BaseModel):
             if field_name == "nsfw_level":
                 resolved = False
                 if value >= 2:
-                    type_key = build_as_type if build_as_type in ("anime", "real") else None
+                    type_key = build_as_type if build_as_type in ("anime", "real", "manhwa") else None
                     # Priority: model_type+gender specific → generic fallback
                     lookup_keys = []
                     gender_suffix = "_male" if gender == "male" else ""

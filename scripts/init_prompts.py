@@ -125,6 +125,14 @@ PROMPT_METADATA = {
         "category": "image",
         "name": "Anime Base Negative Prompt"
     },
+    "manhwa_base_positive": {
+        "category": "image",
+        "name": "Manhwa Base Positive Prompt"
+    },
+    "manhwa_base_negative": {
+        "category": "image",
+        "name": "Manhwa Base Negative Prompt"
+    },
 
     "character_modifiers_emily_stage_1": {
         "category": "modifiers",

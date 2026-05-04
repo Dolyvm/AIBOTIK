@@ -25,6 +25,7 @@ from shared.config import SCENE_ANALYZER_ENABLED
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.services.image_provider import generate_image as provider_generate_image
+from shared.services.model_types import validate_model_gender
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
 from ..services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
 
@@ -145,7 +146,7 @@ async def gen(
                 affinity=chat.affinity,
                 arousal=chat.arousal,
                 current_location=chat.current_location or "",
-                model_type=content.get("model_type", "anime"),
+                model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
                 gender=content.get("visual", {}).get("gender", "female"),
             )
 
@@ -220,8 +221,10 @@ async def gen(
     logging.info(f"{content=}")
 
     model_type = content.get("model_type")
-    if model_type not in ("anime", "real"):
-        raise HTTPException(status_code=400, detail="Unsupported model type")
+    try:
+        validate_model_gender(model_type, char_gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     task_id = str(uuid4())
 
     char_id = (character or {}).get("id") or content.get("name", "")

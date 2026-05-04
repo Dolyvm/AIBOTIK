@@ -6,6 +6,30 @@ from shared.services.prompt_service import DEFAULT_PROMPTS, get_prompt
 async def _get_common_style_guide() -> str:
     return await get_prompt("common_style_guide")
 
+
+def _get_gender_identity_instruction(gender: str) -> str:
+    if gender == "male":
+        return (
+            "### ПОЛ И ГРАММАТИКА ПЕРСОНАЖА (CRITICAL) ###\n"
+            "Персонаж - мужчина. Всегда описывай персонажа в мужском роде: "
+            "он, его, сказал, подошёл, нахмурился, почувствовал.\n"
+            "Запрещено описывать этого персонажа в женском роде: она, её, "
+            "сказала, подошла, повернула, почувствовала.\n"
+            "Если в общих примерах ниже встречается женский род, это только "
+            "пример оформления текста, а не пол текущего персонажа."
+        )
+
+    return (
+        "### ПОЛ И ГРАММАТИКА ПЕРСОНАЖА (CRITICAL) ###\n"
+        "Персонаж - женщина. Всегда описывай персонажа в женском роде: "
+        "она, её, сказала, подошла, нахмурилась, почувствовала.\n"
+        "Запрещено описывать этого персонажа в мужском роде: он, его, "
+        "сказал, подошёл, нахмурился, почувствовал.\n"
+        "Если в общих примерах ниже встречается мужской род, это только "
+        "пример оформления текста, а не пол текущего персонажа."
+    )
+
+
 async def _get_meta_instruction(allow_nsfw: bool = True) -> str:
     key = "meta_instruction" if allow_nsfw else "meta_instruction_sfw"
     try:
@@ -120,6 +144,7 @@ async def build_character_prompt(
         relationship_role=character["visual"].get("llm_settings", {}).get("relationship_role", "Не указано"),
         preferences=preferences
     )
+    prompt = f"{_get_gender_identity_instruction(gender)}\n\n{prompt}"
 
     if not allow_nsfw:
         try:

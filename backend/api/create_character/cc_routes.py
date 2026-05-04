@@ -15,6 +15,7 @@ from shared.services.prompt_service import create_or_update_character_modifiers
 from shared.services.image_storage import save_avatar, ALLOWED_CONTENT_TYPES
 from shared.config import IMAGES_STORAGE_PATH
 from shared.services.redis_client import get_redis
+from shared.services.model_types import validate_model_gender
 from shared.constants import invalidate_character_modifiers_cache
 from shared.models import User, Character
 from shared.database import get_session
@@ -42,6 +43,10 @@ async def create_character(
 ):
     if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
+    try:
+        validate_model_gender(data.model_type, data.gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     sub_service = get_subscription_service()
     async with get_session() as session:
@@ -61,8 +66,10 @@ async def create_character(
         if not style_tags.strip():
             if data.model_type == "anime":
                 style_tags = "anime style, cel shading, vibrant colors"
-            else:
+            elif data.model_type == "real":
                 style_tags = "soft natural lighting, film photography, warm tones"
+            else:
+                style_tags = ""
 
         wardrobe = data.wardrobe or {}
         # Auto-add required wardrobe keys if missing
@@ -140,6 +147,7 @@ async def create_character(
             is_nsfw=True,
             modifiers=modifiers,
             db=db,
+            gender=data.gender,
         )
         await db.commit()
         await invalidate_character_modifiers_cache()
@@ -179,6 +187,10 @@ async def update_character(
 
         if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
             raise HTTPException(status_code=400, detail="All main fields are required")
+        try:
+            validate_model_gender(data.model_type, data.gender)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         sub_service = get_subscription_service()
         allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "content_edits", db)
@@ -191,8 +203,10 @@ async def update_character(
         if not style_tags.strip():
             if data.model_type == "anime":
                 style_tags = "anime style, cel shading, vibrant colors"
-            else:
+            elif data.model_type == "real":
                 style_tags = "soft natural lighting, film photography, warm tones"
+            else:
+                style_tags = ""
 
         old_visual = character.visual_data or {}
         visual_data = {
@@ -268,6 +282,19 @@ async def generate_avatar(
             raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
 
     model_type = data.get("model_type", "anime")
+    gender = data.get("gender", "female")
+    try:
+        validate_model_gender(model_type, gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "avatar_generations", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("avatar_generations", limit)
+
     appearance = data.get("appearance", "")
     body = data.get("body", "")
     face = data.get("face", "")
@@ -276,8 +303,10 @@ async def generate_avatar(
     if not style_tags.strip():
         if model_type == "anime":
             style_tags = "anime style, cel shading, vibrant colors"
-        else:
+        elif model_type == "real":
             style_tags = "soft natural lighting, film photography, warm tones"
+        else:
+            style_tags = ""
 
     prompt = ImagePrompt(
         character_base=", ".join(filter(None, [appearance, body])),
@@ -287,7 +316,7 @@ async def generate_avatar(
         nsfw_level=0,
     )
 
-    pos, neg = await prompt.build_prompt(model_type)
+    pos, neg = await prompt.build_prompt(model_type, gender=gender)
 
     task_id = str(uuid4())
     task_params = {
@@ -295,6 +324,7 @@ async def generate_avatar(
         "positive_prompt": pos,
         "negative_prompt": neg,
         "allow_nsfw": False,
+        "user_id": user.telegram_id,
     }
 
     redis = await get_redis()
@@ -319,6 +349,8 @@ async def generate_avatar(
             ctx = {"redis": redis, "get_session": get_session}
             result = await generate_avatar_task(ctx, task_id, task_params)
             if result.get("status") == "completed":
+                async with get_session() as session:
+                    await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
                 return result.get("result", {})
             raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
     except RateLimitExceeded:
@@ -328,6 +360,9 @@ async def generate_avatar(
     except Exception as e:
         logger.error(f"Avatar generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+    async with get_session() as session:
+        await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
 
     return {"task_id": task_id, "status": "pending"}
 

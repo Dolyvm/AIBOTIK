@@ -155,7 +155,9 @@
                 >
                     <option value="anime">Аниме</option>
                     <option value="real">Реалистичный/Фотореалистичный</option>
+                    <option value="manhwa">Manhwa / Niji male</option>
                 </select>
+                <small style="color: #7f8c8d; font-size: 12px;">Manhwa доступен только для мужских персонажей.</small>
             </div>
 
             <div class="form-group">
@@ -516,6 +518,13 @@
         });
     });
 
+    document.getElementById('gender').addEventListener('change', function() {
+        const modelType = document.getElementById('model_type');
+        if (this.value !== 'male' && modelType.value === 'manhwa') {
+            modelType.value = 'anime';
+        }
+    });
+
     // Add alternate greeting
     let greetingCount = 0;
     function addAlternateПриветствие() {
@@ -698,7 +707,7 @@
     }
 
     async function pollAvatarTask(taskId) {
-        const maxAttempts = 60;
+        const maxAttempts = 300;
         for (let i = 0; i < maxAttempts; i++) {
             const res = await fetch(`/api/tasks/${taskId}`);
             const data = await res.json();

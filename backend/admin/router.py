@@ -28,6 +28,7 @@ from shared.services.cache import get_cache
 from shared.services.image_storage import save_avatar, save_world_cover, get_public_url
 from shared.services.image_cleanup import collect_character_file_paths, delete_files
 from shared.services.redis_client import get_redis
+from shared.services.model_types import validate_model_gender
 from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
 from telegram_init_data import validate, parse
 
@@ -455,6 +456,10 @@ async def generate_avatar(
 
     model_type = data.get("model_type", "anime")
     gender = data.get("gender", "female")
+    try:
+        validate_model_gender(model_type, gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     appearance = data.get("appearance", "")
     body = data.get("body", "")
     face = data.get("face", "")
@@ -581,6 +586,13 @@ async def create_character(
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
     is_verified = form_data.get("is_verified") == "on"
+    model_type = form_data.get("model_type", "anime")
+    gender = form_data.get("gender", "female")
+
+    try:
+        validate_model_gender(model_type, gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not character_id or not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
@@ -602,7 +614,6 @@ async def create_character(
         if k.strip()
     }
     # Auto-add required wardrobe keys if missing
-    gender = form_data.get("gender", "female")
     if gender == "male":
         wardrobe.setdefault("nude", "nothing, showing his naked body")
         wardrobe.setdefault("underwear", "black boxer briefs")
@@ -611,8 +622,8 @@ async def create_character(
         wardrobe.setdefault("underwear", "white bra, white panties")
 
     visual_data = {
-        "model_type": form_data.get("model_type", "anime"),
-        "gender": form_data.get("gender", "female"),
+        "model_type": model_type,
+        "gender": gender,
         "appearance": form_data.get("appearance", "").strip(),
         "body": form_data.get("visual_body", "").strip(),
         "face": form_data.get("visual_face", "").strip(),
@@ -707,7 +718,8 @@ async def create_character(
         character_name=name,
         is_nsfw=is_nsfw,
         modifiers=modifiers,
-        db=db
+        db=db,
+        gender=gender,
     )
     await db.commit()
     await invalidate_character_modifiers_cache()
@@ -812,6 +824,11 @@ async def update_character(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
 
+    try:
+        validate_model_gender(visual_data.get("model_type", "anime"), visual_data.get("gender", "female"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     avatar_url = form_data.get("avatar_url", "").strip()
     logger.info(f"[UPDATE_CHARACTER] character_id={character_id} avatar_url_raw={repr(avatar_url)}")
     logger.info(f"[UPDATE_CHARACTER] visual_data_before={json.dumps(visual_data.get('avatar'))}")
@@ -912,7 +929,8 @@ async def update_character(
         character_name=name,
         is_nsfw=is_nsfw,
         modifiers=modifiers,
-        db=db
+        db=db,
+        gender=visual_data.get("gender", "female"),
     )
     await db.commit()
     await invalidate_character_modifiers_cache()
