@@ -16,6 +16,7 @@ from shared.services.analytics import AnalyticsService
 from shared.models import User, SubscriptionPlan, SubscriptionPayment
 from shared.database.repositories import ChatRepository, MessageRepository
 from shared.subscription_plans import PLAN_LIMITS
+from shared.constants import get_heat_level
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,12 @@ async def _update_task_status(redis, task_id: str, status: str, **kwargs) -> Non
 def _import_image_prompt_modules():
     try:
         from api.image_gen.schemas.generate import Prompt
-        from api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
+        from api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
     except ImportError:
         from backend.api.image_gen.schemas.generate import Prompt
-        from backend.api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback
+        from backend.api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
 
-    return Prompt, SceneAnalyzer, calculate_nsfw_fallback
+    return Prompt, SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
 
 
 async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
@@ -48,7 +49,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     if not get_session:
         raise RuntimeError("Image task cannot prepare prompt without database session factory")
 
-    Prompt, SceneAnalyzer, calculate_nsfw_fallback = _import_image_prompt_modules()
+    Prompt, SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback = _import_image_prompt_modules()
 
     chat_id = params["chat_id"]
     requested_outfit = params.get("outfit") or "default_outfit"
@@ -72,6 +73,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
         for msg in messages
     ]
     state_meta = chat.state_meta or {}
+    heat_level = get_heat_level(chat)
     allow_nsfw = params.get("allow_nsfw", content.get("is_nsfw", True))
 
     nsfw_level = 0
@@ -111,6 +113,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
                 mood=chat.current_mood or "neutral",
                 affinity=chat.affinity,
                 arousal=chat.arousal,
+                heat_level=heat_level,
                 current_location=chat.current_location or "",
                 model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
                 gender=content.get("visual", {}).get("gender", "female"),
@@ -128,18 +131,20 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
             logger.info(f"Scene analysis for image task {chat_id}: {scene_reasoning}")
         except Exception as e:
             logger.warning(f"Scene analysis failed for image task {chat_id}, using fallback: {e}")
-            nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-            if not allow_nsfw:
-                nsfw_level = min(nsfw_level, 1)
+            nsfw_level = (
+                calculate_nsfw_fallback(heat_level)
+                if allow_nsfw else calculate_sfw_fallback(heat_level)
+            )
             if nsfw_level >= 4:
                 outfit_key = "nude"
             elif nsfw_level >= 2:
                 outfit_key = "underwear"
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
-        nsfw_level = calculate_nsfw_fallback(chat.arousal, chat.affinity)
-        if not allow_nsfw:
-            nsfw_level = min(nsfw_level, 1)
+        nsfw_level = (
+            calculate_nsfw_fallback(heat_level)
+            if allow_nsfw else calculate_sfw_fallback(heat_level)
+        )
         if nsfw_level >= 4:
             outfit_key = "nude"
         elif nsfw_level >= 2:

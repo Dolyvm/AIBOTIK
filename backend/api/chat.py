@@ -207,16 +207,17 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
                                 heat_level = s.get("heat_level", 0)
                                 break
 
-                if heat_level > 0:
-                    from shared.constants import HEAT_LEVEL_DEFAULTS
-                    defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
-                    await chat_repo.update_metrics(chat.id, {
-                        "affinity": defaults["affinity"],
-                        "arousal": defaults["arousal"],
-                        "state_meta": {"heat_level": heat_level},
-                    })
-                    chat.affinity = defaults["affinity"]
-                    chat.arousal = defaults["arousal"]
+                from shared.constants import HEAT_LEVEL_DEFAULTS, normalize_heat_level
+                heat_level = normalize_heat_level(heat_level)
+                defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
+                await chat_repo.update_metrics(chat.id, {
+                    "affinity": defaults["affinity"],
+                    "arousal": defaults["arousal"],
+                    "state_meta": {"heat_level": heat_level},
+                })
+                chat.affinity = defaults["affinity"]
+                chat.arousal = defaults["arousal"]
+                chat.state_meta = {"heat_level": heat_level}
 
                 first_message = await get_first_message(
                     chat_type=payload.chat_type,

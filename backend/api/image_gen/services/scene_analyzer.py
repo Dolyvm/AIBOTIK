@@ -160,12 +160,21 @@ def extract_nsfw_tags_fallback(scene_description: str, pose: str = "") -> str:
     return ", ".join(found_tags)
 
 
-def calculate_nsfw_fallback(arousal: int, affinity: int) -> int:
-    score = arousal * 0.75 + affinity * 0.25
-    return min(5, max(0, int(score / 20)))
+def calculate_nsfw_fallback(heat_level: int) -> int:
+    from shared.constants import normalize_heat_level
 
-def calculate_sfw_fallback(arousal: int, affinity: int) -> int:
-    return 1 if affinity > 50 else 0
+    return {
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+    }[normalize_heat_level(heat_level)]
+
+
+def calculate_sfw_fallback(heat_level: int) -> int:
+    from shared.constants import normalize_heat_level
+
+    return 1 if normalize_heat_level(heat_level) > 0 else 0
 
 class SceneAnalyzer:
 
@@ -215,18 +224,21 @@ REAL MODEL EXTRA RULES:
         mood: str = "neutral",
         affinity: int = 50,
         arousal: int = 0,
+        heat_level: int = 0,
         current_location: str = "",
         model_type: str = "anime",
         gender: str = "female",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
+        from shared.constants import get_heat_context, normalize_heat_level
 
         recent_messages = history[-2:] if len(history) > 2 else history
+        heat_level = normalize_heat_level(heat_level)
 
         scene_prompt_profile = (
             f"real-rules-v2:{gender}" if model_type == "real" else f"base-v1:{model_type}:{gender}"
         )
-        context_str = f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{recent_messages}"
+        context_str = f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{heat_level}:{recent_messages}"
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
 
         cache = get_cache()
@@ -264,6 +276,8 @@ REAL MODEL EXTRA RULES:
             mood=mood,
             affinity=affinity,
             arousal=arousal,
+            heat_level=heat_level,
+            heat_context=get_heat_context(heat_level),
             current_location=current_location or "unknown",
             model_type=model_type,
             gender_possessive=gender_possessive,

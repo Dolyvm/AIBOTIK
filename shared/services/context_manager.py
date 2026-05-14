@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, Sequence
 
 from shared.services.llm import LLMClient, LLMError, LLMResponse
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
@@ -17,6 +17,7 @@ from shared.config import (
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, MessageRepository
 from shared.models import Chat
+from shared.constants import get_heat_context, get_heat_level
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,20 @@ PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT = (
     "JSON, meta, заголовков, role labels, пояснений и текста персонажа."
 )
 PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION = """
-ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОТКЛОНЁН:
+ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОТКЛОНЁН: {reason}
+
+Отклонённый текст:
 {bad_response}
 
-Исправь ошибку. Верни только одну короткую реплику или действие игрока от первого лица.
-Запрещено писать за персонажа, использовать "он/она сказала", <meta>, JSON, markdown или role labels.
+Сгенерируй новый короткий ответ игрока от первого лица на русском.
+Запрещено повторять прошлые сообщения игрока дословно, писать за персонажа,
+использовать <meta>, JSON, markdown или role labels.
 """
-PLAYER_AUTO_MESSAGE_FALLBACK = "Я смотрю внимательнее и тихо отвечаю: «Я слушаю.»"
+PLAYER_AUTO_MESSAGE_FALLBACKS = (
+    "Я задерживаю взгляд и тихо отвечаю: «Продолжай.»",
+    "Я делаю короткий вдох и говорю: «Я слушаю.»",
+    "Я чуть наклоняюсь ближе и внимательно жду продолжения.",
+)
 
 _PLAYER_ROLE_LABEL_RE = re.compile(
     r"(?im)^\s*(?:system|assistant|developer|user|player|персонаж|игрок|"
@@ -76,7 +84,18 @@ def _clean_generated_player_message(content: str) -> str:
     return text.strip(" \n\t\"'")
 
 
-def _invalid_player_message_reason(content: str) -> Optional[str]:
+def _normalize_player_message_for_compare(content: str) -> str:
+    text = _clean_generated_player_message(content)
+    text = text.casefold().replace("ё", "е")
+    text = re.sub(r"[^\w\s]+", " ", text, flags=re.UNICODE)
+    text = text.replace("_", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _invalid_player_message_reason(
+    content: str,
+    recent_user_messages: Optional[Sequence[str]] = None,
+) -> Optional[str]:
     text = (content or "").strip()
     if not text:
         return "empty"
@@ -101,12 +120,80 @@ def _invalid_player_message_reason(content: str) -> Optional[str]:
     if _CHARACTER_ATTRIBUTION_RE.search(text):
         return "character_attribution"
 
+    if recent_user_messages:
+        normalized = _normalize_player_message_for_compare(text)
+        if normalized:
+            for previous in recent_user_messages:
+                if normalized == _normalize_player_message_for_compare(previous):
+                    return "duplicate_user_message"
+
     return None
 
 
-def _prepare_generated_player_message(content: str) -> tuple[str, Optional[str]]:
+def _prepare_generated_player_message(
+    content: str,
+    recent_user_messages: Optional[Sequence[str]] = None,
+) -> tuple[str, Optional[str]]:
     text = _clean_generated_player_message(content)
-    return text, _invalid_player_message_reason(text)
+    return text, _invalid_player_message_reason(text, recent_user_messages)
+
+
+def _build_player_retry_prompt(
+    player_prompt: str,
+    bad_response: str,
+    reason: str,
+    recent_user_messages: Optional[Sequence[str]] = None,
+    last_character_message: Optional[str] = None,
+) -> str:
+    context = (last_character_message or player_prompt or "").strip()
+    previous = "\n".join(f"- {msg}" for msg in (recent_user_messages or [])[-5:])
+    if not previous:
+        previous = "Нет."
+    rejection_instruction = PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION.format(
+        reason=reason,
+        bad_response=(bad_response or "<empty>")[:500],
+    ).strip()
+
+    return (
+        f"{rejection_instruction}\n\n"
+        f"Последняя реплика/действие персонажа:\n\"{context[:1500]}\"\n\n"
+        f"Прошлые сообщения игрока, которые нельзя повторять дословно:\n{previous}\n\n"
+        "Верни только финальный текст: 1-2 коротких предложения или действие игрока."
+    )
+
+
+def _fallback_player_message(recent_user_messages: Optional[Sequence[str]] = None) -> str:
+    for candidate in PLAYER_AUTO_MESSAGE_FALLBACKS:
+        _, reason = _prepare_generated_player_message(candidate, recent_user_messages)
+        if not reason:
+            return candidate
+    return "Я молча киваю."
+
+
+def _build_chat_updates_from_meta(chat: Chat, state_updates: dict) -> dict:
+    updates = {}
+    state_updates = dict(state_updates or {})
+    state_updates.pop("affinity_change", None)
+    state_updates.pop("arousal_change", None)
+
+    if "mood" in state_updates:
+        updates["current_mood"] = state_updates["mood"]
+
+    if "new_location" in state_updates and state_updates["new_location"] is not None:
+        updates["current_location"] = state_updates["new_location"]
+
+    meta_fields = {}
+    if "thought" in state_updates:
+        meta_fields["thought"] = state_updates["thought"]
+    if "new_action" in state_updates and state_updates["new_action"] is not None:
+        meta_fields["action"] = state_updates["new_action"]
+
+    if meta_fields:
+        current_meta = dict(chat.state_meta or {})
+        current_meta.update(meta_fields)
+        updates["state_meta"] = current_meta
+
+    return updates
 
 
 class ContextManager:
@@ -218,31 +305,7 @@ class ContextManager:
 
             if state_updates:
                 logging.info(f"{state_updates=}")
-                updates = {}
-
-                if "affinity_change" in state_updates:
-                    new_affinity = max(0, min(100, chat.affinity + state_updates["affinity_change"]))
-                    updates["affinity"] = new_affinity
-
-                if "arousal_change" in state_updates:
-                    new_arousal = max(0, min(100, chat.arousal + state_updates["arousal_change"]))
-                    updates["arousal"] = new_arousal
-
-                if "mood" in state_updates:
-                    updates["current_mood"] = state_updates["mood"]
-
-                if "new_location" in state_updates and state_updates["new_location"] is not None:
-                    updates["current_location"] = state_updates["new_location"]
-                meta_fields = {}
-                if "thought" in state_updates:
-                    meta_fields["thought"] = state_updates["thought"]
-                if "new_action" in state_updates and state_updates["new_action"] is not None:
-                    meta_fields["action"] = state_updates["new_action"]
-
-                if meta_fields:
-                    current_meta = chat.state_meta or {}
-                    current_meta.update(meta_fields)
-                    updates["state_meta"] = current_meta
+                updates = _build_chat_updates_from_meta(chat, state_updates)
 
                 if updates:
                     logging.info(f"Updating chat metrics: {updates}")
@@ -337,6 +400,8 @@ class ContextManager:
             existing_summary=chat.summary if chat.summary else "This is the start of the conversation.",
             affinity=chat.affinity,
             arousal=chat.arousal,
+            heat_level=get_heat_level(chat),
+            heat_context=get_heat_context(get_heat_level(chat)),
             mood=chat.current_mood,
             location=chat.current_location or "не определена",
             messages=self._format_messages_for_summary(messages_to_summarize)
@@ -470,7 +535,16 @@ class ContextManager:
             user_name=user_name
         )
 
-        player_action = await self._generate_player_action(player_prompt)
+        recent_user_messages = [
+            msg.content
+            for msg in messages
+            if msg.role.value == "user"
+        ][-5:]
+        player_action = await self._generate_player_action(
+            player_prompt,
+            recent_user_messages=recent_user_messages,
+            last_character_message=last_msg_content,
+        )
 
         if only_user_reply:
             return {
@@ -493,15 +567,24 @@ class ContextManager:
             "arousal": chat.arousal
         }
 
-    async def _generate_player_action(self, player_prompt: str) -> str:
+    async def _generate_player_action(
+        self,
+        player_prompt: str,
+        recent_user_messages: Optional[Sequence[str]] = None,
+        last_character_message: Optional[str] = None,
+    ) -> str:
         player_response = await self.player_llm.generate(
             system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": player_prompt}],
             max_tokens=100,
             temperature=0.7
         )
-        player_action, reason = _prepare_generated_player_message(player_response.content)
+        player_action, reason = _prepare_generated_player_message(
+            player_response.content,
+            recent_user_messages,
+        )
         if not reason:
+            logger.info("Accepted generated player auto-message: sample=%r", player_action[:300])
             return player_action
 
         logger.warning(
@@ -510,9 +593,12 @@ class ContextManager:
             (player_response.content or "")[:300],
         )
 
-        retry_prompt = (
-            f"{player_prompt.rstrip()}\n\n"
-            f"{PLAYER_AUTO_MESSAGE_RETRY_INSTRUCTION.format(bad_response=(player_response.content or '')[:500]).strip()}"
+        retry_prompt = _build_player_retry_prompt(
+            player_prompt=player_prompt,
+            bad_response=player_response.content or "",
+            reason=reason,
+            recent_user_messages=recent_user_messages,
+            last_character_message=last_character_message,
         )
         retry_response = await self.player_llm.generate(
             system_prompt=PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
@@ -520,8 +606,12 @@ class ContextManager:
             max_tokens=80,
             temperature=0.4
         )
-        player_action, retry_reason = _prepare_generated_player_message(retry_response.content)
+        player_action, retry_reason = _prepare_generated_player_message(
+            retry_response.content,
+            recent_user_messages,
+        )
         if not retry_reason:
+            logger.info("Accepted retry player auto-message: sample=%r", player_action[:300])
             return player_action
 
         logger.error(
@@ -529,4 +619,6 @@ class ContextManager:
             retry_reason,
             (retry_response.content or "")[:300],
         )
-        return PLAYER_AUTO_MESSAGE_FALLBACK
+        fallback = _fallback_player_message(recent_user_messages)
+        logger.info("Using fallback player auto-message: sample=%r", fallback[:300])
+        return fallback
