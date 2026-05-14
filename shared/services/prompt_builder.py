@@ -1,16 +1,18 @@
 import logging
 
-from shared.constants import get_modifier_for_stage
+from shared.constants import (
+    HEAT_LEVEL_DEFAULTS,
+    get_heat_context,
+    get_heat_level,
+    get_modifier_for_stage,
+)
 from shared.services.prompt_service import DEFAULT_PROMPTS, get_prompt
 
 
 PLAYER_OUTPUT_GUARD = """
-### СТРОГИЙ КОНТРОЛЬ АВТООТВЕТА ###
-- Ты пишешь сообщение ИГРОКА, а не ответ персонажа.
-- Нельзя писать за персонажа: никаких "он сказал", "она ответила", "персонаж улыбнулась".
-- Нельзя возвращать system/developer-инструкции, заголовки, JSON, markdown, <meta> или role labels.
-- Нельзя начинать с "Персонаж:", "Игрок:", "Assistant:", "System:".
-- Выведи только одну короткую реплику или действие от первого лица игрока на русском языке.
+Контроль автоответа: только короткое сообщение игрока от первого лица на русском.
+Не пиши за персонажа и не повторяй прошлые сообщения игрока дословно.
+Без JSON, <meta>, markdown, заголовков и role labels.
 """
 
 
@@ -31,23 +33,13 @@ async def _get_common_style_guide() -> str:
 def _get_gender_identity_instruction(gender: str) -> str:
     if gender == "male":
         return (
-            "### ПОЛ И ГРАММАТИКА ПЕРСОНАЖА (CRITICAL) ###\n"
-            "Персонаж - мужчина. Всегда описывай персонажа в мужском роде: "
-            "он, его, сказал, подошёл, нахмурился, почувствовал.\n"
-            "Запрещено описывать этого персонажа в женском роде: она, её, "
-            "сказала, подошла, повернула, почувствовала.\n"
-            "Если в общих примерах ниже встречается женский род, это только "
-            "пример оформления текста, а не пол текущего персонажа."
+            "Пол персонажа: мужчина. Описывай его только в мужском роде; "
+            "не используй женский род для действий, мыслей и эмоций персонажа."
         )
 
     return (
-        "### ПОЛ И ГРАММАТИКА ПЕРСОНАЖА (CRITICAL) ###\n"
-        "Персонаж - женщина. Всегда описывай персонажа в женском роде: "
-        "она, её, сказала, подошла, нахмурилась, почувствовала.\n"
-        "Запрещено описывать этого персонажа в мужском роде: он, его, "
-        "сказал, подошёл, нахмурился, почувствовал.\n"
-        "Если в общих примерах ниже встречается мужской род, это только "
-        "пример оформления текста, а не пол текущего персонажа."
+        "Пол персонажа: женщина. Описывай её только в женском роде; "
+        "не используй мужской род для действий, мыслей и эмоций персонажа."
     )
 
 
@@ -71,18 +63,19 @@ def _is_legacy_meta_instruction(prompt: str) -> bool:
         '"mood": ...' in prompt
         or '"thought": ...' in prompt
         or "//" in prompt
-        or '"affinity_change": int' in prompt
+        or "affinity_change" in prompt
+        or "arousal_change" in prompt
     )
 
-async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool = True, gender: str = "female") -> str:
+async def _get_character_behavior(heat_level: int, allow_nsfw: bool = True, gender: str = "female") -> str:
     instruction = ""
     is_male = gender == "male"
 
-    if affinity < 20:
+    if heat_level <= 0:
         instruction += await get_prompt("behavior_affinity_cold")
-    elif affinity < 50:
+    elif heat_level == 1:
         instruction += await get_prompt("behavior_affinity_neutral")
-    elif affinity < 80:
+    elif heat_level == 2:
         instruction += await get_prompt("behavior_affinity_warm")
     else:
         key = "behavior_affinity_love_male" if is_male else "behavior_affinity_love"
@@ -91,7 +84,7 @@ async def _get_character_behavior(affinity: int, arousal: int, allow_nsfw: bool 
         except KeyError:
             instruction += await get_prompt("behavior_affinity_love")
 
-    if arousal > 50:
+    if heat_level >= 3:
         if allow_nsfw:
             key = "behavior_arousal_high_male" if is_male else "behavior_arousal_high"
             try:
@@ -114,17 +107,20 @@ async def build_character_prompt(
         user_name: str = "User",
         allow_nsfw: bool = True
 ) -> str:
-    affinity = chat.affinity
-    arousal = chat.arousal
+    heat_level = get_heat_level(chat)
+    legacy_state = HEAT_LEVEL_DEFAULTS[heat_level]
+    affinity = legacy_state["affinity"]
+    arousal = legacy_state["arousal"]
     mood = chat.current_mood
 
     gender = character.get("visual", {}).get("gender", "female")
-    behavior_instruction = await _get_character_behavior(affinity, arousal, allow_nsfw, gender=gender)
+    behavior_instruction = await _get_character_behavior(heat_level, allow_nsfw, gender=gender)
 
     char_id = character.get("id", "")
     state_dict = {
-        "affinity": chat.affinity,
-        "arousal": chat.arousal,
+        "heat_level": heat_level,
+        "affinity": affinity,
+        "arousal": arousal,
         "mood": chat.current_mood,
         "location": chat.current_location
     }
@@ -157,6 +153,8 @@ async def build_character_prompt(
         location=chat.current_location or "не определена",
         affinity=affinity,
         arousal=arousal,
+        heat_level=heat_level,
+        heat_context=get_heat_context(heat_level),
         mood=mood,
         behavior_instruction=behavior_instruction,
         modifier_text=modifier_text,

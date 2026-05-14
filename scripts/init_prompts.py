@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -7,7 +8,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select
 from shared.models import Prompt
 from shared.database import get_session
-from shared.services.prompt_service import DEFAULT_PROMPTS
+from shared.services.cache import get_cache
+from shared.services.prompt_service import (
+    COMPACT_RUNTIME_PROMPT_KEYS,
+    DEFAULT_PROMPTS,
+    clear_cache,
+)
 
 
 PROMPT_METADATA = {
@@ -274,7 +280,20 @@ PROMPT_METADATA = {
 }
 
 
-async def init_prompts():
+async def refresh_compact_prompt_cache():
+    await clear_cache()
+
+    cache = get_cache()
+    if not cache:
+        return
+
+    for key in COMPACT_RUNTIME_PROMPT_KEYS:
+        content = DEFAULT_PROMPTS.get(key)
+        if content is not None:
+            await cache.set_prompt(key, content)
+
+
+async def init_prompts(sync_compact: bool = False):
     async with get_session() as db:
         result = await db.execute(select(Prompt))
         existing_prompts = {p.key: p for p in result.scalars().all()}
@@ -288,7 +307,11 @@ async def init_prompts():
                 continue
 
             if key in existing_prompts:
-                pass  # don't overwrite manually edited prompts
+                if sync_compact and key in COMPACT_RUNTIME_PROMPT_KEYS:
+                    prompt = existing_prompts[key]
+                    if prompt.content != content:
+                        prompt.content = content
+                        updated_count += 1
             else:
                 prompt = Prompt(
                     key=key,
@@ -301,6 +324,20 @@ async def init_prompts():
 
         await db.commit()
 
+    if sync_compact:
+        await refresh_compact_prompt_cache()
+
+    mode = "sync-compact" if sync_compact else "create-missing"
+    print(f"Prompts initialized ({mode}): created={created_count}, updated={updated_count}")
+
 
 if __name__ == "__main__":
-    asyncio.run(init_prompts())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--sync-compact",
+        action="store_true",
+        help="Update only compact runtime prompt keys in DB and invalidate prompt cache.",
+    )
+    args = parser.parse_args()
+
+    asyncio.run(init_prompts(sync_compact=args.sync_compact))

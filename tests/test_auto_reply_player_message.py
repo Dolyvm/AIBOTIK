@@ -19,6 +19,7 @@ from shared.services import prompt_builder
 from shared.services.context_manager import (
     ContextManager,
     PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT,
+    _build_chat_updates_from_meta,
     _clean_generated_player_message,
     _invalid_player_message_reason,
 )
@@ -48,6 +49,20 @@ def test_invalid_player_message_rejects_system_prompt_leak():
     assert _invalid_player_message_reason(cleaned) == "system_marker"
 
 
+def test_invalid_player_message_rejects_recent_user_duplicate():
+    raw = "Ну, Айко... я, конечно, никому не скажу, но давай глянем, что там у тебя."
+    cleaned = _clean_generated_player_message(raw)
+
+    reason = _invalid_player_message_reason(
+        cleaned,
+        recent_user_messages=[
+            "Ну, Айко... я, конечно, никому не скажу, но давай глянем, что там у тебя!"
+        ],
+    )
+
+    assert reason == "duplicate_user_message"
+
+
 def test_build_player_prompt_appends_guard_to_database_template(monkeypatch):
     async def fake_get_prompt(key):
         assert key == "player_prompt"
@@ -69,8 +84,9 @@ def test_build_player_prompt_appends_guard_to_database_template(monkeypatch):
     )
 
     assert "OLD Alex Мария" in prompt
-    assert "### СТРОГИЙ КОНТРОЛЬ АВТООТВЕТА ###" in prompt
-    assert "Нельзя писать за персонажа" in prompt
+    assert "Контроль автоответа" in prompt
+    assert "Не пиши за персонажа" in prompt
+    assert "не повторяй прошлые сообщения игрока" in prompt
 
 
 def test_generate_player_action_retries_rejected_character_response():
@@ -94,3 +110,65 @@ def test_generate_player_action_retries_rejected_character_response():
     assert manager.player_llm.calls[0]["system_prompt"] == PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT
     assert manager.player_llm.calls[0]["messages"] == [{"role": "user", "content": "PLAYER TASK"}]
     assert "ПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОТКЛОНЁН" in manager.player_llm.calls[1]["messages"][0]["content"]
+
+
+def test_generate_player_action_retries_duplicate_user_message():
+    class FakePlayerLLM:
+        def __init__(self):
+            self.calls = []
+
+        async def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return LLMResponse("Я внимательно смотрю на неё.")
+            return LLMResponse("Я осторожно спрашиваю: «Что ты скрываешь?»")
+
+    manager = ContextManager.__new__(ContextManager)
+    manager.player_llm = FakePlayerLLM()
+
+    action = asyncio.run(
+        manager._generate_player_action(
+            "PLAYER TASK WITH STYLE EXAMPLES",
+            recent_user_messages=["Я внимательно смотрю на неё."],
+            last_character_message="Она прячет за спиной маленький свёрток.",
+        )
+    )
+
+    assert action == "Я осторожно спрашиваю: «Что ты скрываешь?»"
+    assert len(manager.player_llm.calls) == 2
+    retry_prompt = manager.player_llm.calls[1]["messages"][0]["content"]
+    assert "duplicate_user_message" in retry_prompt
+    assert "Она прячет за спиной маленький свёрток." in retry_prompt
+    assert "PLAYER TASK WITH STYLE EXAMPLES" not in retry_prompt
+
+
+def test_meta_updates_ignore_legacy_affinity_arousal_changes():
+    chat = types.SimpleNamespace(
+        affinity=60,
+        arousal=40,
+        current_mood="neutral",
+        current_location="library",
+        state_meta={"heat_level": 2},
+    )
+
+    updates = _build_chat_updates_from_meta(
+        chat,
+        {
+            "affinity_change": 20,
+            "arousal_change": 15,
+            "mood": "curious",
+            "thought": "Она хочет узнать больше.",
+            "new_location": "classroom",
+            "new_action": "opens_notebook",
+        },
+    )
+
+    assert "affinity" not in updates
+    assert "arousal" not in updates
+    assert updates["current_mood"] == "curious"
+    assert updates["current_location"] == "classroom"
+    assert updates["state_meta"] == {
+        "heat_level": 2,
+        "thought": "Она хочет узнать больше.",
+        "action": "opens_notebook",
+    }
