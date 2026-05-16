@@ -215,6 +215,7 @@ def _build_real_identity_signature(
     visual: dict,
     is_male: bool,
     nsfw_level: int,
+    has_body_description: bool,
 ) -> str:
     seed = "|".join(
         filter(
@@ -242,15 +243,38 @@ def _build_real_identity_signature(
     if nationality:
         parts.append(f"individualized {nationality} facial features")
 
-    if is_male:
-        parts.append(_stable_choice(seed, "male-body", REAL_MALE_BODY_VARIANTS))
-    else:
-        parts.append(_stable_choice(seed, "female-body", REAL_FEMALE_BODY_VARIANTS))
-        if nsfw_level >= 3:
-            parts.append(_stable_choice(seed, "breasts", REAL_BREAST_VARIANTS))
-            parts.append(_stable_choice(seed, "nipples", REAL_NIPPLE_VARIANTS))
+    if nsfw_level >= 2 and not has_body_description:
+        if is_male:
+            parts.append(_stable_choice(seed, "male-body", REAL_MALE_BODY_VARIANTS))
+        else:
+            parts.append(_stable_choice(seed, "female-body", REAL_FEMALE_BODY_VARIANTS))
+            if nsfw_level >= 3:
+                parts.append(_stable_choice(seed, "breasts", REAL_BREAST_VARIANTS))
+                parts.append(_stable_choice(seed, "nipples", REAL_NIPPLE_VARIANTS))
 
     return ", ".join(parts)
+
+
+REAL_SFW_RISKY_TAG_REPLACEMENTS = {
+    "alluring": "confident",
+    "seductive": "confident",
+    "sensual": "expressive",
+}
+
+
+def _sanitize_real_sfw_tag(tag: str) -> str:
+    words = tag.split()
+    sanitized = [REAL_SFW_RISKY_TAG_REPLACEMENTS.get(word.lower(), word) for word in words]
+    return " ".join(sanitized)
+
+
+def _sanitize_real_sfw_prompt(prompt: str) -> str:
+    return ", ".join(
+        filter(
+            None,
+            (_sanitize_real_sfw_tag(tag.strip()) for tag in prompt.split(",")),
+        )
+    )
 
 
 class Prompt(BaseModel):
@@ -370,7 +394,13 @@ class Prompt(BaseModel):
                     None,
                     [
                         character_base,
-                        _build_real_identity_signature(character, visual, is_male, nsfw_level),
+                        _build_real_identity_signature(
+                            character,
+                            visual,
+                            is_male,
+                            nsfw_level,
+                            has_body_description=bool(body.strip()),
+                        ),
                     ],
                 )
             )
@@ -473,6 +503,8 @@ class Prompt(BaseModel):
                     seen.add(tag_stripped.lower())
                     all_tags.append(tag_stripped)
         prompt = ", ".join(all_tags)
+        if build_as_type == "real" and self.nsfw_level < 2:
+            prompt = _sanitize_real_sfw_prompt(prompt)
         negative_prompt = ", ".join(negative_parts)
 
         return prompt, negative_prompt

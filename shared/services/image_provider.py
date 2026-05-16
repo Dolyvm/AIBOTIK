@@ -93,14 +93,13 @@ _FAL_ERROR_BODY_LIMIT = 1000
 
 
 def _compose_real_prompt(prompt: str, negative_prompt: str, allow_nsfw: bool) -> str:
-    """Fold negative constraints into the prompt for real models without native negatives."""
-    if not allow_nsfw:
-        return prompt
+    """Return the positive prompt for real models.
 
-    negative_prompt = negative_prompt.strip()
-    if not negative_prompt:
-        return prompt
-    return f"{prompt}. Do not depict: {negative_prompt}."
+    fal-ai/z-image/turbo does not support native negative prompts. Folding explicit
+    negative terms into the positive prompt triggers FAL content policy checks, so
+    keep the request prompt positive-only.
+    """
+    return prompt
 
 
 def _format_fal_http_error(error: httpx.HTTPStatusError) -> str:

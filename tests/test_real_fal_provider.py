@@ -28,14 +28,18 @@ def test_compose_real_prompt_omits_negative_terms_when_sfw():
     assert "penis" not in prompt
 
 
-def test_compose_real_prompt_keeps_negative_terms_when_nsfw_allowed():
+def test_compose_real_prompt_omits_negative_terms_when_nsfw_allowed():
     prompt = image_provider._compose_real_prompt(
         "photorealistic adult woman portrait",
-        "male, penis",
+        "male, penis, testicles, bulge",
         allow_nsfw=True,
     )
 
-    assert prompt.endswith("Do not depict: male, penis.")
+    assert prompt == "photorealistic adult woman portrait"
+    assert "Do not depict" not in prompt
+    assert "penis" not in prompt
+    assert "testicles" not in prompt
+    assert "bulge" not in prompt
 
 
 def test_submit_real_avatar_sends_sfw_safe_fal_arguments(monkeypatch):
@@ -69,6 +73,39 @@ def test_submit_real_avatar_sends_sfw_safe_fal_arguments(monkeypatch):
     assert "nudity" not in captured["arguments"]["prompt"]
     assert "nsfw" not in captured["arguments"]["prompt"]
     assert "penis" not in captured["arguments"]["prompt"]
+
+
+def test_submit_real_nsfw_allowed_still_sends_positive_only_prompt(monkeypatch):
+    captured = {}
+
+    class Handler:
+        async def get(self):
+            return {"images": [{"url": "https://example.test/photo.png"}]}
+
+    async def fake_submit_async(model_id, arguments):
+        captured["model_id"] = model_id
+        captured["arguments"] = arguments
+        return Handler()
+
+    monkeypatch.setattr(image_provider.fal_client, "submit_async", fake_submit_async, raising=False)
+
+    image_url = asyncio.run(
+        image_provider._submit_real(
+            "photorealistic adult woman portrait",
+            "male, penis, testicles, bulge",
+            allow_nsfw=True,
+            nsfw_level=1,
+        )
+    )
+
+    assert image_url == "https://example.test/photo.png"
+    assert captured["model_id"] == "fal-ai/z-image/turbo"
+    assert captured["arguments"]["enable_safety_checker"] is False
+    assert captured["arguments"]["prompt"] == "photorealistic adult woman portrait"
+    assert "Do not depict" not in captured["arguments"]["prompt"]
+    assert "penis" not in captured["arguments"]["prompt"]
+    assert "testicles" not in captured["arguments"]["prompt"]
+    assert "bulge" not in captured["arguments"]["prompt"]
 
 
 def test_submit_real_includes_fal_response_body_in_error(monkeypatch):

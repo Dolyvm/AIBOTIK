@@ -62,6 +62,37 @@ def test_real_signature_varies_same_nationality_characters():
     assert "individualized russian facial features" in second.character_base
 
 
+def test_real_sfw_prompt_uses_character_body_without_auto_glamour_tags():
+    character = {
+        "id": "berta_like",
+        "name": "Берта",
+        "model_type": "real",
+        "visual": {
+            "gender": "female",
+            "appearance": (
+                "1girl, 25 years old, short black hair, piecey fringe falling above eyebrows, "
+                "grey eyes, pale skin, small silver nose ring on left side"
+            ),
+            "body": "lean build",
+            "face": "sharp features, big lips",
+            "default_outfit": "crisp black button up shirt with rolled sleeves",
+            "style_tags": "soft natural lighting, film photography, warm tones",
+        },
+    }
+    prompt = Prompt.from_character(character, nsfw_level=0)
+    prompt.facial_expression = "smirking, confident, alluring"
+
+    positive, _ = asyncio.run(prompt.build_prompt(ModelType.real, gender="female"))
+
+    assert positive.startswith("photorealistic adult woman, single subject")
+    assert "lean build" in positive
+    assert "slim hourglass figure" not in positive
+    assert "toned athletic curves" not in positive
+    assert "alluring" not in positive
+    assert "smirking" in positive
+    assert "confident" in positive
+
+
 def test_anime_prompt_does_not_receive_real_layers():
     character = {
         "id": "anime_a",
