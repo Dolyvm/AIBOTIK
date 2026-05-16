@@ -1615,6 +1615,23 @@
                     return -1;
                 });
 
+                const createClientMessageId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+                const patchChatMessage = (index, patch) => {
+                    if (index < 0 || index >= chatHistory.value.length) return false;
+                    chatHistory.value.splice(index, 1, {
+                        ...chatHistory.value[index],
+                        ...patch,
+                    });
+                    return true;
+                };
+
+                const patchChatMessageByClientId = (clientMessageId, patch) => {
+                    const index = chatHistory.value.findIndex(msg => msg.clientMessageId === clientMessageId);
+                    if (index === -1) return false;
+                    return patchChatMessage(index, patch);
+                };
+
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
                 // Modal state
                 const showScenarioModal = ref(false);
@@ -2593,8 +2610,29 @@
                     isWaitingResponse.value = true;
                     scrollToBottom();
 
-                    const assistantMessage = { role: 'assistant', content: "" };
+                    const assistantClientMessageId = createClientMessageId('assistant-stream');
+                    let assistantContent = '';
                     let assistantAdded = false;
+                    const addAssistantMessage = () => {
+                        if (assistantAdded) return;
+                        chatHistory.value.push({
+                            role: 'assistant',
+                            content: "",
+                            clientMessageId: assistantClientMessageId,
+                        });
+                        assistantAdded = true;
+                    };
+                    const appendAssistantContent = (content) => {
+                        const chunk = content || '';
+                        if (!chunk) return;
+                        if (!assistantAdded) {
+                            addAssistantMessage();
+                            isWaitingResponse.value = false;
+                            isStreaming.value = true;
+                        }
+                        assistantContent += chunk;
+                        patchChatMessageByClientId(assistantClientMessageId, { content: assistantContent });
+                    };
 
                     try {
                         const response = await fetch(`/api/chat/${sourceChatId}/send`, {
@@ -2612,10 +2650,6 @@
                             throw new Error('Пустой поток ответа');
                         }
 
-                        isWaitingResponse.value = false;
-                        isStreaming.value = true;
-                        chatHistory.value.push(assistantMessage);
-                        assistantAdded = true;
                         scrollToBottom();
 
                         const reader = response.body.getReader();
@@ -2641,11 +2675,7 @@
 
                                 const event = JSON.parse(trimmed);
                                 if (event.type === 'chunk') {
-                                    if (!assistantAdded) {
-                                        chatHistory.value.push(assistantMessage);
-                                        assistantAdded = true;
-                                    }
-                                    assistantMessage.content += event.content || '';
+                                    appendAssistantContent(event.content);
                                     scrollToBottom();
                                 } else if (event.type === 'done') {
                                     doneReceived = true;
@@ -2659,7 +2689,8 @@
                         if (buffer.trim()) {
                             const event = JSON.parse(buffer.trim());
                             if (event.type === 'chunk') {
-                                assistantMessage.content += event.content || '';
+                                appendAssistantContent(event.content);
+                                scrollToBottom();
                             } else if (event.type === 'done') {
                                 doneReceived = true;
                             } else if (event.type === 'error') {
@@ -2672,8 +2703,9 @@
                         }
                     } catch (e) {
                         if (isActiveChat(sourceChatId, sourceSessionId) && e.status !== 429) {
-                            if (assistantAdded && !assistantMessage.content) {
-                                assistantMessage.content = "⚠️ Ошибка связи с сервером";
+                            if (assistantAdded && !assistantContent) {
+                                assistantContent = "⚠️ Ошибка связи с сервером";
+                                patchChatMessageByClientId(assistantClientMessageId, { content: assistantContent });
                             } else if (!assistantAdded) {
                                 chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
                             } else {
@@ -2901,13 +2933,19 @@
                 const typeWriter = async (text, sourceChatId, sourceSessionId) => {
                     if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
                     text = String(text || '');
-                    const message = { role: 'assistant', content: "" };
-                    chatHistory.value.push(message);
+                    const clientMessageId = createClientMessageId('assistant-typewriter');
+                    let messageContent = '';
+                    chatHistory.value.push({
+                        role: 'assistant',
+                        content: "",
+                        clientMessageId,
+                    });
                     const chunk = 5; // chars per tick
                     for (let i = 0; i < text.length; i += chunk) {
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return false;
-                        if (!chatHistory.value.includes(message)) return false;
-                        message.content += text.slice(i, i + chunk);
+                        if (!chatHistory.value.some(msg => msg.clientMessageId === clientMessageId)) return false;
+                        messageContent += text.slice(i, i + chunk);
+                        patchChatMessageByClientId(clientMessageId, { content: messageContent });
                         if (i % 20 === 0) scrollToBottom();
                         await new Promise(r => setTimeout(r, 15));
                     }
