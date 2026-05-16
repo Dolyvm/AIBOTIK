@@ -1,4 +1,5 @@
 import logging
+import re
 
 from shared.constants import (
     HEAT_LEVEL_DEFAULTS,
@@ -63,8 +64,7 @@ def _is_legacy_meta_instruction(prompt: str) -> bool:
         '"mood": ...' in prompt
         or '"thought": ...' in prompt
         or "//" in prompt
-        or "affinity_change" in prompt
-        or "arousal_change" in prompt
+        or re.search(r'"(?:affinity_change|arousal_change)"\s*:', prompt) is not None
     )
 
 async def _get_character_behavior(heat_level: int, allow_nsfw: bool = True, gender: str = "female") -> str:

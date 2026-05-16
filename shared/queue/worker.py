@@ -4,6 +4,8 @@ from arq.connections import RedisSettings
 from arq.cron import cron
 from shared.database import get_session
 from shared.services.redis_client import get_redis
+from shared.services.cache import CacheService, set_cache
+from shared.services.prompt_service import init_prompt_cache
 from shared.queue.tasks import (
     generate_image_task,
     generate_avatar_task,
@@ -17,7 +19,18 @@ logger = logging.getLogger(__name__)
 async def startup(ctx):
     logger.info("Worker starting up...")
     ctx["get_session"] = get_session
-    ctx["redis"] = await get_redis()
+    redis = await get_redis()
+    ctx["redis"] = redis
+    set_cache(CacheService(redis))
+
+    try:
+        async with get_session() as db:
+            await init_prompt_cache(db)
+        logger.info("Worker prompt cache initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize worker prompt cache: {e}")
+        logger.warning("Worker will use default prompts until prompt cache is available")
+
     logger.info("Worker startup complete")
 
 

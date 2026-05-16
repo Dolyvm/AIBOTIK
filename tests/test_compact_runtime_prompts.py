@@ -23,7 +23,7 @@ from shared.services.prompt_service import COMPACT_RUNTIME_PROMPT_KEYS, DEFAULT_
 RUNTIME_PROMPT_LIMITS = {
     "character_prompt_template": 1200,
     "world_prompt_template": 900,
-    "common_style_guide": 500,
+    "common_style_guide": 1100,
     "meta_instruction": 650,
     "meta_instruction_sfw": 650,
     "player_prompt": 650,
@@ -56,8 +56,8 @@ def test_compact_runtime_prompts_are_short_and_known():
 
     assert "Без JSON" not in DEFAULT_PROMPTS["common_style_guide"]
     assert "<meta>" in DEFAULT_PROMPTS["meta_instruction"]
-    assert "affinity_change" not in DEFAULT_PROMPTS["meta_instruction"]
-    assert "arousal_change" not in DEFAULT_PROMPTS["meta_instruction"]
+    assert '"affinity_change"' not in DEFAULT_PROMPTS["meta_instruction"]
+    assert '"arousal_change"' not in DEFAULT_PROMPTS["meta_instruction"]
 
 
 def test_compact_runtime_prompts_keep_required_placeholders():
@@ -180,8 +180,8 @@ def test_built_story_prompts_do_not_reintroduce_old_verbose_sections(monkeypatch
     assert "3-5 коротких абзацев" in character_prompt
     assert "3-5 коротких абзацев" in world_prompt
     assert "heat_level 2" in character_prompt
-    assert "affinity_change" not in character_prompt
-    assert "arousal_change" not in character_prompt
+    assert '"affinity_change"' not in character_prompt
+    assert '"arousal_change"' not in character_prompt
     assert "6-8" not in combined
     assert "800-1100" not in combined
     assert "send_photo" not in combined

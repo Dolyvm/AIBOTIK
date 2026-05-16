@@ -1,7 +1,9 @@
 import datetime
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Body, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import sys
 from pathlib import Path
@@ -57,6 +59,10 @@ class CreateChatRequest(BaseModel):
     chat_type: str
     target_id: str
     scenario_index: int = 0
+
+
+def _stream_event(event_type: str, **payload) -> str:
+    return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
 
 
 @router.get("/{chat_id}/history")
@@ -134,35 +140,46 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
         allow_nsfw = character.get("is_nsfw", True) if character else True
 
-        result = await context_manager.process_turn(
-            chat=chat,
-            user_input=payload.text,
-            character=character,
-            world=world,
-            user_name=user_name,
-            allow_nsfw=allow_nsfw,
+        async def stream_response():
+            try:
+                async for chunk in context_manager.process_turn_stream(
+                    chat=chat,
+                    user_input=payload.text,
+                    character=character,
+                    world=world,
+                    user_name=user_name,
+                    allow_nsfw=allow_nsfw,
+                ):
+                    if chunk:
+                        yield _stream_event("chunk", content=chunk)
+
+                async with get_session() as session:
+                    await sub_service.increment_usage(user.telegram_id, "messages", session)
+
+                async with get_session() as session:
+                    await AnalyticsService.track(
+                        session,
+                        user_id=user.telegram_id,
+                        event_type="message_sent",
+                        entity_type="chats",
+                        entity_id=str(chat.id),
+                        meta={
+                            "character_id": character.get("id") if character else None,
+                            "world_id": world.get("id") if world else None,
+                            "message_length": len(payload.text),
+                        }
+                    )
+
+                yield _stream_event("done")
+            except Exception as e:
+                logging.error(f"Error in send_message stream: {e}")
+                yield _stream_event("error", message=str(e))
+
+        return StreamingResponse(
+            stream_response(),
+            media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
-
-        async with get_session() as session:
-            await sub_service.increment_usage(user.telegram_id, "messages", session)
-
-        async with get_session() as session:
-            await AnalyticsService.track(
-                session,
-                user_id=user.telegram_id,
-                event_type="message_sent",
-                entity_type="chats",
-                entity_id=str(chat.id),
-                meta={
-                    "character_id": character.get("id") if character else None,
-                    "world_id": world.get("id") if world else None,
-                    "message_length": len(payload.text),
-                }
-            )
-
-        return {
-            "response": result["text"],
-        }
 
     except (UsageLimitExceeded, HTTPException):
         raise

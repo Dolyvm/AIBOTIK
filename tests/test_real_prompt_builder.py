@@ -45,6 +45,9 @@ def test_real_female_prompt_gets_real_anatomy_and_identity_guards():
     assert "1girl" not in prompt.character_base
     assert "distinct individual face" in prompt.character_base
     assert "photorealistic adult woman" in positive
+    assert "smooth firm skin" not in positive
+    assert "slim waist" not in positive
+    assert "attractive hips" not in positive
     assert "anatomically female nude body" in positive
     assert "penis" in negative
     assert "cellulite" in negative

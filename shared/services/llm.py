@@ -1,7 +1,9 @@
+import asyncio
+import json
 import httpx
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional, ClassVar
+from typing import Any, AsyncIterator, Optional, ClassVar
 
 from shared.config import (
     OPENROUTER_API_KEY,
@@ -46,6 +48,16 @@ class LLMResponse:
         if isinstance(value, float):
             return int(value)
         return 0
+
+
+@dataclass(slots=True)
+class LLMStreamEvent:
+    content: str = ""
+    finish_reason: Optional[str] = None
+    native_finish_reason: Optional[str] = None
+    usage: dict[str, Any] = field(default_factory=dict)
+    model: Optional[str] = None
+    id: Optional[str] = None
 
 
 class LLMClient:
@@ -114,22 +126,20 @@ class LLMClient:
 
         return LLM_MODEL
 
-    async def generate(
+    async def _build_payload(
         self,
         system_prompt: str,
         messages: list[dict],
-        max_tokens: int = 300,
+        max_tokens: int,
         temperature: float = None,
         provider: dict = None,
         reasoning: dict = None,
         extra_payload: dict = None,
-    ) -> LLMResponse:
+    ) -> tuple[str, dict]:
         temperature = temperature if temperature is not None else LLM_TEMPERATURE
-        
         full_messages = [{"role": "system", "content": system_prompt}] + messages
 
         resolved_model = await self._resolve_model()
-
         payload = {
             "model": resolved_model,
             "messages": full_messages,
@@ -138,6 +148,7 @@ class LLMClient:
             "top_p": LLM_TOP_P,
             "repetition_penalty": LLM_REPETITION_PENALTY,
         }
+
         active_provider = self.provider if provider is None else provider
         if active_provider is not None:
             payload["provider"] = active_provider
@@ -149,11 +160,43 @@ class LLMClient:
         payload.update(self.override_payload)
         if extra_payload:
             payload.update(extra_payload)
-        
-        headers = {
+
+        return resolved_model, payload
+
+    def _headers(self) -> dict[str, str]:
+        return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+
+    def _request_kwargs(self, payload: dict) -> dict:
+        request_kwargs = {
+            "json": payload,
+            "headers": self._headers(),
+        }
+        if self.timeout is not None:
+            request_kwargs["timeout"] = self.timeout
+        return request_kwargs
+
+    async def generate(
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        max_tokens: int = 300,
+        temperature: float = None,
+        provider: dict = None,
+        reasoning: dict = None,
+        extra_payload: dict = None,
+    ) -> LLMResponse:
+        resolved_model, payload = await self._build_payload(
+            system_prompt=system_prompt,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            provider=provider,
+            reasoning=reasoning,
+            extra_payload=extra_payload,
+        )
 
         last_error = None
         
@@ -163,19 +206,12 @@ class LLMClient:
             try:
                 logger.debug(f"LLM запрос (попытка {attempt}/{self.max_retries}): model={resolved_model}")
 
-                request_kwargs = {
-                    "json": payload,
-                    "headers": headers,
-                }
-                if self.timeout is not None:
-                    request_kwargs["timeout"] = self.timeout
-
+                request_kwargs = self._request_kwargs(payload)
                 response = await client.post(self.base_url, **request_kwargs)
 
                 if response.status_code == 429:
                     logger.warning(f"Rate limit (429), попытка {attempt}/{self.max_retries}")
                     if attempt < self.max_retries:
-                        import asyncio
                         await asyncio.sleep(self.RETRY_DELAY * attempt)  
                         continue
                     raise LLMRateLimitError("Превышен лимит запросов к API")
@@ -183,7 +219,6 @@ class LLMClient:
                 if response.status_code >= 500:
                     logger.warning(f"Серверная ошибка ({response.status_code}), попытка {attempt}/{self.max_retries}")
                     if attempt < self.max_retries:
-                        import asyncio
                         await asyncio.sleep(self.RETRY_DELAY)
                         continue
                     response.raise_for_status()
@@ -252,7 +287,6 @@ class LLMClient:
                 logger.error(f"Ошибка сети: {e}")
                 last_error = LLMError(f"Ошибка сети: {e}")
                 if attempt < self.max_retries:
-                    import asyncio
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue
                     
@@ -263,3 +297,128 @@ class LLMClient:
         if last_error:
             raise last_error
         raise LLMError("Не удалось получить ответ от LLM")
+
+    async def stream_generate(
+        self,
+        system_prompt: str,
+        messages: list[dict],
+        max_tokens: int = 300,
+        temperature: float = None,
+        provider: dict = None,
+        reasoning: dict = None,
+        extra_payload: dict = None,
+    ) -> AsyncIterator[LLMStreamEvent]:
+        resolved_model, payload = await self._build_payload(
+            system_prompt=system_prompt,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            provider=provider,
+            reasoning=reasoning,
+            extra_payload=extra_payload,
+        )
+        payload["stream"] = True
+
+        client = self.get_http_client()
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.debug(
+                    "LLM stream request (attempt %s/%s): model=%s",
+                    attempt,
+                    self.max_retries,
+                    resolved_model,
+                )
+                request_kwargs = self._request_kwargs(payload)
+
+                async with client.stream("POST", self.base_url, **request_kwargs) as response:
+                    if response.status_code == 429:
+                        logger.warning("Rate limit (429), stream attempt %s/%s", attempt, self.max_retries)
+                        if attempt < self.max_retries:
+                            await response.aread()
+                            await asyncio.sleep(self.RETRY_DELAY * attempt)
+                            continue
+                        raise LLMRateLimitError("Превышен лимит запросов к API")
+
+                    if response.status_code >= 500:
+                        logger.warning(
+                            "Server error (%s), stream attempt %s/%s",
+                            response.status_code,
+                            attempt,
+                            self.max_retries,
+                        )
+                        if attempt < self.max_retries:
+                            await response.aread()
+                            await asyncio.sleep(self.RETRY_DELAY)
+                            continue
+                        response.raise_for_status()
+
+                    if response.status_code >= 400:
+                        error_text = (await response.aread()).decode("utf-8", errors="replace")[:500]
+                        logger.error("Stream API error (%s): %s", response.status_code, error_text)
+                        raise LLMError(f"Ошибка API: {response.status_code}")
+
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if not line or line.startswith(":"):
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+
+                        raw_data = line[5:].strip()
+                        if raw_data == "[DONE]":
+                            break
+
+                        try:
+                            data = json.loads(raw_data)
+                        except json.JSONDecodeError:
+                            logger.warning("Malformed LLM stream chunk: %r", raw_data[:300])
+                            continue
+
+                        if data.get("error"):
+                            logger.error("LLM stream error: %s", data["error"])
+                            raise LLMError("Ошибка генерации ответа LLM")
+
+                        choices = data.get("choices") or []
+                        if not choices:
+                            continue
+
+                        choice = choices[0]
+                        if choice.get("error"):
+                            logger.error("LLM stream choice error: %s", choice["error"])
+                            raise LLMError("Ошибка генерации ответа LLM")
+
+                        delta = choice.get("delta") or {}
+                        content = delta.get("content") or ""
+                        event = LLMStreamEvent(
+                            content=content,
+                            finish_reason=choice.get("finish_reason"),
+                            native_finish_reason=choice.get("native_finish_reason"),
+                            usage=data.get("usage") or {},
+                            model=data.get("model"),
+                            id=data.get("id"),
+                        )
+                        if event.content or event.finish_reason or event.usage:
+                            yield event
+                    return
+
+            except httpx.TimeoutException as e:
+                logger.warning("Stream timeout, attempt %s/%s: %s", attempt, self.max_retries, e)
+                last_error = LLMTimeoutError(f"Таймаут запроса: {e}")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.RETRY_DELAY)
+                    continue
+            except httpx.RequestError as e:
+                logger.error("Stream network error: %s", e)
+                last_error = LLMError(f"Ошибка сети: {e}")
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self.RETRY_DELAY)
+                    continue
+            except (KeyError, IndexError, TypeError) as e:
+                logger.error("Stream parsing error: %s", e)
+                raise LLMError(f"Ошибка парсинга ответа: {e}")
+
+        if last_error:
+            raise last_error
+        raise LLMError("Не удалось получить потоковый ответ от LLM")

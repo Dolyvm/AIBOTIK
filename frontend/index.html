@@ -2535,6 +2535,52 @@
                 };
 
                 // --- CHAT LOGIC ---
+                const getFetchAuthHeaders = () => {
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (tg.initData) {
+                        headers.Authorization = `tma ${tg.initData}`;
+                    }
+                    return headers;
+                };
+
+                const readErrorPayload = async (response) => {
+                    try {
+                        return await response.json();
+                    } catch (_) {
+                        return null;
+                    }
+                };
+
+                const handleSendFetchError = async (response) => {
+                    const data = await readErrorPayload(response);
+                    if (response.status === 429) {
+                        if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
+                            const labels = {
+                                messages: 'сообщений',
+                                images: 'изображений',
+                                characters_created: 'создания персонажей',
+                                worlds_created: 'создания вселенных',
+                                content_edits: 'редактирования',
+                                avatar_generations: 'генерации аватаров',
+                            };
+                            const label = labels[data.usage_type] || data.usage_type || 'сообщений';
+                            showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
+                            currentView.value = 'profile';
+                            loadProfile();
+                        } else {
+                            showToast('Слишком много запросов, подождите немного', 'error');
+                        }
+                    }
+
+                    const detail = data?.detail;
+                    const message = typeof detail === 'string'
+                        ? detail
+                        : data?.message || `Ошибка ${response.status}`;
+                    const error = new Error(message);
+                    error.status = response.status;
+                    throw error;
+                };
+
                 const sendMessage = async () => {
                     const text = inputMessage.value.trim();
                     const sourceChatId = currentChatId.value;
@@ -2547,15 +2593,92 @@
                     isWaitingResponse.value = true;
                     scrollToBottom();
 
+                    const assistantMessage = { role: 'assistant', content: "" };
+                    let assistantAdded = false;
+
                     try {
-                        const res = await axios.post(`/api/chat/${sourceChatId}/send`, { text });
+                        const response = await fetch(`/api/chat/${sourceChatId}/send`, {
+                            method: 'POST',
+                            headers: getFetchAuthHeaders(),
+                            body: JSON.stringify({ text }),
+                        });
+
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+
+                        if (!response.ok) {
+                            await handleSendFetchError(response);
+                        }
+                        if (!response.body) {
+                            throw new Error('Пустой поток ответа');
+                        }
+
                         isWaitingResponse.value = false;
                         isStreaming.value = true;
-                        await typeWriter(res.data.response, sourceChatId, sourceSessionId);
+                        chatHistory.value.push(assistantMessage);
+                        assistantAdded = true;
+                        scrollToBottom();
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+                        let doneReceived = false;
+
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            if (!isActiveChat(sourceChatId, sourceSessionId)) {
+                                await reader.cancel();
+                                return;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || '';
+
+                            for (const line of lines) {
+                                const trimmed = line.trim();
+                                if (!trimmed) continue;
+
+                                const event = JSON.parse(trimmed);
+                                if (event.type === 'chunk') {
+                                    if (!assistantAdded) {
+                                        chatHistory.value.push(assistantMessage);
+                                        assistantAdded = true;
+                                    }
+                                    assistantMessage.content += event.content || '';
+                                    scrollToBottom();
+                                } else if (event.type === 'done') {
+                                    doneReceived = true;
+                                } else if (event.type === 'error') {
+                                    throw new Error(event.message || 'Ошибка генерации');
+                                }
+                            }
+                        }
+
+                        buffer += decoder.decode();
+                        if (buffer.trim()) {
+                            const event = JSON.parse(buffer.trim());
+                            if (event.type === 'chunk') {
+                                assistantMessage.content += event.content || '';
+                            } else if (event.type === 'done') {
+                                doneReceived = true;
+                            } else if (event.type === 'error') {
+                                throw new Error(event.message || 'Ошибка генерации');
+                            }
+                        }
+
+                        if (!doneReceived) {
+                            throw new Error('Поток ответа оборвался');
+                        }
                     } catch (e) {
-                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
-                            chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.status !== 429) {
+                            if (assistantAdded && !assistantMessage.content) {
+                                assistantMessage.content = "⚠️ Ошибка связи с сервером";
+                            } else if (!assistantAdded) {
+                                chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                            } else {
+                                showToast(e.message || 'Ошибка связи с сервером', 'error');
+                            }
                         }
                     } finally {
                         if (isActiveChat(sourceChatId, sourceSessionId)) {

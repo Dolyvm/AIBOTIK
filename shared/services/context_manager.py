@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Optional, Sequence
+from typing import AsyncIterator, Optional, Sequence
 
 from shared.services.llm import LLMClient, LLMError, LLMResponse
 from shared.services.prompt_builder import build_character_prompt, build_world_prompt, build_player_prompt
@@ -196,6 +196,52 @@ def _build_chat_updates_from_meta(chat: Chat, state_updates: dict) -> dict:
     return updates
 
 
+class _MetaStreamFilter:
+    def __init__(self):
+        self._buffer = ""
+        self._meta_done = False
+
+    def feed(self, text: str) -> str:
+        if not text:
+            return ""
+
+        if self._meta_done:
+            return text
+
+        self._buffer += text
+        stripped = self._buffer.lstrip()
+        if not stripped:
+            return ""
+
+        stripped_lower = stripped.lower()
+        if stripped_lower.startswith("<meta"):
+            close_idx = stripped_lower.find("</meta>")
+            if close_idx == -1:
+                return ""
+
+            after_meta = stripped[close_idx + len("</meta>"):]
+            self._buffer = ""
+            self._meta_done = True
+            return after_meta.lstrip()
+
+        if "<meta".startswith(stripped_lower):
+            return ""
+
+        visible = self._buffer.lstrip()
+        self._buffer = ""
+        self._meta_done = True
+        return visible
+
+    def finish(self) -> str:
+        if self._meta_done or not self._buffer:
+            return ""
+
+        visible = self._buffer.lstrip()
+        self._buffer = ""
+        self._meta_done = True
+        return visible
+
+
 class ContextManager:
 
     def __init__(self, llm_client: LLMClient, summary_threshold: int = None):
@@ -299,7 +345,13 @@ class ContextManager:
                 max_tokens=max_tokens,
                 chat_id=chat.id,
             )
-            logging.info(f"response={response.content}")
+            logging.info(
+                "LLM story response received: model=%s id=%s finish_reason=%s chars=%s",
+                response.model,
+                response.id,
+                response.finish_reason,
+                len(response.content or ""),
+            )
 
             clean_text, state_updates = self._parse_meta(response.content)
 
@@ -327,6 +379,175 @@ class ContextManager:
         return {
             "text": clean_text,
         }
+
+    async def process_turn_stream(
+        self,
+        chat: Chat,
+        user_input: str,
+        character: Optional[dict] = None,
+        world: Optional[dict] = None,
+        user_name: str = "User",
+        allow_nsfw: bool = True
+    ) -> AsyncIterator[str]:
+        cache = get_cache()
+        lock_name = f"chat:{chat.id}:processing"
+        lock_acquired = False
+
+        if cache:
+            lock_acquired = await cache.acquire_lock(lock_name, ttl=120)
+            if not lock_acquired:
+                raise Exception("Chat is currently being processed. Please wait.")
+
+        try:
+            async for chunk in self._process_turn_stream_internal(
+                chat=chat,
+                user_input=user_input,
+                character=character,
+                world=world,
+                user_name=user_name,
+                allow_nsfw=allow_nsfw,
+            ):
+                yield chunk
+        finally:
+            if cache and lock_acquired:
+                await cache.release_lock(lock_name)
+
+    async def _process_turn_stream_internal(
+        self,
+        chat: Chat,
+        user_input: str,
+        character: Optional[dict] = None,
+        world: Optional[dict] = None,
+        user_name: str = "User",
+        allow_nsfw: bool = True
+    ) -> AsyncIterator[str]:
+        async with get_session() as session:
+            message_repo = MessageRepository(session)
+            chat_repo = ChatRepository(session)
+
+            await message_repo.add(chat.id, "user", user_input)
+
+            history_limit = MAX_HISTORY_LENGTH
+            messages = await message_repo.get_history(chat.id, limit=history_limit)
+            history = [
+                {"role": msg.role.value, "content": msg.content}
+                for msg in messages
+            ]
+
+            if chat.msgs_since_summary >= self.summary_threshold:
+                all_messages = await message_repo.get_history(chat.id, limit=chat.msgs_since_summary)
+                full_history = [{"role": msg.role.value, "content": msg.content} for msg in all_messages]
+                await self._summarize_history(chat, full_history, character, world, chat_repo)
+                history = full_history[-5:] if len(full_history) > 5 else full_history
+
+            if character:
+                max_tokens = LLM_MAX_TOKENS_CHARACTER
+                system_prompt = await build_character_prompt(
+                    character=character,
+                    chat=chat,
+                    summary=chat.summary,
+                    user_name=user_name,
+                    allow_nsfw=allow_nsfw
+                )
+            elif world:
+                max_tokens = LLM_MAX_TOKENS_WORLD
+                system_prompt = await build_world_prompt(
+                    world,
+                    chat.summary,
+                    user_name,
+                    allow_nsfw,
+                    location=chat.current_location or "",
+                    scenario_index=chat.scenario_index or 0,
+                )
+            else:
+                raise ValueError("Either character or world must be provided")
+
+            meta_filter = _MetaStreamFilter()
+            raw_parts: list[str] = []
+            response_model = None
+            response_id = None
+            finish_reason = None
+            native_finish_reason = None
+            usage: dict = {}
+
+            async for event in self.llm.stream_generate(
+                system_prompt=system_prompt,
+                messages=history,
+                max_tokens=max_tokens,
+            ):
+                if event.model:
+                    response_model = event.model
+                if event.id:
+                    response_id = event.id
+                if event.finish_reason:
+                    finish_reason = event.finish_reason
+                if event.native_finish_reason:
+                    native_finish_reason = event.native_finish_reason
+                if event.usage:
+                    usage = event.usage
+
+                if not event.content:
+                    continue
+
+                raw_parts.append(event.content)
+                visible_chunk = meta_filter.feed(event.content)
+                if visible_chunk:
+                    yield visible_chunk
+
+            visible_tail = meta_filter.finish()
+            if visible_tail:
+                yield visible_tail
+
+            raw_content = "".join(raw_parts)
+            response = LLMResponse(
+                content=raw_content,
+                finish_reason=finish_reason,
+                native_finish_reason=native_finish_reason,
+                usage=usage,
+                model=response_model,
+                id=response_id,
+            )
+
+            if not raw_content:
+                logger.warning("Пустой потоковый ответ от LLM")
+                raise LLMError("Пустой ответ от LLM")
+
+            logger.info(
+                "LLM story stream completed: model=%s id=%s finish_reason=%s chars=%s",
+                response.model,
+                response.id,
+                response.finish_reason,
+                len(response.content),
+            )
+            if response.finish_reason == "length":
+                logger.warning(
+                    "LLM stream response hit completion limit: id=%s max_completion_tokens=%s",
+                    response.id,
+                    max_tokens,
+                )
+
+            clean_text, state_updates = self._parse_meta(response.content)
+
+            if state_updates:
+                logging.info(f"{state_updates=}")
+                updates = _build_chat_updates_from_meta(chat, state_updates)
+
+                if updates:
+                    logging.info(f"Updating chat metrics: {updates}")
+                    await chat_repo.update_metrics(chat.id, updates)
+                    for key, value in updates.items():
+                        setattr(chat, key, value)
+
+                    cache = get_cache()
+                    if cache:
+                        await cache.invalidate_chat_state(chat.id)
+
+            await message_repo.add(
+                chat.id,
+                "assistant",
+                clean_text,
+                tokens_used=response.completion_tokens,
+            )
 
     async def _generate_complete_story_response(
         self,
