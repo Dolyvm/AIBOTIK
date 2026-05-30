@@ -26,7 +26,7 @@ from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
-from shared.config import CHAT_MODEL
+from shared.config import CHAT_MODEL, LLM_CHAT_PROVIDER_ROUTING
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
@@ -45,7 +45,7 @@ def _get_display_name(user: User) -> str:
 
 llm_client = LLMClient(
     model=CHAT_MODEL,
-    provider={"sort": "throughput"},
+    provider=LLM_CHAT_PROVIDER_ROUTING,
     reasoning={"enabled": False},
 )
 context_manager = ContextManager(llm_client)

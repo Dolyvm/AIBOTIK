@@ -12,14 +12,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
-from shared.config import CHAT_MODEL
+from shared.config import CHAT_MODEL, LLM_CHAT_PROVIDER_ROUTING
 
 router = Router()
 
 llm = LLMClient(
     api_key=os.getenv("OPENROUTER_API_KEY"),
     model=CHAT_MODEL,
-    provider={"sort": "throughput"},
+    provider=LLM_CHAT_PROVIDER_ROUTING,
     reasoning={"enabled": False},
 )
 context_manager = ContextManager(llm_client=llm, summary_threshold=15)

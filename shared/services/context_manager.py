@@ -13,6 +13,7 @@ from shared.config import (
     LLM_MAX_TOKENS_WORLD,
     SUMMARY_MODEL,
     PLAYER_MODEL,
+    LLM_CHAT_PROVIDER_ROUTING,
 )
 from shared.database import get_session
 from shared.database.repositories import ChatRepository, MessageRepository
@@ -22,7 +23,7 @@ from shared.constants import get_heat_context, get_heat_level
 logger = logging.getLogger(__name__)
 
 STREAM_EMPTY_ERROR_MESSAGE = "⚠️ Ошибка генерации LLM. Попробуйте ещё раз."
-STREAM_PARTIAL_ERROR_SUFFIX = "\n\n⚠️ Ошибка генерации LLM. Ответ мог быть обрезан."
+STREAM_PARTIAL_ERROR_SUFFIX = "\n\n⚠️ Провайдер оборвал генерацию. Ответ мог быть неполным."
 STREAM_LENGTH_SUFFIX = "\n\n⚠️ Ответ был обрезан из-за лимита генерации."
 
 PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT = (
@@ -252,12 +253,12 @@ class ContextManager:
         self.llm = llm_client
         self.summary_llm = LLMClient(
             model=SUMMARY_MODEL,
-            provider={"sort": "throughput"},
+            provider=LLM_CHAT_PROVIDER_ROUTING,
             reasoning={"enabled": False},
         )
         self.player_llm = LLMClient(
             model=PLAYER_MODEL,
-            provider={"sort": "throughput"},
+            provider=LLM_CHAT_PROVIDER_ROUTING,
             reasoning={"enabled": False},
         )
         self.summary_threshold = summary_threshold or SUMMARY_THRESHOLD

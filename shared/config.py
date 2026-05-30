@@ -17,6 +17,7 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "deepseek/deepseek-v4-flash")
 STRUCTURED_MODEL = os.getenv("STRUCTURED_MODEL", "qwen/qwen3.6-flash")
 SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", CHAT_MODEL)
 PLAYER_MODEL = os.getenv("PLAYER_MODEL", CHAT_MODEL)
+LLM_CHAT_PROVIDER_ROUTING = {"sort": "throughput", "ignore": ["Alibaba"]}
 
 LLM_MODEL_CHOICES = {
     "deepseek_v4_flash": {

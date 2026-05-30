@@ -31,6 +31,31 @@ class LLMTimeoutError(LLMError):
     pass
 
 
+class LLMProviderStreamError(LLMError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str = "provider_stream_error",
+        provider_message: str = "",
+        code: Any = None,
+        model: Optional[str] = None,
+        response_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ):
+        super().__init__(message)
+        self.kind = kind
+        self.provider_message = provider_message
+        self.code = code
+        self.model = model
+        self.response_id = response_id
+        self.metadata = metadata or {}
+
+
+class LLMProviderContentFilterError(LLMProviderStreamError):
+    pass
+
+
 @dataclass(slots=True)
 class LLMResponse:
     content: str
@@ -298,6 +323,52 @@ class LLMClient:
             raise last_error
         raise LLMError("Не удалось получить ответ от LLM")
 
+    @staticmethod
+    def _provider_error_fields(error_payload: Any) -> tuple[Any, str, dict[str, Any]]:
+        if isinstance(error_payload, dict):
+            code = error_payload.get("code")
+            message = str(error_payload.get("message") or error_payload)
+            metadata = error_payload.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            return code, message, metadata
+        return None, str(error_payload), {}
+
+    @staticmethod
+    def _is_content_filter_error(message: str, metadata: dict[str, Any]) -> bool:
+        haystack = f"{message} {metadata}".lower()
+        content_filter_markers = (
+            "inappropriate content",
+            "content policy",
+            "content filter",
+            "safety",
+            "moderation",
+            "filtered",
+        )
+        return any(marker in haystack for marker in content_filter_markers)
+
+    def _build_provider_stream_error(
+        self,
+        error_payload: Any,
+        *,
+        model: Optional[str],
+        response_id: Optional[str],
+    ) -> LLMProviderStreamError:
+        code, message, metadata = self._provider_error_fields(error_payload)
+        kwargs = {
+            "provider_message": message,
+            "code": code,
+            "model": model,
+            "response_id": response_id,
+            "metadata": metadata,
+        }
+        if self._is_content_filter_error(message, metadata):
+            return LLMProviderContentFilterError(
+                "Ошибка генерации ответа LLM",
+                kind="provider_content_filter",
+                **kwargs,
+            )
+        return LLMProviderStreamError("Ошибка генерации ответа LLM", **kwargs)
+
     async def stream_generate(
         self,
         system_prompt: str,
@@ -322,6 +393,9 @@ class LLMClient:
         client = self.get_http_client()
         last_error = None
         yielded_content = False
+        provider_stream_error_retried = False
+        current_model = resolved_model
+        current_id = None
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -379,9 +453,25 @@ class LLMClient:
                             logger.warning("Malformed LLM stream chunk: %r", raw_data[:300])
                             continue
 
+                        current_model = data.get("model") or current_model
+                        current_id = data.get("id") or current_id
+
                         if data.get("error"):
-                            logger.error("LLM stream error: %s", data["error"])
-                            raise LLMError("Ошибка генерации ответа LLM")
+                            error = self._build_provider_stream_error(
+                                data["error"],
+                                model=current_model,
+                                response_id=current_id,
+                            )
+                            logger.error(
+                                "LLM stream %s: model=%s id=%s code=%s upstream_message=%s metadata=%s",
+                                error.kind,
+                                error.model,
+                                error.response_id,
+                                error.code,
+                                error.provider_message,
+                                error.metadata,
+                            )
+                            raise error
 
                         choices = data.get("choices") or []
                         if not choices:
@@ -389,8 +479,21 @@ class LLMClient:
 
                         choice = choices[0]
                         if choice.get("error"):
-                            logger.error("LLM stream choice error: %s", choice["error"])
-                            raise LLMError("Ошибка генерации ответа LLM")
+                            error = self._build_provider_stream_error(
+                                choice["error"],
+                                model=current_model,
+                                response_id=current_id,
+                            )
+                            logger.error(
+                                "LLM stream choice %s: model=%s id=%s code=%s upstream_message=%s metadata=%s",
+                                error.kind,
+                                error.model,
+                                error.response_id,
+                                error.code,
+                                error.provider_message,
+                                error.metadata,
+                            )
+                            raise error
 
                         delta = choice.get("delta") or {}
                         content = delta.get("content") or ""
@@ -423,6 +526,21 @@ class LLMClient:
                         raise last_error
                     return
 
+            except LLMProviderStreamError as e:
+                last_error = e
+                if not yielded_content and not provider_stream_error_retried and attempt < self.max_retries:
+                    provider_stream_error_retried = True
+                    logger.warning(
+                        "Retrying LLM stream after %s before content: model=%s id=%s attempt=%s/%s",
+                        e.kind,
+                        e.model,
+                        e.response_id,
+                        attempt,
+                        self.max_retries,
+                    )
+                    await asyncio.sleep(self.RETRY_DELAY)
+                    continue
+                raise
             except httpx.TimeoutException as e:
                 logger.warning("Stream timeout, attempt %s/%s: %s", attempt, self.max_retries, e)
                 last_error = LLMTimeoutError(f"Таймаут запроса: {e}")
