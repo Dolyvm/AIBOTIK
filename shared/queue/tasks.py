@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
-from shared.services.image_provider import generate_image
+from shared.services.image_provider import ImageProviderError, generate_image
 from shared.services.image_storage import download_and_save_image, save_avatar, ImageStorageError
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
@@ -36,12 +36,18 @@ async def _update_task_status(redis, task_id: str, status: str, **kwargs) -> Non
 def _import_image_prompt_modules():
     try:
         from api.image_gen.schemas.generate import Prompt
-        from api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
+        from api.image_gen.services.scene_analyzer import (
+            SceneAnalyzer,
+            infer_nsfw_level_from_history,
+        )
     except ImportError:
         from backend.api.image_gen.schemas.generate import Prompt
-        from backend.api.image_gen.services.scene_analyzer import SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
+        from backend.api.image_gen.services.scene_analyzer import (
+            SceneAnalyzer,
+            infer_nsfw_level_from_history,
+        )
 
-    return Prompt, SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback
+    return Prompt, SceneAnalyzer, infer_nsfw_level_from_history
 
 
 async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
@@ -49,7 +55,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     if not get_session:
         raise RuntimeError("Image task cannot prepare prompt without database session factory")
 
-    Prompt, SceneAnalyzer, calculate_nsfw_fallback, calculate_sfw_fallback = _import_image_prompt_modules()
+    (
+        Prompt,
+        SceneAnalyzer,
+        infer_nsfw_level_from_history,
+    ) = _import_image_prompt_modules()
 
     chat_id = params["chat_id"]
     requested_outfit = params.get("outfit") or "default_outfit"
@@ -131,9 +141,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
             logger.info(f"Scene analysis for image task {chat_id}: {scene_reasoning}")
         except Exception as e:
             logger.warning(f"Scene analysis failed for image task {chat_id}, using fallback: {e}")
-            nsfw_level = (
-                calculate_nsfw_fallback(heat_level)
-                if allow_nsfw else calculate_sfw_fallback(heat_level)
+            nsfw_level = infer_nsfw_level_from_history(
+                history,
+                heat_level=heat_level,
+                arousal=chat.arousal,
+                allow_nsfw=allow_nsfw,
             )
             if nsfw_level >= 4:
                 outfit_key = "nude"
@@ -141,9 +153,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
                 outfit_key = "underwear"
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
-        nsfw_level = (
-            calculate_nsfw_fallback(heat_level)
-            if allow_nsfw else calculate_sfw_fallback(heat_level)
+        nsfw_level = infer_nsfw_level_from_history(
+            history,
+            heat_level=heat_level,
+            arousal=chat.arousal,
+            allow_nsfw=allow_nsfw,
         )
         if nsfw_level >= 4:
             outfit_key = "nude"
@@ -165,6 +179,9 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
         prompt.body_state = nsfw_tags
 
     logger.info(f"=== PROMPT COMPONENTS for image task chat {chat_id} ===")
+    logger.info(f"  model_type={content.get('model_type')}")
+    logger.info(f"  allow_nsfw={allow_nsfw}")
+    logger.info(f"  heat_level={heat_level}")
     logger.info(f"  outfit_key={outfit_key}")
     logger.info(f"  clothing={prompt.clothing}")
     logger.info(f"  nsfw_level={nsfw_level}")
@@ -181,6 +198,13 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     char_gender = content.get("visual", {}).get("gender", "female")
     validate_model_gender(model_type, char_gender)
     positive_prompt, negative_prompt = await prompt.build_prompt(model_type, gender=char_gender)
+    logger.info(
+        "Built image prompt for chat %s: model_type=%s positive_chars=%s negative_chars=%s",
+        chat_id,
+        model_type,
+        len(positive_prompt or ""),
+        len(negative_prompt or ""),
+    )
 
     seed_source = params.get("character_id") or params.get("world_id") or content.get("id") or content.get("name", "")
     seed = int(hashlib.md5(str(seed_source).encode()).hexdigest()[:8], 16) % (2**31)
@@ -297,9 +321,11 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
                         chat = await chat_repo.get_by_id(chat_id)
                         if chat:
                             current_meta = chat.state_meta or {}
+                            updated_meta = dict(current_meta)
+                            updated_meta["action"] = pose
                             await chat_repo.update_metrics(
                                 chat_id,
-                                {"state_meta": {"action": pose, "thought": current_meta.get("thought")}}
+                                {"state_meta": updated_meta}
                             )
                     await AnalyticsService.track(
                         session,
@@ -325,6 +351,25 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
 
         logger.info(f"Task {task_id} completed successfully: {public_url}")
         return {"status": "completed", "result": result}
+
+    except ImageProviderError as e:
+        payload = e.to_task_payload()
+        logger.error(
+            "Task %s provider failed: code=%s provider=%s retryable=%s",
+            task_id,
+            payload.get("code"),
+            payload.get("provider"),
+            payload.get("retryable"),
+        )
+        await _update_task_status(
+            redis,
+            task_id,
+            "failed",
+            **payload,
+            chat_id=chat_id,
+            user_id=params.get("user_id"),
+        )
+        return {"status": "failed", **payload}
 
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
@@ -365,6 +410,18 @@ async def generate_avatar_task(ctx: dict[str, Any], task_id: str, params: dict) 
 
         logger.info(f"Avatar task {task_id} completed: {image_url}")
         return {"status": "completed", "result": result}
+
+    except ImageProviderError as e:
+        payload = e.to_task_payload()
+        logger.error(
+            "Avatar task %s provider failed: code=%s provider=%s retryable=%s",
+            task_id,
+            payload.get("code"),
+            payload.get("provider"),
+            payload.get("retryable"),
+        )
+        await _update_task_status(redis, task_id, "failed", **payload, **owner_meta)
+        return {"status": "failed", **payload}
 
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__

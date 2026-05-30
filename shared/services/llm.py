@@ -321,9 +321,11 @@ class LLMClient:
 
         client = self.get_http_client()
         last_error = None
+        yielded_content = False
 
         for attempt in range(1, self.max_retries + 1):
             try:
+                stream_completed = False
                 logger.debug(
                     "LLM stream request (attempt %s/%s): model=%s",
                     attempt,
@@ -368,6 +370,7 @@ class LLMClient:
 
                         raw_data = line[5:].strip()
                         if raw_data == "[DONE]":
+                            stream_completed = True
                             break
 
                         try:
@@ -399,19 +402,40 @@ class LLMClient:
                             model=data.get("model"),
                             id=data.get("id"),
                         )
+                        if event.finish_reason:
+                            stream_completed = True
                         if event.content or event.finish_reason or event.usage:
+                            if event.content:
+                                yielded_content = True
                             yield event
+                    if not stream_completed:
+                        last_error = LLMError("Поток ответа оборвался")
+                        logger.warning(
+                            "LLM stream ended without terminal event, attempt %s/%s",
+                            attempt,
+                            self.max_retries,
+                        )
+                        if yielded_content:
+                            raise last_error
+                        if attempt < self.max_retries:
+                            await asyncio.sleep(self.RETRY_DELAY)
+                            continue
+                        raise last_error
                     return
 
             except httpx.TimeoutException as e:
                 logger.warning("Stream timeout, attempt %s/%s: %s", attempt, self.max_retries, e)
                 last_error = LLMTimeoutError(f"Таймаут запроса: {e}")
+                if yielded_content:
+                    raise last_error
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue
             except httpx.RequestError as e:
                 logger.error("Stream network error: %s", e)
                 last_error = LLMError(f"Ошибка сети: {e}")
+                if yielded_content:
+                    raise last_error
                 if attempt < self.max_retries:
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue

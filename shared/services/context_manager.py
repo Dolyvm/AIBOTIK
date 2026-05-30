@@ -21,6 +21,10 @@ from shared.constants import get_heat_context, get_heat_level
 
 logger = logging.getLogger(__name__)
 
+STREAM_EMPTY_ERROR_MESSAGE = "⚠️ Ошибка генерации LLM. Попробуйте ещё раз."
+STREAM_PARTIAL_ERROR_SUFFIX = "\n\n⚠️ Ошибка генерации LLM. Ответ мог быть обрезан."
+STREAM_LENGTH_SUFFIX = "\n\n⚠️ Ответ был обрезан из-за лимита генерации."
+
 PLAYER_AUTO_MESSAGE_SYSTEM_PROMPT = (
     "Ты генерируешь только одно следующее сообщение игрока для интерактивного "
     "романа. Ответ должен быть от первого лица игрока на русском языке, без "
@@ -464,41 +468,70 @@ class ContextManager:
 
             meta_filter = _MetaStreamFilter()
             raw_parts: list[str] = []
+            visible_parts: list[str] = []
             response_model = None
             response_id = None
             finish_reason = None
             native_finish_reason = None
             usage: dict = {}
 
-            async for event in self.llm.stream_generate(
-                system_prompt=system_prompt,
-                messages=history,
-                max_tokens=max_tokens,
-            ):
-                if event.model:
-                    response_model = event.model
-                if event.id:
-                    response_id = event.id
-                if event.finish_reason:
-                    finish_reason = event.finish_reason
-                if event.native_finish_reason:
-                    native_finish_reason = event.native_finish_reason
-                if event.usage:
-                    usage = event.usage
+            try:
+                async for event in self.llm.stream_generate(
+                    system_prompt=system_prompt,
+                    messages=history,
+                    max_tokens=max_tokens,
+                ):
+                    if event.model:
+                        response_model = event.model
+                    if event.id:
+                        response_id = event.id
+                    if event.finish_reason:
+                        finish_reason = event.finish_reason
+                    if event.native_finish_reason:
+                        native_finish_reason = event.native_finish_reason
+                    if event.usage:
+                        usage = event.usage
 
-                if not event.content:
-                    continue
+                    if not event.content:
+                        continue
 
-                raw_parts.append(event.content)
-                visible_chunk = meta_filter.feed(event.content)
-                if visible_chunk:
-                    yield visible_chunk
+                    raw_parts.append(event.content)
+                    visible_chunk = meta_filter.feed(event.content)
+                    if visible_chunk:
+                        visible_parts.append(visible_chunk)
+                        yield visible_chunk
+            except Exception as e:
+                visible_content = "".join(visible_parts).strip()
+                if visible_content:
+                    assistant_error_content = f"{visible_content}{STREAM_PARTIAL_ERROR_SUFFIX}"
+                    error_chunk = STREAM_PARTIAL_ERROR_SUFFIX
+                else:
+                    assistant_error_content = STREAM_EMPTY_ERROR_MESSAGE
+                    error_chunk = STREAM_EMPTY_ERROR_MESSAGE
+
+                await message_repo.add(chat.id, "assistant", assistant_error_content)
+                logger.exception(
+                    "LLM stream failed after user message was saved: chat_id=%s model=%s id=%s error=%s",
+                    chat.id,
+                    response_model,
+                    response_id,
+                    e,
+                )
+                yield error_chunk
+                raise LLMError("Ошибка генерации LLM") from e
 
             visible_tail = meta_filter.finish()
             if visible_tail:
+                visible_parts.append(visible_tail)
                 yield visible_tail
 
             raw_content = "".join(raw_parts)
+            if not raw_content:
+                await message_repo.add(chat.id, "assistant", STREAM_EMPTY_ERROR_MESSAGE)
+                logger.warning("Пустой потоковый ответ от LLM")
+                yield STREAM_EMPTY_ERROR_MESSAGE
+                raise LLMError("Пустой ответ от LLM")
+
             response = LLMResponse(
                 content=raw_content,
                 finish_reason=finish_reason,
@@ -508,10 +541,6 @@ class ContextManager:
                 id=response_id,
             )
 
-            if not raw_content:
-                logger.warning("Пустой потоковый ответ от LLM")
-                raise LLMError("Пустой ответ от LLM")
-
             logger.info(
                 "LLM story stream completed: model=%s id=%s finish_reason=%s chars=%s",
                 response.model,
@@ -519,14 +548,18 @@ class ContextManager:
                 response.finish_reason,
                 len(response.content),
             )
+            stream_warning = ""
             if response.finish_reason == "length":
                 logger.warning(
                     "LLM stream response hit completion limit: id=%s max_completion_tokens=%s",
                     response.id,
                     max_tokens,
                 )
+                stream_warning = STREAM_LENGTH_SUFFIX
 
             clean_text, state_updates = self._parse_meta(response.content)
+            if stream_warning:
+                clean_text = f"{clean_text.rstrip()}{stream_warning}" if clean_text else stream_warning.strip()
 
             if state_updates:
                 logging.info(f"{state_updates=}")
@@ -548,6 +581,8 @@ class ContextManager:
                 clean_text,
                 tokens_used=response.completion_tokens,
             )
+            if stream_warning:
+                yield stream_warning
 
     async def _generate_complete_story_response(
         self,

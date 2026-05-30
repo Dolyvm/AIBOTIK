@@ -16,3 +16,4 @@ python-multipart
 redis>=5.0.0
 arq>=0.26
 websockets>=12.0
+aiogram==3.4.1

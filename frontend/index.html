@@ -2595,7 +2595,25 @@
                         : data?.message || `Ошибка ${response.status}`;
                     const error = new Error(message);
                     error.status = response.status;
+                    error.rollbackOptimisticUser = true;
                     throw error;
+                };
+
+                const getSendFailureMessage = (error) => {
+                    const raw = String(error?.message || '');
+                    if (error?.code === 'llm_generation_failed' || raw.includes('LLM')) {
+                        return '⚠️ Ошибка генерации LLM. Попробуйте ещё раз.';
+                    }
+                    if (raw.includes('Поток ответа оборвался')) {
+                        return '⚠️ Ответ оборвался. Попробуйте ещё раз.';
+                    }
+                    if (raw.includes('Пустой поток ответа')) {
+                        return '⚠️ Сервер не вернул ответ. Попробуйте ещё раз.';
+                    }
+                    if (error?.name === 'TypeError') {
+                        return '⚠️ Ошибка связи с сервером';
+                    }
+                    return raw || '⚠️ Ошибка генерации';
                 };
 
                 const sendMessage = async () => {
@@ -2604,7 +2622,8 @@
                     const sourceSessionId = currentChatSessionId.value;
                     if (!sourceChatId || !text || isWaitingResponse.value || isStreaming.value) return;
 
-                    chatHistory.value.push({ role: 'user', content: text });
+                    const userClientMessageId = createClientMessageId('user-optimistic');
+                    chatHistory.value.push({ role: 'user', content: text, clientMessageId: userClientMessageId });
                     inputMessage.value = '';
                     resetTextareaHeight();
                     isWaitingResponse.value = true;
@@ -2680,7 +2699,9 @@
                                 } else if (event.type === 'done') {
                                     doneReceived = true;
                                 } else if (event.type === 'error') {
-                                    throw new Error(event.message || 'Ошибка генерации');
+                                    const streamError = new Error(event.message || 'Ошибка генерации');
+                                    streamError.code = event.code;
+                                    throw streamError;
                                 }
                             }
                         }
@@ -2694,7 +2715,9 @@
                             } else if (event.type === 'done') {
                                 doneReceived = true;
                             } else if (event.type === 'error') {
-                                throw new Error(event.message || 'Ошибка генерации');
+                                const streamError = new Error(event.message || 'Ошибка генерации');
+                                streamError.code = event.code;
+                                throw streamError;
                             }
                         }
 
@@ -2702,14 +2725,24 @@
                             throw new Error('Поток ответа оборвался');
                         }
                     } catch (e) {
-                        if (isActiveChat(sourceChatId, sourceSessionId) && e.status !== 429) {
+                        if (isActiveChat(sourceChatId, sourceSessionId) && e.rollbackOptimisticUser) {
+                            const userMessageIndex = chatHistory.value.findIndex(msg => msg.clientMessageId === userClientMessageId);
+                            if (userMessageIndex !== -1) {
+                                chatHistory.value.splice(userMessageIndex, 1);
+                            }
+                            if (e.status !== 429) {
+                                const failureMessage = getSendFailureMessage(e);
+                                showToast(failureMessage.replace(/^⚠️\s*/, ''), 'error');
+                            }
+                        } else if (isActiveChat(sourceChatId, sourceSessionId) && e.status !== 429) {
+                            const failureMessage = getSendFailureMessage(e);
                             if (assistantAdded && !assistantContent) {
-                                assistantContent = "⚠️ Ошибка связи с сервером";
+                                assistantContent = failureMessage;
                                 patchChatMessageByClientId(assistantClientMessageId, { content: assistantContent });
                             } else if (!assistantAdded) {
-                                chatHistory.value.push({ role: 'assistant', content: "⚠️ Ошибка связи с сервером" });
+                                chatHistory.value.push({ role: 'assistant', content: failureMessage });
                             } else {
-                                showToast(e.message || 'Ошибка связи с сервером', 'error');
+                                showToast(failureMessage.replace(/^⚠️\s*/, ''), 'error');
                             }
                         }
                     } finally {
@@ -2806,7 +2839,10 @@
                                     if (placeholderIndex !== -1) {
                                         chatHistory.value.splice(placeholderIndex, 1);
                                     }
-                                    showToast('Не удалось создать фото: ' + error);
+                                    const message = error === 'Не удалось создать real фото через Replicate'
+                                        ? error
+                                        : 'Не удалось создать фото: ' + error;
+                                    showToast(message);
                                     isWaitingResponse.value = false;
                                 },
                                 { expectedChatId: sourceChatId }

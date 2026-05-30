@@ -20,7 +20,7 @@ from shared.services.content_loader import get_character, get_world
 from shared.services.redis_client import get_redis
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
-from shared.services.image_provider import generate_image as provider_generate_image
+from shared.services.image_provider import ImageProviderError, generate_image as provider_generate_image
 from shared.services.model_types import validate_model_gender
 from ..schemas.generate import GenerateRequest, ModelType, Prompt
 
@@ -40,20 +40,48 @@ async def build_prompt_endpoint(data: Prompt, model_type: Optional[ModelType] = 
     return await data.build_prompt(model_type, gender=gender)
 
 @router.post("/generate")
-async def generate_image(data: GenerateRequest):
+async def generate_image(data: GenerateRequest, user: User = Depends(get_current_user)):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
+        if not allowed:
+            limits = RATE_LIMITS["images"]
+            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "images", session)
+        if not allowed:
+            from shared.database.exceptions import UsageLimitExceeded
+            raise UsageLimitExceeded("images", limit)
+
     nsfw_keywords = ["nsfw", "nude", "naked", "explicit", "erotic", "orgasm", "masturbat", "penetrat", "sex"]
     prompt_lower = data.prompt.lower()
     inferred_nsfw = sum(1 for kw in nsfw_keywords if kw in prompt_lower)
     nsfw_level = min(5, inferred_nsfw)
 
-    image_url = await provider_generate_image(
-        model_type=data.model_type.value,
-        positive_prompt=data.prompt,
-        negative_prompt=data.negative_prompt or "",
-        allow_nsfw=data.allow_nsfw,
-        nsfw_level=nsfw_level,
-    )
-    return {"url": image_url} if image_url else {"error": "Failed to generate image"}
+    try:
+        image_url = await provider_generate_image(
+            model_type=data.model_type.value,
+            positive_prompt=data.prompt,
+            negative_prompt=data.negative_prompt or "",
+            allow_nsfw=data.allow_nsfw,
+            nsfw_level=nsfw_level,
+        )
+    except ImageProviderError as e:
+        logging.error(
+            "Image provider failed in direct generate endpoint: code=%s provider=%s",
+            e.code,
+            e.provider,
+        )
+        raise HTTPException(status_code=502, detail=e.user_message)
+
+    if image_url:
+        async with get_session() as session:
+            await sub_service.increment_usage(user.telegram_id, "images", session)
+        return {"url": image_url}
+
+    return {"error": "Failed to generate image"}
 
 @router.post("/{chat_id}/generate")
 async def gen(

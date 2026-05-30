@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 async def startup(ctx):
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logging.getLogger().setLevel(log_level)
     logger.info("Worker starting up...")
     ctx["get_session"] = get_session
     redis = await get_redis()

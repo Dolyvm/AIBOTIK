@@ -96,6 +96,21 @@ async def get_real_base_negative(gender: str = "female") -> str:
     except KeyError:
         return await get_prompt("real_base_negative")
 
+REAL_PHOTO_QUALITY_PROMPT = (
+    "RAW photo, anatomically correct adult human body, proportional limbs, natural face, "
+    "realistic facial features, sharp eyes, realistic skin texture, high detail editorial photography"
+)
+
+REAL_ARTIFACT_NEGATIVE_PROMPT = (
+    "worst quality, low quality, blurry, jpeg artifacts, watermark, text, logo, cropped, "
+    "out of frame, deformed face, distorted face, asymmetrical face, poorly drawn face, "
+    "cloned face, bad eyes, cross-eyed, deformed eyes, bad teeth, bad hands, deformed hands, "
+    "malformed hands, mutated hands, extra fingers, missing fingers, fused fingers, too many fingers, "
+    "bad legs, deformed legs, malformed legs, bad feet, deformed feet, extra limbs, missing limbs, "
+    "broken anatomy, dislocated joints, twisted limbs, bad proportions, long neck, cgi, 3d render, "
+    "cartoon, anime, illustration, painting, doll, plastic skin, waxy skin, oversmoothed skin"
+)
+
 AGE_INTERVAL_MAP = {
     "18": "18-20 years old",
     "25": "20-30 years old",
@@ -163,7 +178,7 @@ REAL_FEMALE_BODY_VARIANTS = [
     "slim hourglass figure",
     "toned athletic curves",
     "petite fit figure",
-    "long-legged elegant build",
+    "proportional elegant build",
     "curvy fit silhouette",
     "lean dancer-like body",
 ]
@@ -208,6 +223,19 @@ def _strip_real_anime_tags(text: str) -> str:
         if tag.lower() not in REAL_ANIME_ONLY_TAGS:
             parts.append(tag)
     return ", ".join(part for part in parts if part)
+
+
+def _dedupe_comma_tags(parts: list[str]) -> list[str]:
+    tags = []
+    seen = set()
+    for part in parts:
+        for tag in part.split(","):
+            tag_stripped = tag.strip()
+            normalized = tag_stripped.lower()
+            if tag_stripped and normalized not in seen:
+                seen.add(normalized)
+                tags.append(tag_stripped)
+    return tags
 
 
 def _build_real_identity_signature(
@@ -276,10 +304,16 @@ class Prompt(BaseModel):
     ) -> "Prompt":
         visual = character.get("visual", {})
         model_type = character.get("model_type", "real")
+        gender = visual.get("gender", "female")
+        is_male = gender == "male"
 
         wardrobe = visual.get("wardrobe", {})
         if outfit_key == "default_outfit":
             clothing = visual.get("default_outfit", "") or wardrobe.get("casual", "")
+        elif outfit_key == "nude" and nsfw_level >= 4 and not wardrobe.get("nude"):
+            clothing = "nothing, fully nude" if is_male else "nothing, fully nude, bare skin"
+        elif outfit_key == "underwear" and nsfw_level >= 2 and not wardrobe.get("underwear"):
+            clothing = "underwear" if is_male else "bra and panties"
         else:
             clothing = wardrobe.get(outfit_key, visual.get("default_outfit", "") or wardrobe.get("casual", ""))
         if clothing:
@@ -289,9 +323,6 @@ class Prompt(BaseModel):
         # Defensive: strip trailing quotes/commas from user-pasted data
         if appearance:
             appearance = appearance.strip().rstrip('",').rstrip('"').strip()
-
-        gender = visual.get("gender", "female")
-        is_male = gender == "male"
 
         # Если appearance пуст - строим из отдельных полей (пользовательские персонажи)
         if not appearance and visual.get("age"):
@@ -417,45 +448,79 @@ class Prompt(BaseModel):
         elif build_as_type == "real":
             prompt_parts.append(await get_real_base_positive(gender))
             negative_parts.append(await get_real_base_negative(gender))
+            prompt_parts.append(REAL_PHOTO_QUALITY_PROMPT)
+            negative_parts.append(REAL_ARTIFACT_NEGATIVE_PROMPT)
         nsfw_levels = await get_nsfw_levels()
 
-        for field_name, _ in self.__class__.model_fields.items():
-            value = getattr(self, field_name)
-            if value == "":
-                continue
+        async def append_nsfw_layer(raw_value) -> None:
+            try:
+                value = int(raw_value)
+            except (TypeError, ValueError):
+                value = 0
+            value = max(0, min(value, len(nsfw_levels) - 1))
 
+            resolved = False
+            if value >= 2:
+                type_key = build_as_type if build_as_type in ("anime", "real", "manhwa") else None
+                # Priority: model_type+gender specific → generic fallback.
+                lookup_keys = []
+                if type_key:
+                    if type_key == "real" and gender == "female":
+                        lookup_keys.append(f"nsfw_level_{value}_real_female")
+                    elif gender == "male":
+                        lookup_keys.append(f"nsfw_level_{value}_{type_key}_male")
+                    lookup_keys.append(f"nsfw_level_{value}_{type_key}")
+                if gender == "male":
+                    lookup_keys.append(f"nsfw_level_{value}_male")
+
+                for key in lookup_keys:
+                    try:
+                        type_prompt = await get_prompt(key)
+                        type_neg = await get_prompt(f"{key}_neg")
+                        prompt_parts.append(type_prompt)
+                        negative_parts.append(type_neg)
+                        resolved = True
+                        break
+                    except KeyError:
+                        continue
+
+            if not resolved:
+                nsfw_level = nsfw_levels[value]
+                prompt_parts.append(nsfw_level.prompt)
+                negative_parts.append(nsfw_level.negative_prompt)
+
+        priority_fields = [
+            "nsfw_level",
+            "clothing",
+            "body_state",
+            "action",
+            "facial_expression",
+            "character_base",
+            "signature",
+            "environment",
+            "scene_details",
+            "camera",
+            "style",
+        ]
+        seen_fields = set()
+
+        for field_name in priority_fields:
+            seen_fields.add(field_name)
             if field_name == "nsfw_level":
-                resolved = False
-                if value >= 2:
-                    type_key = build_as_type if build_as_type in ("anime", "real", "manhwa") else None
-                    # Priority: model_type+gender specific → generic fallback
-                    lookup_keys = []
-                    if type_key:
-                        if type_key == "real" and gender == "female":
-                            lookup_keys.append(f"nsfw_level_{value}_real_female")
-                        elif gender == "male":
-                            lookup_keys.append(f"nsfw_level_{value}_{type_key}_male")
-                        lookup_keys.append(f"nsfw_level_{value}_{type_key}")
-                    if gender == "male":
-                        lookup_keys.append(f"nsfw_level_{value}_male")
-
-                    for key in lookup_keys:
-                        try:
-                            type_prompt = await get_prompt(key)
-                            type_neg = await get_prompt(f"{key}_neg")
-                            prompt_parts.append(type_prompt)
-                            negative_parts.append(type_neg)
-                            resolved = True
-                            break
-                        except KeyError:
-                            continue
-
-                if not resolved:
-                    nsfw_level = nsfw_levels[value]
-                    prompt_parts.append(nsfw_level.prompt)
-                    negative_parts.append(nsfw_level.negative_prompt)
+                await append_nsfw_layer(getattr(self, field_name))
                 continue
 
+            value = getattr(self, field_name)
+            if value in ("", None):
+                continue
+            prompt_parts.append(value)
+
+        for field_name, _ in self.__class__.model_fields.items():
+            if field_name in seen_fields:
+                continue
+            value = getattr(self, field_name)
+            if value in ("", None):
+                continue
             prompt_parts.append(value)
 
         # Гендерные ограничения в negative_prompt
@@ -464,15 +529,7 @@ class Prompt(BaseModel):
         else:
             negative_parts.append("1boy, male, penis")
 
-        all_tags = []
-        seen = set()
-        for part in prompt_parts:
-            for tag in part.split(", "):
-                tag_stripped = tag.strip()
-                if tag_stripped and tag_stripped.lower() not in seen:
-                    seen.add(tag_stripped.lower())
-                    all_tags.append(tag_stripped)
-        prompt = ", ".join(all_tags)
-        negative_prompt = ", ".join(negative_parts)
+        prompt = ", ".join(_dedupe_comma_tags(prompt_parts))
+        negative_prompt = ", ".join(_dedupe_comma_tags(negative_parts))
 
         return prompt, negative_prompt
