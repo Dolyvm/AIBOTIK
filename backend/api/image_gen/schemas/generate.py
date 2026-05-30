@@ -411,13 +411,13 @@ class Prompt(BaseModel):
                         parts.append(f"and {visual['ass']}")
                 appearance = ", ".join(parts)
 
+        body = visual.get("body", "")
+        face = visual.get("face", "")
+        style = visual.get("style_tags", "")
+
         if model_type in ("anime", "manhwa"):
-            character_base = appearance
-            style = ""
+            character_base = ", ".join(filter(None, [appearance, body, face]))
         else:
-            body = visual.get("body", "")
-            face = visual.get("face", "")
-            style = visual.get("style_tags", "")
             character_base = ", ".join(filter(None, [appearance, body, face]))
             character_base = _strip_real_anime_tags(character_base)
             character_base = ", ".join(
@@ -466,14 +466,14 @@ class Prompt(BaseModel):
         prompt_parts = []
         negative_parts = []
 
+        base_positive = ""
         if build_as_type == "anime":
             base_positive = await get_anime_base_positive()
             if self.nsfw_level > 0:
                 base_positive = base_positive.replace("general, ", "")
-            prompt_parts.append(base_positive)
             negative_parts.append(await get_anime_base_negative())
         elif build_as_type == "manhwa":
-            prompt_parts.append(await get_manhwa_base_positive())
+            base_positive = await get_manhwa_base_positive()
             negative_parts.append(await get_manhwa_base_negative())
         elif build_as_type == "real":
             prompt_parts.append(await get_real_base_positive(gender))
@@ -519,19 +519,34 @@ class Prompt(BaseModel):
                 prompt_parts.append(nsfw_level.prompt)
                 negative_parts.append(nsfw_level.negative_prompt)
 
-        priority_fields = [
-            "nsfw_level",
-            "clothing",
-            "body_state",
-            "action",
-            "facial_expression",
-            "character_base",
-            "signature",
-            "environment",
-            "scene_details",
-            "camera",
-            "style",
-        ]
+        if build_as_type in ("anime", "manhwa"):
+            priority_fields = [
+                "character_base",
+                "style",
+                "nsfw_level",
+                "clothing",
+                "body_state",
+                "action",
+                "facial_expression",
+                "environment",
+                "scene_details",
+                "camera",
+                "signature",
+            ]
+        else:
+            priority_fields = [
+                "nsfw_level",
+                "clothing",
+                "body_state",
+                "action",
+                "facial_expression",
+                "character_base",
+                "signature",
+                "environment",
+                "scene_details",
+                "camera",
+                "style",
+            ]
         seen_fields = set()
 
         for field_name in priority_fields:
@@ -552,6 +567,9 @@ class Prompt(BaseModel):
             if value in ("", None):
                 continue
             prompt_parts.append(value)
+
+        if build_as_type in ("anime", "manhwa") and base_positive:
+            prompt_parts.append(base_positive)
 
         # Гендерные ограничения в negative_prompt
         if gender == "male":
