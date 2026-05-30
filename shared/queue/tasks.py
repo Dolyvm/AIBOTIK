@@ -206,7 +206,8 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
         len(negative_prompt or ""),
     )
 
-    seed_source = params.get("character_id") or params.get("world_id") or content.get("id") or content.get("name", "")
+    identity_seed_source = params.get("character_id") or params.get("world_id") or content.get("id") or content.get("name", "")
+    seed_source = f"{identity_seed_source}:{chat_id}:{params.get('task_id', '')}"
     seed = int(hashlib.md5(str(seed_source).encode()).hexdigest()[:8], 16) % (2**31)
 
     prepared = {
@@ -251,7 +252,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
     try:
         if params.get("prepare_prompt"):
             await _update_task_status(redis, task_id, "analyzing", chat_id=chat_id, user_id=params.get("user_id"))
-            params = await _prepare_chat_image_params(ctx, params)
+            params = await _prepare_chat_image_params(ctx, {**params, "task_id": task_id})
             chat_id = params["chat_id"]
 
         user_id = params["user_id"]
