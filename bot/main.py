@@ -105,20 +105,23 @@ async def main():
 
     is_prod = os.getenv("IS_PROD", "false").lower() == "true"
 
-    if not webhook_url:
-        raise ValueError("WEBHOOK_URL environment variable is required!")
+    if is_prod and not webhook_url:
+        raise ValueError("WEBHOOK_URL environment variable is required in webhook mode!")
 
     try:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="Меню",
-                web_app=WebAppInfo(url=f"{webapp_url}?user_id={{user_id}}")
+        if webapp_url:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Меню",
+                    web_app=WebAppInfo(url=f"{webapp_url}?user_id={{user_id}}")
+                )
             )
-        )
-        logger.info("Menu button set")
+            logger.info("Menu button set to %s", webapp_url)
+        else:
+            logger.warning("WEBAPP_URL is not set; skipping Telegram menu button setup")
 
-        full_webhook_url = f"{webhook_url}{webhook_path}"
         if is_prod:
+            full_webhook_url = f"{webhook_url.rstrip('/')}{webhook_path}"
             await bot.set_webhook(
                 url=full_webhook_url,
                 drop_pending_updates=False,

@@ -167,7 +167,7 @@ def calculate_nsfw_fallback(heat_level: int) -> int:
         0: 0,
         1: 1,
         2: 2,
-        3: 3,
+        3: 4,
     }[normalize_heat_level(heat_level)]
 
 
@@ -175,6 +175,69 @@ def calculate_sfw_fallback(heat_level: int) -> int:
     from shared.constants import normalize_heat_level
 
     return 1 if normalize_heat_level(heat_level) > 0 else 0
+
+
+_HISTORY_EXPLICIT_HINTS = (
+    "sex", "fuck", "intercourse", "penetrat", "orgasm", "cum", "masturbat",
+    "секс", "трах", "проник", "оргаз", "конч", "мастурб",
+)
+
+_HISTORY_NUDE_HINTS = (
+    "nude", "naked", "undress", "undressed", "bare", "lingerie", "bra", "panties",
+    "обнаж", "голая", "голый", "голое", "разде", "снимает одеж", "снимаю одеж",
+    "снимает бель", "снимаю бель", "белье", "бельё", "лифчик", "бюстгальтер",
+    "трус", "без одежды",
+)
+
+_HISTORY_REVEALING_HINTS = (
+    "kiss", "kissing", "bed", "bedroom", "hotel room", "desire", "want you",
+    "поцел", "целу", "кровать", "постел", "номер", "спальн", "отель",
+    "хочу тебя", "желан", "страст", "прижим", "ласка", "соблазн",
+)
+
+
+def _history_text(history: list[dict], limit: int = 8) -> str:
+    return " ".join(
+        str(message.get("content", ""))
+        for message in history[-limit:]
+        if isinstance(message, dict)
+    ).lower()
+
+
+def _has_any(text: str, hints: tuple[str, ...]) -> bool:
+    return any(hint in text for hint in hints)
+
+
+def infer_nsfw_level_from_history(
+    history: list[dict],
+    heat_level: int = 0,
+    arousal: int = 0,
+    allow_nsfw: bool = True,
+) -> int:
+    """Conservative visual fallback when SceneAnalyzer LLM is unavailable."""
+    base_level = (
+        calculate_nsfw_fallback(heat_level)
+        if allow_nsfw else calculate_sfw_fallback(heat_level)
+    )
+    if not allow_nsfw:
+        return min(base_level, 1)
+
+    text = _history_text(history)
+    inferred = base_level
+
+    if arousal >= 70:
+        inferred = max(inferred, 4)
+    elif arousal >= 40:
+        inferred = max(inferred, 2)
+
+    if _has_any(text, _HISTORY_EXPLICIT_HINTS):
+        inferred = max(inferred, 4)
+    elif _has_any(text, _HISTORY_NUDE_HINTS):
+        inferred = max(inferred, 4)
+    elif _has_any(text, _HISTORY_REVEALING_HINTS):
+        inferred = max(inferred, 2)
+
+    return max(0, min(5, inferred))
 
 class SceneAnalyzer:
 
@@ -234,11 +297,25 @@ REAL MODEL EXTRA RULES:
 
         recent_messages = history[-2:] if len(history) > 2 else history
         heat_level = normalize_heat_level(heat_level)
+        history_fallback_level = infer_nsfw_level_from_history(
+            history,
+            heat_level=heat_level,
+            arousal=arousal,
+            allow_nsfw=allow_nsfw,
+        )
 
         scene_prompt_profile = (
             f"real-rules-v2:{gender}" if model_type == "real" else f"base-v1:{model_type}:{gender}"
         )
-        context_str = f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{heat_level}:{recent_messages}"
+        outfit_signature = (
+            sorted(available_outfits.keys())
+            if isinstance(available_outfits, dict)
+            else sorted(available_outfits)
+        )
+        context_str = (
+            f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{heat_level}:"
+            f"{mood}:{arousal}:{current_location}:{outfit_signature}:{recent_messages}"
+        )
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
 
         cache = get_cache()
@@ -308,6 +385,17 @@ REAL MODEL EXTRA RULES:
             if mood.lower() in self.NEGATIVE_MOODS:
                 scene.nsfw_level = min(scene.nsfw_level, 1)
                 logger.info(f"nsfw_level capped to {scene.nsfw_level} due to negative mood '{mood}'")
+            elif allow_nsfw:
+                fallback_level = history_fallback_level
+                if fallback_level > scene.nsfw_level:
+                    logger.info(
+                        "nsfw_level raised by history/heat fallback: %s -> %s (heat_level=%s arousal=%s)",
+                        scene.nsfw_level,
+                        fallback_level,
+                        heat_level,
+                        arousal,
+                    )
+                    scene.nsfw_level = fallback_level
 
             original_outfit = scene.outfit_key
             outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
@@ -338,7 +426,17 @@ REAL MODEL EXTRA RULES:
             return scene
 
         except Exception as e:
-            logger.error(f"SceneAnalyzer parse error: {str(e)}")
+            logger.exception("SceneAnalyzer parse error: %s", e)
+            fallback_level = history_fallback_level
+            outfit_key = "default_outfit"
+            outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
+            if fallback_level >= 4 and "nude" in outfit_keys:
+                outfit_key = "nude"
+            elif fallback_level >= 2 and "underwear" in outfit_keys:
+                outfit_key = "underwear"
             return SceneAnalysis(
+                location=current_location or "unknown",
+                outfit_key=outfit_key,
+                nsfw_level=fallback_level,
                 reasoning=f"Fallback due to error: {str(e)}"
             )

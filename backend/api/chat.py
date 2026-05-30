@@ -172,8 +172,12 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
                 yield _stream_event("done")
             except Exception as e:
-                logging.error(f"Error in send_message stream: {e}")
-                yield _stream_event("error", message=str(e))
+                logging.exception("Error in send_message stream: chat_id=%s error=%s", chat.id, e)
+                yield _stream_event(
+                    "error",
+                    code="llm_generation_failed",
+                    message="Ошибка генерации LLM",
+                )
 
         return StreamingResponse(
             stream_response(),
