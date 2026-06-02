@@ -36,3 +36,7 @@ Thumbs.db
 repomix-output.xml
 
 docker-compose.override.yml
+replicate_likeness_results/
+openrouter_recraft_results/
+fal_seedream45_identity_results/
+runpod_face_swap_results/

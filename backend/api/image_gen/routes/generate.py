@@ -117,9 +117,6 @@ async def gen(
         if not content:
             raise HTTPException(status_code=404, detail="Content not found")
 
-        if content.get("visual", {}).get("custom_avatar", False):
-            raise HTTPException(status_code=400, detail="Photo generation is not available for this character")
-
     except HTTPException:
         raise
     except Exception as e:

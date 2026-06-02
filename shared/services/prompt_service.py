@@ -1026,8 +1026,8 @@ DEFAULT_PROMPTS = {
     "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
     "nsfw_level_1": "",
     "nsfw_level_1_neg": "nudity, sexual act",
-    "nsfw_level_2": "aroused, nsfw, sensual, teasing, showing herself, tits peeking",
-    "nsfw_level_2_neg": "nudity, explicit sex, penetration",
+    "nsfw_level_2": "sensual clothed pose, teasing expression, fully clothed, fitted opaque outfit, covered styling",
+    "nsfw_level_2_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration",
     "nsfw_level_3": "nsfw, taking off her clothes, showing her nude tits, aroused, bottomless",
     "nsfw_level_3_neg": "penetration, explicit sex",
     "nsfw_level_4": "nsfw, naked body, nude pussy, aroused",
@@ -1035,7 +1035,7 @@ DEFAULT_PROMPTS = {
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
     "nsfw_level_5_neg": "general",
     "player_prompt": "Сгенерируй одно автосообщение от игрока ({user_name}) на русском. \r\n\r\nПоследняя реплика/действие персонажа {character_name}:\r\n\"{last_character_message}\"\r\n\r\nСтиль прошлых сообщений игрока, не копировать дословно:\r\n{style_examples}\r\n\r\n2-3 предложения от первого лица игрока. Конкретное действие или естественная реплика по сцене, а не общая театральная фраза. Не пиши за персонажа, не повторяй прошлые сообщения игрока, не добавляй JSON, <meta>, markdown, заголовки или role labels.",
-    "scene_analyzer_prompt": "Return ONLY flat JSON in English.\nCharacter: {character_name}; model: {model_type}; mood: {mood}; heat: {heat_context}; location: {current_location}.\nChat:\n{formatted_chat}\n\nOutfits:\n{available_outfits}\n\nFields: location = place + time, max 4 words, story-consistent. pose = only {gender_possessive} body pose, max 8 words. outfit_key = one listed outfit; use \"nude\" only for nsfw_level 4-5. emotion = short visual tags. nsfw_level: 0 clothed, 1 teasing clothed, 2 revealing, 3 partial nudity ({nsfw_level_3_desc}), 4 nude, 5 explicit activity. Heat sets maximum tone; use recent chat, character reaction, arousal and relationship state together instead of requiring one exact keyword. Negative mood max 1. nsfw_tags empty unless level 4-5; then compact visual tags from actual scene only. scene_description = 2-4 lighting/weather/atmosphere tags only.\nUse character reaction, not player request. If the scene is non-intimate and heat is low, nsfw_level must be 0.\nJSON:\n{{\"location\":\"string\",\"pose\":\"string\",\"outfit_key\":\"one from outfits list\",\"emotion\":\"short visual tags\",\"nsfw_level\":0,\"nsfw_tags\":\"\",\"scene_description\":\"visual tags\",\"reasoning\":\"short\"}}",
+    "scene_analyzer_prompt": "Return ONLY flat JSON in English.\nCharacter: {character_name}; model: {model_type}; mood: {mood}; heat: {heat_context}; location: {current_location}.\nChat:\n{formatted_chat}\n\nOutfits:\n{available_outfits}\n\nFields: location = place + time, max 4 words, story-consistent. pose = only {gender_possessive} body pose, max 8 words. outfit_key = one listed outfit; use \"nude\" only for nsfw_level 4-5. emotion = short visual tags. nsfw_level: 0 clothed, 1 teasing clothed, 2 sensual but still fully clothed, 3 partial nudity ({nsfw_level_3_desc}), 4 nude, 5 explicit activity. Heat sets maximum tone; use recent chat, character reaction, arousal and relationship state together instead of requiring one exact keyword. Negative mood max 1. nsfw_tags empty unless level 4-5; then compact visual tags from actual scene only. scene_description = 2-4 lighting/weather/atmosphere tags only.\nUse character reaction, not player request. If the scene is non-intimate and heat is low, nsfw_level must be 0. For early non-explicit chat, keep nsfw_level 0-1 and default_outfit.\nJSON:\n{{\"location\":\"string\",\"pose\":\"string\",\"outfit_key\":\"one from outfits list\",\"emotion\":\"short visual tags\",\"nsfw_level\":0,\"nsfw_tags\":\"\",\"scene_description\":\"visual tags\",\"reasoning\":\"short\"}}",
     "scene_analyzer_prompt_sfw": "Return ONLY flat JSON in English.\nCharacter: {character_name}; model: {model_type}; mood: {mood}; heat: {heat_context}; location: {current_location}.\nChat:\n{formatted_chat}\n\nOutfits:\n{available_outfits}\n\nChoose a clothed outfit. location = story place + time, max 6 words. pose = solo body pose only, max 6 words. emotion = short visual tags. nsfw_level only 0 or 1; negative mood must be 0. scene_description = lighting/weather/atmosphere tags only; do not repeat appearance, outfit, pose or emotion. Base analysis on character reaction, not player request.\nJSON:\n{{\"location\":\"string\",\"pose\":\"string\",\"outfit_key\":\"one from outfits list\",\"emotion\":\"short visual tags\",\"nsfw_level\":0,\"scene_description\":\"visual tags\",\"reasoning\":\"short\"}}",
     "sfw_content_restriction": "SFW режим: не описывай explicit-сцены, раздевание или сексуальные действия. Если игрок ведёт сцену туда, мягко переводи ответ в романтику, эмоции или безопасное действие.",
     "summary_prompt": "Summarize the dialogue with {context_name} in Russian.\nExisting summary: {existing_summary}\nState: {heat_context}, mood {mood}.\nMessages:\n{messages}\n\nReturn only a concise narrative summary under 180 words. Keep key facts, relationship changes, promises, conflicts, location changes and unresolved hooks.",
@@ -1048,20 +1048,20 @@ DEFAULT_PROMPTS = {
     "nsfw_level_4_real_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
     "nsfw_level_5_real": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
     "nsfw_level_5_real_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
-    "nsfw_level_2_real": "sensual glamour pose, revealing adult outfit, attractive curves, tasteful teasing",
-    "nsfw_level_2_real_neg": "nudity, explicit sex, penetration, male genitals, penis",
+    "nsfw_level_2_real": "sensual clothed glamour pose, fitted opaque adult outfit, attractive curves, tasteful teasing, fully clothed, covered styling",
+    "nsfw_level_2_real_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration, male genitals, penis",
     "nsfw_level_3_real": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour",
     "nsfw_level_3_real_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
-    "nsfw_level_2_real_female": "sensual glamour pose, revealing adult outfit, attractive curves, tasteful teasing, anatomically female body",
-    "nsfw_level_2_real_female_neg": "nudity, explicit sex, penetration, male genitals, penis",
+    "nsfw_level_2_real_female": "sensual clothed glamour pose, fitted opaque adult outfit, attractive curves, tasteful teasing, anatomically female body, fully clothed, covered styling",
+    "nsfw_level_2_real_female_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration, male genitals, penis",
     "nsfw_level_3_real_female": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour, female-only anatomy",
     "nsfw_level_3_real_female_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
     "nsfw_level_4_real_female": "nsfw, fully nude adult woman, anatomically female nude body, female-only anatomy, visible vulva, natural breasts and nipples, aroused, intimate",
     "nsfw_level_4_real_female_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
     "nsfw_level_5_real_female": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
     "nsfw_level_5_real_female_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
-    "nsfw_level_2_male": "aroused, nsfw, sensual, teasing, showing himself, muscular torso",
-    "nsfw_level_2_male_neg": "nudity, explicit sex, penetration",
+    "nsfw_level_2_male": "sensual clothed pose, teasing expression, fitted opaque outfit, fully clothed, covered styling",
+    "nsfw_level_2_male_neg": "nudity, naked, exposed genitals, shirtless, explicit sex, penetration",
     "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
     "nsfw_level_3_male_neg": "penetration, explicit sex",
     "nsfw_level_4_male": "nsfw, naked body, nude, muscular, aroused",
@@ -1127,6 +1127,7 @@ async def init_prompt_cache(db: AsyncSession):
 
         cache = get_cache()
         if cache:
+            await cache.invalidate_nsfw_levels()
             for key, content in _prompt_cache.items():
                 await cache.set_prompt(key, content)
             logger.info(f"Loaded {len(prompts)} prompts into Redis cache")
@@ -1186,6 +1187,8 @@ async def reload_cache(key: str, content: str):
     cache = get_cache()
     if cache:
         await cache.set_prompt(key, content)
+        if key.startswith("nsfw_level_"):
+            await cache.invalidate_nsfw_levels()
 
     logger.info(f"Prompt '{key}' updated in cache")
 

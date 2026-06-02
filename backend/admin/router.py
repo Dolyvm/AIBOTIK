@@ -22,7 +22,14 @@ from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
 from shared.services.cache import get_cache
-from shared.services.image_storage import save_avatar, save_world_cover, get_public_url
+from shared.services.image_storage import (
+    get_public_url,
+    local_image_to_data_url,
+    persist_avatar_reference,
+    save_avatar,
+    save_world_cover,
+)
+from shared.services.identity_reference import analyze as analyze_identity_reference
 from shared.services.image_cleanup import collect_character_file_paths, delete_files
 from shared.services.redis_client import get_redis
 from shared.services.model_types import validate_model_gender
@@ -53,6 +60,51 @@ PROMPT_CATEGORIES = {
 }
 
 HIDDEN_PROMPT_KEYS = {"llm_active_model"}
+
+
+def _admin_default_body_profile(gender: str) -> dict:
+    if gender == "male":
+        return {"schema_version": 1, "body_type": "athletic", "height": "average", "outfit_preset": "casual"}
+    return {
+        "schema_version": 1,
+        "body_type": "proportional",
+        "height": "average",
+        "breast_size": "medium",
+        "butt_size": "rounded",
+        "outfit_preset": "casual",
+    }
+
+
+async def _admin_prepare_identity_visual_data(visual_data: dict, character_id: str, avatar_url: str = "") -> dict:
+    if not visual_data.get("custom_avatar"):
+        return visual_data
+
+    visual_data["model_type"] = "real"
+    avatar = avatar_url or visual_data.get("avatar")
+    if avatar:
+        if _urlparse(avatar).scheme and _urlparse(avatar).path.startswith("/images/"):
+            avatar = _urlparse(avatar).path
+        avatar = await persist_avatar_reference(avatar, character_id)
+        visual_data["avatar"] = avatar
+
+    identity_reference = visual_data.get("identity_reference") or {}
+    if visual_data.get("avatar") and identity_reference.get("status") != "ready":
+        image_data_url = await local_image_to_data_url(visual_data["avatar"])
+        identity = await analyze_identity_reference(image_data_url)
+        visual_data["identity_reference"] = {
+            "status": "ready",
+            "source_image": visual_data["avatar"],
+            "provider": "openrouter",
+            "model": identity["model"],
+            "analyzed_at": identity["analyzed_at"],
+            "identity_prompt": identity["identity_prompt"],
+            "visible_traits": identity["visible_traits"],
+            "avoid": identity["avoid"],
+            "notes": identity["notes"],
+            "consent_confirmed": True,
+        }
+    visual_data.setdefault("body_profile", _admin_default_body_profile(visual_data.get("gender", "female")))
+    return visual_data
 
 
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -507,6 +559,8 @@ async def create_character(
     is_verified = form_data.get("is_verified") == "on"
     model_type = form_data.get("model_type", "anime")
     gender = form_data.get("gender", "female")
+    if form_data.get("custom_avatar_flag", "false") == "true":
+        model_type = "real"
 
     try:
         validate_model_gender(model_type, gender)
@@ -553,7 +607,7 @@ async def create_character(
     }
 
     avatar_url = form_data.get("avatar_url", "").strip()
-    if avatar_url:
+    if avatar_url and not visual_data.get("custom_avatar"):
         from urllib.parse import urlparse as _urlparse
         _parsed = _urlparse(avatar_url)
         if _parsed.scheme and _parsed.path.startswith("/images/"):
@@ -567,6 +621,10 @@ async def create_character(
             except Exception as e:
                 logger.warning(f"Failed to save avatar: {e}, using provider URL")
                 visual_data["avatar"] = avatar_url
+    if visual_data.get("custom_avatar"):
+        if not avatar_url and not visual_data.get("avatar"):
+            raise HTTPException(status_code=400, detail="Custom avatar requires an uploaded photo")
+        visual_data = await _admin_prepare_identity_visual_data(visual_data, character_id, avatar_url)
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -743,11 +801,6 @@ async def update_character(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
 
-    try:
-        validate_model_gender(visual_data.get("model_type", "anime"), visual_data.get("gender", "female"))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
     avatar_url = form_data.get("avatar_url", "").strip()
     logger.info(f"[UPDATE_CHARACTER] character_id={character_id} avatar_url_raw={repr(avatar_url)}")
     logger.info(f"[UPDATE_CHARACTER] visual_data_before={json.dumps(visual_data.get('avatar'))}")
@@ -768,6 +821,14 @@ async def update_character(
                 visual_data["avatar"] = avatar_url
     else:
         logger.info(f"[UPDATE_CHARACTER] avatar_url is empty, keeping existing avatar")
+
+    if visual_data.get("custom_avatar"):
+        visual_data = await _admin_prepare_identity_visual_data(visual_data, character_id, avatar_url)
+
+    try:
+        validate_model_gender(visual_data.get("model_type", "anime"), visual_data.get("gender", "female"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 

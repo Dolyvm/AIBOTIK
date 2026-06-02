@@ -65,6 +65,40 @@ def _decode_data_url(data_url: str) -> tuple[bytes, str] | None:
         raise ImageStorageError(f"Invalid base64 image data: {e}") from e
 
 
+def _local_images_path(image_url: str) -> Path | None:
+    if not image_url.startswith("/images/"):
+        return None
+    relative_path = image_url.removeprefix("/images/").lstrip("/")
+    storage_root = Path(IMAGES_STORAGE_PATH).resolve()
+    full_path = (storage_root / relative_path).resolve()
+    if storage_root not in full_path.parents and full_path != storage_root:
+        raise ImageStorageError("Invalid local image path")
+    return full_path
+
+
+async def local_image_to_data_url(image_url: str) -> str:
+    """Read a local /images/... file from IMAGES_STORAGE_PATH as a data URL."""
+    full_path = _local_images_path(image_url)
+    if not full_path:
+        raise ImageStorageError("Expected local /images/... URL")
+    if not full_path.exists() or not full_path.is_file():
+        raise ImageStorageError(f"Local image not found: {image_url}")
+
+    extension = full_path.suffix.lower()
+    content_type = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }.get(extension, "image/png")
+
+    async with aiofiles.open(full_path, "rb") as f:
+        content = await f.read()
+    encoded = base64.b64encode(content).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
+
+
 async def download_and_save_image(
     provider_url: str,
     user_id: int,
@@ -168,6 +202,20 @@ async def save_avatar(provider_url: str, character_id: str) -> str:
     except IOError as e:
         logger.error(f"IO error saving avatar: {e}")
         raise ImageStorageError(f"Storage error: {e}")
+
+
+async def persist_avatar_reference(avatar_url: str, character_id: str) -> str:
+    """Persist an avatar reference and return a public /images/... path."""
+    if not avatar_url:
+        raise ImageStorageError("Avatar URL is required")
+
+    local_path = _local_images_path(avatar_url)
+    if local_path:
+        copied_path = copy_as_avatar(avatar_url.removeprefix("/images/"), character_id)
+        return f"/images/{copied_path}"
+
+    avatar_path = await save_avatar(avatar_url, character_id)
+    return f"/images/{avatar_path}"
 
 
 def copy_as_avatar(source_local_path: str, character_id: str) -> str:

@@ -141,11 +141,11 @@ class ChatRepository(BaseRepository[Chat]):
         )
         await self.session.commit()
 
-    async def reset_history(self, chat_id: int) -> None:
-        # Read heat_level before reset to restore proper initial state
+    async def reset_history(self, chat_id: int, heat_level: int | None = None) -> None:
+        # Reset to the current scenario heat, falling back to existing chat state.
         chat = await self.get_by_id(chat_id)
-        from shared.constants import get_heat_level, HEAT_LEVEL_DEFAULTS
-        heat_level = get_heat_level(chat)
+        from shared.constants import get_heat_level, HEAT_LEVEL_DEFAULTS, normalize_heat_level
+        heat_level = get_heat_level(chat) if heat_level is None else normalize_heat_level(heat_level)
 
         defaults = HEAT_LEVEL_DEFAULTS.get(heat_level, HEAT_LEVEL_DEFAULTS[0])
 

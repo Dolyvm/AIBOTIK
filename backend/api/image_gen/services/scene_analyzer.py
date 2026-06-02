@@ -167,7 +167,7 @@ def calculate_nsfw_fallback(heat_level: int) -> int:
         0: 0,
         1: 1,
         2: 2,
-        3: 4,
+        3: 2,
     }[normalize_heat_level(heat_level)]
 
 
@@ -208,6 +208,12 @@ def _has_any(text: str, hints: tuple[str, ...]) -> bool:
     return any(hint in text for hint in hints)
 
 
+def has_explicit_nude_or_sex_context(history: list[dict]) -> bool:
+    """True only when recent text explicitly supports fully nude/explicit imagery."""
+    text = _history_text(history)
+    return _has_any(text, _HISTORY_EXPLICIT_HINTS) or _has_any(text, _HISTORY_NUDE_HINTS)
+
+
 def infer_nsfw_level_from_history(
     history: list[dict],
     heat_level: int = 0,
@@ -226,7 +232,7 @@ def infer_nsfw_level_from_history(
     inferred = base_level
 
     if arousal >= 70:
-        inferred = max(inferred, 4)
+        inferred = max(inferred, 2)
     elif arousal >= 40:
         inferred = max(inferred, 2)
 
@@ -297,6 +303,8 @@ REAL MODEL EXTRA RULES:
 
         recent_messages = history[-2:] if len(history) > 2 else history
         heat_level = normalize_heat_level(heat_level)
+        explicit_visual_context = has_explicit_nude_or_sex_context(history)
+        early_non_explicit_context = len(history) <= 4 and not explicit_visual_context
         history_fallback_level = infer_nsfw_level_from_history(
             history,
             heat_level=heat_level,
@@ -323,7 +331,18 @@ REAL MODEL EXTRA RULES:
             cached = await cache.get_scene_analysis(chat_id, context_hash)
             if cached:
                 logger.info(f"SceneAnalysis cache HIT for chat {chat_id}")
-                return SceneAnalysis(**cached)
+                scene = SceneAnalysis(**cached)
+                if not allow_nsfw:
+                    scene.nsfw_level = min(scene.nsfw_level, 1)
+                if mood.lower() in self.NEGATIVE_MOODS:
+                    scene.nsfw_level = min(scene.nsfw_level, 1)
+                elif allow_nsfw and scene.nsfw_level > 1 and early_non_explicit_context:
+                    scene.nsfw_level = 1
+                if allow_nsfw and early_non_explicit_context:
+                    scene.outfit_key = "default_outfit"
+                elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
+                    scene.outfit_key = "default_outfit"
+                return scene
 
         formatted = "\n".join([
             f"{m['role'].upper()}: {m['content']}"
@@ -397,10 +416,23 @@ REAL MODEL EXTRA RULES:
                     )
                     scene.nsfw_level = fallback_level
 
+            if (
+                allow_nsfw
+                and scene.nsfw_level > 1
+                and early_non_explicit_context
+            ):
+                logger.info(
+                    "nsfw_level capped from %s to 1 for early non-explicit visual context",
+                    scene.nsfw_level,
+                )
+                scene.nsfw_level = 1
+
             original_outfit = scene.outfit_key
             outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
 
-            if scene.nsfw_level >= 4 and scene.outfit_key != "nude" and "nude" in outfit_keys:
+            if allow_nsfw and early_non_explicit_context:
+                scene.outfit_key = "default_outfit"
+            elif scene.nsfw_level >= 4 and scene.outfit_key != "nude" and "nude" in outfit_keys:
                 scene.outfit_key = "nude"
             elif scene.nsfw_level == 3 and scene.outfit_key not in ("nude", "underwear"):
                 if "underwear" in outfit_keys:
@@ -428,9 +460,13 @@ REAL MODEL EXTRA RULES:
         except Exception as e:
             logger.exception("SceneAnalyzer parse error: %s", e)
             fallback_level = history_fallback_level
+            if allow_nsfw and early_non_explicit_context and fallback_level > 1:
+                fallback_level = 1
             outfit_key = "default_outfit"
             outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
-            if fallback_level >= 4 and "nude" in outfit_keys:
+            if allow_nsfw and early_non_explicit_context:
+                outfit_key = "default_outfit"
+            elif fallback_level >= 4 and "nude" in outfit_keys:
                 outfit_key = "nude"
             elif fallback_level >= 2 and "underwear" in outfit_keys:
                 outfit_key = "underwear"
