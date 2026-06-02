@@ -210,6 +210,73 @@ REAL_NIPPLE_VARIANTS = [
     "natural asymmetric areolas",
 ]
 
+BODY_PROFILE_PHRASES = {
+    "female": {
+        "body_type": {
+            "slim": "slim natural build",
+            "athletic": "toned athletic build",
+            "proportional": "proportional feminine build",
+            "soft_curvy": "soft curvy hourglass body",
+            "large": "larger full-figured build",
+        },
+        "height": {
+            "short": "short stature",
+            "average": "average height",
+            "tall": "tall stature",
+        },
+        "breast_size": {
+            "small": "small natural breasts",
+            "medium": "medium natural breasts",
+            "large": "large natural breasts",
+            "very_large": "very large breasts, prominent bust",
+        },
+        "butt_size": {
+            "compact": "compact hips and butt",
+            "medium": "medium hips and butt",
+            "rounded": "rounded hips and butt",
+            "large": "wide rounded hips, full butt",
+        },
+    },
+    "male": {
+        "body_type": {
+            "lean": "lean masculine build",
+            "athletic": "athletic masculine build",
+            "muscular": "muscular build",
+            "broad": "broad-shouldered build",
+            "large": "large sturdy build",
+        },
+        "height": {
+            "short": "short stature",
+            "average": "average height",
+            "tall": "tall stature",
+        },
+    },
+}
+
+OUTFIT_PRESET_PHRASES = {
+    "casual": (
+        "fully clothed casual everyday outfit, opaque fitted cotton top, "
+        "straight-leg jeans, simple sneakers"
+    ),
+    "elegant": (
+        "fully clothed elegant outfit, tailored long-sleeve blouse or shirt, "
+        "high-waisted trousers or knee-length skirt, polished shoes"
+    ),
+    "sporty": (
+        "fully clothed sporty activewear, opaque athletic zip top or fitted t-shirt, "
+        "high-waisted leggings or joggers, clean sneakers"
+    ),
+    "home": (
+        "fully clothed comfortable homewear, soft opaque long-sleeve lounge top, "
+        "loose lounge pants, cozy socks"
+    ),
+}
+
+CLOTHED_VISUAL_GUARD = (
+    "fully clothed, visible opaque outfit, modest covered styling, "
+    "covered chest torso and hips, clothing clearly visible"
+)
+
 
 def _stable_choice(seed: str, salt: str, options: list[str]) -> str:
     digest = hashlib.md5(f"{seed}:{salt}".encode()).hexdigest()
@@ -281,9 +348,98 @@ def _build_real_identity_signature(
     return ", ".join(parts)
 
 
+def _build_body_profile_phrase(body_profile: dict, gender: str) -> str:
+    if not isinstance(body_profile, dict):
+        body_profile = {}
+    mappings = BODY_PROFILE_PHRASES["male" if gender == "male" else "female"]
+    parts = []
+    for key in ("body_type", "height", "breast_size", "butt_size"):
+        value = body_profile.get(key)
+        phrase = mappings.get(key, {}).get(value)
+        if phrase:
+            parts.append(phrase)
+    return ", ".join(parts)
+
+
+def _build_clothed_body_profile_phrase(body_profile: dict, gender: str) -> str:
+    if not isinstance(body_profile, dict):
+        body_profile = {}
+
+    if gender == "male":
+        body_type_map = {
+            "lean": "lean clothed silhouette",
+            "athletic": "athletic clothed silhouette",
+            "muscular": "muscular clothed silhouette",
+            "broad": "broad-shouldered clothed silhouette",
+            "large": "large sturdy clothed silhouette",
+        }
+    else:
+        body_type_map = {
+            "slim": "slim clothed silhouette",
+            "athletic": "toned athletic clothed silhouette",
+            "proportional": "proportional feminine clothed silhouette",
+            "soft_curvy": "soft curvy hourglass clothed silhouette",
+            "large": "larger full-figured clothed silhouette",
+        }
+
+    height_map = BODY_PROFILE_PHRASES["male" if gender == "male" else "female"].get("height", {})
+    upper_map = {
+        "small": "modest upper-body proportions under clothing",
+        "medium": "balanced upper-body proportions under clothing",
+        "large": "full upper-body proportions under clothing",
+        "very_large": "very full upper-body proportions under clothing",
+    }
+    lower_map = {
+        "compact": "compact lower-body curves under clothing",
+        "medium": "balanced lower-body curves under clothing",
+        "rounded": "rounded lower-body curves under clothing",
+        "large": "full lower-body curves under clothing",
+    }
+
+    parts = []
+    for value, mapping in (
+        (body_profile.get("body_type"), body_type_map),
+        (body_profile.get("height"), height_map),
+        (body_profile.get("breast_size"), upper_map),
+        (body_profile.get("butt_size"), lower_map),
+    ):
+        phrase = mapping.get(value)
+        if phrase:
+            parts.append(phrase)
+    return ", ".join(parts)
+
+
+def _outfit_from_body_profile(body_profile: dict) -> str:
+    if not isinstance(body_profile, dict):
+        return ""
+    return OUTFIT_PRESET_PHRASES.get(body_profile.get("outfit_preset", ""), "")
+
+
+def _build_identity_reference_prompt(visual: dict, gender: str, nsfw_level: int = 0) -> str:
+    identity_reference = visual.get("identity_reference") or {}
+    if identity_reference.get("status") != "ready":
+        return ""
+
+    parts = [identity_reference.get("identity_prompt", "")]
+    visible_traits = identity_reference.get("visible_traits")
+    if isinstance(visible_traits, dict):
+        for value in visible_traits.values():
+            if value and str(value).strip().lower() != "uncertain":
+                parts.append(str(value))
+    if nsfw_level <= 2:
+        body_phrase = _build_clothed_body_profile_phrase(visual.get("body_profile") or {}, gender)
+    else:
+        body_phrase = _build_body_profile_phrase(visual.get("body_profile") or {}, gender)
+    if body_phrase:
+        parts.append(body_phrase)
+    return ", ".join(_dedupe_comma_tags([part for part in parts if part]))
+
+
 class Prompt(BaseModel):
     character_base: Optional[str] = ""
     signature: Optional[str] = ""
+    clothing_guard: Optional[str] = ""
+    body_silhouette: Optional[str] = ""
     body_state: Optional[str] = ""
     facial_expression: Optional[str] = ""
     scene_details: Optional[str] = ""
@@ -309,7 +465,11 @@ class Prompt(BaseModel):
 
         wardrobe = visual.get("wardrobe", {})
         if outfit_key == "default_outfit":
-            clothing = visual.get("default_outfit", "") or wardrobe.get("casual", "")
+            clothing = (
+                visual.get("default_outfit", "")
+                or wardrobe.get("casual", "")
+                or _outfit_from_body_profile(visual.get("body_profile") or {})
+            )
         elif outfit_key == "nude" and nsfw_level >= 4 and not wardrobe.get("nude"):
             clothing = "nothing, fully nude" if is_male else "nothing, fully nude, bare skin"
         elif outfit_key == "underwear" and nsfw_level >= 2 and not wardrobe.get("underwear"):
@@ -387,9 +547,30 @@ class Prompt(BaseModel):
                         parts.append(f"and {visual['ass']}")
                 appearance = ", ".join(parts)
 
+        identity_character_base = ""
+        if model_type == "real" and visual.get("custom_avatar"):
+            identity_character_base = _build_identity_reference_prompt(visual, gender, nsfw_level)
+        body_silhouette = ""
+        if model_type == "real" and visual.get("custom_avatar"):
+            if nsfw_level <= 2:
+                body_phrase = _build_clothed_body_profile_phrase(visual.get("body_profile") or {}, gender)
+            else:
+                body_phrase = _build_body_profile_phrase(visual.get("body_profile") or {}, gender)
+            if body_phrase:
+                body_silhouette = f"body silhouette: {body_phrase}"
+        clothing_guard = ""
+        if nsfw_level <= 2:
+            clothing_guard = CLOTHED_VISUAL_GUARD
+            if clothing:
+                clothing_guard = f"{clothing_guard}, wearing {clothing}"
+
         if model_type in ("anime", "manhwa"):
-            character_base = appearance
             style = ""
+            character_base = appearance
+        elif identity_character_base:
+            style = visual.get("style_tags", "")
+            character_base = identity_character_base
+            character_base = _strip_real_anime_tags(character_base)
         else:
             body = visual.get("body", "")
             face = visual.get("face", "")
@@ -424,6 +605,8 @@ class Prompt(BaseModel):
 
         return cls(
             character_base=character_base,
+            clothing_guard=clothing_guard,
+            body_silhouette=body_silhouette,
             clothing=clothing,
             style=style,
             environment=environment,
@@ -491,6 +674,8 @@ class Prompt(BaseModel):
 
         priority_fields = [
             "nsfw_level",
+            "clothing_guard",
+            "body_silhouette",
             "clothing",
             "body_state",
             "action",

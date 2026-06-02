@@ -61,6 +61,50 @@ class CreateChatRequest(BaseModel):
     scenario_index: int = 0
 
 
+def _scenario_heat_level(content: dict | None, scenario_index: int) -> int:
+    if not content:
+        return 0
+    for scenario in content.get("scenarios_full", []):
+        if scenario.get("index") == scenario_index:
+            return scenario.get("heat_level", 0)
+    return 0
+
+
+async def _sync_existing_chat_to_scenario_heat(
+    chat: Chat,
+    scenario_heat: int,
+    chat_repo: ChatRepository,
+    message_repo: MessageRepository,
+) -> None:
+    from shared.constants import HEAT_LEVEL_DEFAULTS, get_heat_level, normalize_heat_level
+    from api.image_gen.services.scene_analyzer import has_explicit_nude_or_sex_context
+
+    scenario_heat = normalize_heat_level(scenario_heat)
+    current_heat = get_heat_level(chat)
+    if scenario_heat >= current_heat:
+        return
+
+    messages = await message_repo.get_history(chat.id)
+    history = [
+        {"role": msg.role.value, "content": msg.content}
+        for msg in messages
+    ]
+    if len(history) > 4 or has_explicit_nude_or_sex_context(history):
+        return
+
+    defaults = HEAT_LEVEL_DEFAULTS.get(scenario_heat, HEAT_LEVEL_DEFAULTS[0])
+    state_meta = dict(chat.state_meta or {})
+    state_meta["heat_level"] = scenario_heat
+    await chat_repo.update_metrics(chat.id, {
+        "affinity": defaults["affinity"],
+        "arousal": defaults["arousal"],
+        "state_meta": state_meta,
+    })
+    chat.affinity = defaults["affinity"]
+    chat.arousal = defaults["arousal"]
+    chat.state_meta = state_meta
+
+
 def _stream_event(event_type: str, **payload) -> str:
     return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
 
@@ -89,11 +133,22 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
         all_events.sort(key=lambda x: x["timestamp"])
 
         custom_avatar = False
+        photo_generation_available = chat.chat_type == "character"
+        photo_generation_mode = "standard" if chat.chat_type == "character" else "unavailable"
         if chat.chat_type == "character":
             from shared.services.content_loader import get_character
             char_data = await get_character(chat.target_id)
             if char_data:
-                custom_avatar = char_data.get("visual", {}).get("custom_avatar", False)
+                visual = char_data.get("visual", {})
+                custom_avatar = visual.get("custom_avatar", False)
+                identity_reference = visual.get("identity_reference") or {}
+                if custom_avatar:
+                    photo_generation_available = True
+                    photo_generation_mode = (
+                        "identity_facefusion"
+                        if identity_reference.get("status") == "ready"
+                        else "identity_facefusion"
+                    )
 
         return {
             "history": all_events,
@@ -105,6 +160,8 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "mood": chat.current_mood,
             "location": chat.current_location,
             "custom_avatar": custom_avatar,
+            "photo_generation_available": photo_generation_available,
+            "photo_generation_mode": photo_generation_mode,
         }
 
 
@@ -217,16 +274,13 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
                 scenario_index=payload.scenario_index
             )
 
+            content = None
+            if payload.chat_type == "character":
+                content = await get_character(payload.target_id)
+
             if is_new:
                 # Apply heat_level initial state
-                heat_level = 0
-                if payload.chat_type == "character":
-                    content = await get_character(payload.target_id)
-                    if content:
-                        for s in content.get("scenarios_full", []):
-                            if s["index"] == payload.scenario_index:
-                                heat_level = s.get("heat_level", 0)
-                                break
+                heat_level = _scenario_heat_level(content, payload.scenario_index)
 
                 from shared.constants import HEAT_LEVEL_DEFAULTS, normalize_heat_level
                 heat_level = normalize_heat_level(heat_level)
@@ -262,7 +316,14 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
                         "chat_type": payload.chat_type,
                         "chat_id": chat.id,
                         "scenario_index": payload.scenario_index
-                    }
+                        }
+                    )
+            elif payload.chat_type == "character":
+                await _sync_existing_chat_to_scenario_heat(
+                    chat,
+                    _scenario_heat_level(content, payload.scenario_index),
+                    chat_repo,
+                    message_repo,
                 )
 
             return {"chat_id": chat.id, "success": True}
@@ -274,7 +335,7 @@ async def create_chat_endpoint(payload: CreateChatRequest = Body(...), user: Use
 
 @router.post("/{chat_id}/reset")
 async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
-    await verify_chat_ownership(chat_id, user)
+    verified_chat = await verify_chat_ownership(chat_id, user)
 
     async with get_session() as session:
         try:
@@ -284,8 +345,12 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
             message_repo = MessageRepository(session)
 
             paths = await collect_chat_image_paths(session, chat_id)
+            scenario_heat = 0
+            if verified_chat.chat_type == "character":
+                content = await get_character(verified_chat.target_id)
+                scenario_heat = _scenario_heat_level(content, verified_chat.scenario_index or 0)
 
-            await chat_repo.reset_history(chat_id)
+            await chat_repo.reset_history(chat_id, heat_level=scenario_heat)
 
             delete_files(paths)
 

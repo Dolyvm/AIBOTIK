@@ -964,7 +964,7 @@
                 <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
                     <i class="fas fa-paper-plane"></i>
                 </button>
-                <button v-if="currentChatType === 'character' && !currentChatCustomAvatar" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
+                <button v-if="currentChatType === 'character' && currentChatPhotoGenerationAvailable" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
                     <i class="fas fa-camera"></i>
                 </button>
             </div>
@@ -1000,9 +1000,9 @@
                         <div class="cc-field">
                             <label>Стиль: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
                             <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'anime' }" @click="createCharacterData.model_type = 'anime'" style="flex: 1;">Anime</button>
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'anime' }" @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'anime')" :disabled="createCharacterData.custom_avatar" style="flex: 1;">Anime</button>
                                 <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'real' }" @click="createCharacterData.model_type = 'real'" style="flex: 1;">Real</button>
-                                <button v-if="createCharacterData.gender === 'male'" class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'manhwa' }" @click="createCharacterData.model_type = 'manhwa'" style="flex: 1;">Manhwa</button>
+                                <button v-if="createCharacterData.gender === 'male'" class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'manhwa' }" @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'manhwa')" :disabled="createCharacterData.custom_avatar" style="flex: 1;">Manhwa</button>
                             </div>
                             <div v-if="createCharacterData.gender !== 'male'" style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Manhwa доступен для мужских персонажей.</div>
                         </div>
@@ -1021,10 +1021,10 @@
                         <div class="cc-field">
                             <label>Аватар:</label>
                             <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }" style="flex: 1; font-size: 12px;">
+                                <button class="change-step-button" :class="{ secondary: createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = false; createCharacterData.identity_consent_confirmed = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }" style="flex: 1; font-size: 12px;">
                                     <i class="fas fa-palette"></i> Сгенерировать
                                 </button>
-                                <button class="change-step-button" :class="{ secondary: !createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = true; $refs.customAvatarInput.click()" style="flex: 1; font-size: 12px;">
+                                <button class="change-step-button" :class="{ secondary: !createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = true; createCharacterData.model_type = 'real'; $refs.customAvatarInput.click()" style="flex: 1; font-size: 12px;">
                                     <i class="fas fa-camera"></i> Загрузить фото
                                 </button>
                             </div>
@@ -1116,6 +1116,7 @@
                             </button>
                         </div>
 
+                        <template v-if="!createCharacterData.custom_avatar">
                         <div class="cc-field">
                             <label>Внешность (EN): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
                             <textarea v-model="createCharacterData.appearance" class="scenario-textarea" placeholder="young woman, fair skin, delicate features..."></textarea>
@@ -1135,9 +1136,51 @@
                             <label>Стандартный наряд (EN):</label>
                             <textarea v-model="createCharacterData.visual_default_outfit" class="scenario-textarea" placeholder="casual outfit, jeans and top..."></textarea>
                         </div>
+                        </template>
+
+                        <template v-else>
+                            <div class="cc-field">
+                                <label>Телосложение:</label>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button v-for="opt in (createCharacterData.gender === 'male' ? maleBodyTypes : femaleBodyTypes)"
+                                            :key="opt.v"
+                                            class="change-step-button"
+                                            :class="{ secondary: createCharacterData.body_profile.body_type !== opt.v }"
+                                            @click="createCharacterData.body_profile.body_type = opt.v"
+                                            type="button"
+                                            style="flex:1; min-width:86px; font-size:12px; padding:8px 4px;">
+                                        {{ opt.l }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="cc-field">
+                                <label>Рост:</label>
+                                <div style="display:flex; gap:6px;">
+                                    <button v-for="opt in heightOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.height !== opt.v }" @click="createCharacterData.body_profile.height = opt.v" type="button" style="flex:1; font-size:12px;">{{ opt.l }}</button>
+                                </div>
+                            </div>
+                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
+                                <label>Грудь:</label>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button v-for="opt in breastSizeOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.breast_size !== opt.v }" @click="createCharacterData.body_profile.breast_size = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                </div>
+                            </div>
+                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
+                                <label>Ягодицы:</label>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button v-for="opt in buttSizeOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.butt_size !== opt.v }" @click="createCharacterData.body_profile.butt_size = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                </div>
+                            </div>
+                            <div class="cc-field">
+                                <label>Наряд:</label>
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button v-for="opt in outfitPresetOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.outfit_preset !== opt.v }" @click="createCharacterData.body_profile.outfit_preset = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                </div>
+                            </div>
+                        </template>
 
                         <!-- Гардероб -->
-                        <div class="cc-field">
+                        <div v-if="!createCharacterData.custom_avatar" class="cc-field">
                             <label>Гардероб:</label>
                             <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" class="cc-wardrobe-item">
                                 <div class="cc-wardrobe-key-row">
@@ -1154,7 +1197,7 @@
                         </div>
 
                         <!-- Аватар -->
-                        <div class="cc-preview-section">
+                        <div v-if="!createCharacterData.custom_avatar" class="cc-preview-section">
                             <div v-if="isGeneratingPreview" class="cc-preview-loading">
                                 <div class="cc-spinner"></div>
                                 <span>Генерация аватара...</span>
@@ -1207,6 +1250,11 @@
                                 {{ createCharacterData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
                             </div>
                         </div>
+
+                        <label v-if="createCharacterData.custom_avatar" style="display:flex; gap:10px; align-items:flex-start; margin:16px 0; font-size:13px; color:var(--tg-theme-text-color);">
+                            <input type="checkbox" v-model="createCharacterData.identity_consent_confirmed" style="margin-top:2px;">
+                            <span>Я подтверждаю согласие на использование загруженного фото для создания identity reference и генерации фото персонажа.</span>
+                        </label>
 
                         <button
                             class="create-character-final-btn"
@@ -1565,6 +1613,7 @@
                 const currentChatType = ref('character');
                 const currentCharacterId = ref(null);
                 const currentChatCustomAvatar = ref(false);
+                const currentChatPhotoGenerationAvailable = ref(false);
                 const chatHistory = ref([]);
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
@@ -1573,14 +1622,44 @@
                 const messagesContainer = ref(null);
 
                 // Create Character
+                const defaultBodyProfile = (gender = 'female') => gender === 'male'
+                    ? { body_type: 'athletic', height: 'average', outfit_preset: 'casual' }
+                    : { body_type: 'proportional', height: 'average', breast_size: 'medium', butt_size: 'rounded', outfit_preset: 'casual' };
                 const defaultCreateCharacterData = () => ({
                     name: '', short_description: '', description: '', personality: '',
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
                     avatar_url: null, custom_avatar: false, tags_str: '',
+                    identity_consent_confirmed: false,
+                    body_profile: defaultBodyProfile('female'),
                     is_public: true,
                 });
+                const femaleBodyTypes = [
+                    { v: 'slim', l: 'Slim' }, { v: 'athletic', l: 'Athletic' },
+                    { v: 'proportional', l: 'Proportional' }, { v: 'soft_curvy', l: 'Soft curvy' },
+                    { v: 'large', l: 'Large' },
+                ];
+                const maleBodyTypes = [
+                    { v: 'lean', l: 'Lean' }, { v: 'athletic', l: 'Athletic' },
+                    { v: 'muscular', l: 'Muscular' }, { v: 'broad', l: 'Broad' },
+                    { v: 'large', l: 'Large' },
+                ];
+                const heightOptions = [
+                    { v: 'short', l: 'Short' }, { v: 'average', l: 'Average' }, { v: 'tall', l: 'Tall' },
+                ];
+                const breastSizeOptions = [
+                    { v: 'small', l: 'Small' }, { v: 'medium', l: 'Medium' },
+                    { v: 'large', l: 'Large' }, { v: 'very_large', l: 'Very large' },
+                ];
+                const buttSizeOptions = [
+                    { v: 'compact', l: 'Compact' }, { v: 'medium', l: 'Medium' },
+                    { v: 'rounded', l: 'Rounded' }, { v: 'large', l: 'Large' },
+                ];
+                const outfitPresetOptions = [
+                    { v: 'casual', l: 'Casual' }, { v: 'elegant', l: 'Elegant' },
+                    { v: 'sporty', l: 'Sporty' }, { v: 'home', l: 'Home' },
+                ];
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
                 const generatedAvatars = ref([]);
@@ -2497,6 +2576,7 @@
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
                         currentChatCustomAvatar.value = res.data.custom_avatar || false;
+                        currentChatPhotoGenerationAvailable.value = res.data.photo_generation_available !== false;
                         currentView.value = 'chat';
                         await nextTick();
                         scrollToBottom();
@@ -2839,7 +2919,10 @@
                                     if (placeholderIndex !== -1) {
                                         chatHistory.value.splice(placeholderIndex, 1);
                                     }
-                                    const message = error === 'Не удалось создать real фото через Replicate'
+                                    const message = (
+                                        error === 'Не удалось создать real фото через Replicate'
+                                        || error === 'Не удалось применить лицо к фото, попробуйте еще раз'
+                                    )
                                         ? error
                                         : 'Не удалось создать фото: ' + error;
                                     showToast(message);
@@ -3202,6 +3285,7 @@
                 // --- CREATE CHARACTER ---
                 const setCreateCharacterGender = (gender) => {
                     createCharacterData.value.gender = gender;
+                    createCharacterData.value.body_profile = defaultBodyProfile(gender);
                     if (gender !== 'male' && createCharacterData.value.model_type === 'manhwa') {
                         createCharacterData.value.model_type = 'anime';
                     }
@@ -3241,6 +3325,8 @@
                             visual_default_outfit: c.visual_default_outfit || '',
                             wardrobe: c.wardrobe || {},
                             custom_avatar: c.custom_avatar || false,
+                            identity_consent_confirmed: c.custom_avatar || false,
+                            body_profile: c.body_profile || defaultBodyProfile(c.gender || 'female'),
                             tags_str: (c.tags || []).join(', '),
                             is_public: c.is_public !== false,
                         };
@@ -3273,6 +3359,7 @@
                         });
                         newCharacterPreview.value = res.data.url;
                         createCharacterData.value.custom_avatar = true;
+                        createCharacterData.value.model_type = 'real';
                         showToast('Фото загружено!');
                     } catch (e) {
                         showToast('Ошибка загрузки фото');
@@ -3290,6 +3377,9 @@
                             showToast('Введите имя персонажа');
                             return;
                         }
+                        if (d.custom_avatar) {
+                            d.model_type = 'real';
+                        }
                         if (d.model_type === 'manhwa' && d.gender !== 'male') {
                             showToast('Manhwa доступен только для мужских персонажей');
                             return;
@@ -3299,18 +3389,14 @@
                             showToast('Заполните все обязательные поля');
                             return;
                         }
-                        if (d.custom_avatar) {
-                            ccStep.value = 3;
-                            return;
-                        }
                     } else if (ccStep.value === 2) {
-                        if (!d.appearance || !d.appearance.trim()) {
+                        if (!d.custom_avatar && (!d.appearance || !d.appearance.trim())) {
                             showToast('Заполните поле внешности');
                             return;
                         }
                         const cyrillicRe = /[а-яёА-ЯЁ]/;
                         const visualFields = [d.appearance, d.visual_body, d.visual_face, d.visual_default_outfit];
-                        if (visualFields.some(f => f && cyrillicRe.test(f))) {
+                        if (!d.custom_avatar && visualFields.some(f => f && cyrillicRe.test(f))) {
                             showToast('Поля внешности должны быть на английском');
                             return;
                         }
@@ -3322,8 +3408,6 @@
                     if (ccStep.value === 0) {
                         editingCharacterId.value = null;
                         currentView.value = 'selection';
-                    } else if (ccStep.value === 3 && createCharacterData.value.custom_avatar) {
-                        ccStep.value = 1;
                     } else {
                         ccStep.value--;
                     }
@@ -3415,6 +3499,17 @@
                         showToast('Manhwa доступен только для мужских персонажей');
                         return;
                     }
+                    if (d.custom_avatar) {
+                        d.model_type = 'real';
+                        if (!newCharacterPreview.value) {
+                            showToast('Загрузите фото');
+                            return;
+                        }
+                        if (!d.identity_consent_confirmed) {
+                            showToast('Подтвердите согласие на использование фото');
+                            return;
+                        }
+                    }
 
                     isCreatingCharacter.value = true;
                     try {
@@ -3437,6 +3532,8 @@
                             wardrobe: d.wardrobe,
                             avatar_url: newCharacterPreview.value,
                             custom_avatar: d.custom_avatar,
+                            identity_consent_confirmed: d.identity_consent_confirmed,
+                            body_profile: d.custom_avatar ? d.body_profile : null,
                             tags: tags,
                             is_public: d.is_public,
                         };
@@ -3672,7 +3769,7 @@
                     currentView, tab, subTab, setSubTab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage, requestPhoto,
-                    currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId, currentChatCustomAvatar,
+                    currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId, currentChatCustomAvatar, currentChatPhotoGenerationAvailable,
                     isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
                     undoTargetIndex, undoLastTurn, editLastMessage,
                     handleTextareaKey, handleMessagesClick,
@@ -3691,6 +3788,7 @@
                     generateNewCharacterPreview, isGeneratingPreview,
                     generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenerationAllowed,
                     modelTypeLabel, setCreateCharacterGender,
+                    femaleBodyTypes, maleBodyTypes, heightOptions, breastSizeOptions, buttSizeOptions, outfitPresetOptions,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     handleCustomAvatarUpload, isUploadingAvatar, customAvatarInput,
                     addAlternateGreeting, removeAlternateGreeting,

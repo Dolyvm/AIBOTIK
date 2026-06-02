@@ -6,11 +6,24 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from shared.services.image_provider import ImageProviderError, generate_image
-from shared.services.image_storage import download_and_save_image, save_avatar, ImageStorageError
+from shared.services.image_storage import (
+    ImageStorageError,
+    download_and_save_image,
+    local_image_to_data_url,
+    persist_avatar_reference,
+    save_avatar,
+)
+from shared.services.facefusion_provider import swap_face
+from shared.services.identity_reference import analyze as analyze_identity_reference
 from shared.services.content_loader import get_character, get_world
 from shared.services.llm import LLMClient
 from shared.services.model_types import validate_model_gender
-from shared.config import SCENE_ANALYZER_ENABLED, SCENE_ANALYZER_MODEL, SCENE_ANALYZER_TIMEOUT
+from shared.config import (
+    RUNPOD_FACEFUSION_PRESET,
+    SCENE_ANALYZER_ENABLED,
+    SCENE_ANALYZER_MODEL,
+    SCENE_ANALYZER_TIMEOUT,
+)
 
 from shared.services.analytics import AnalyticsService
 from shared.models import User, SubscriptionPlan, SubscriptionPayment
@@ -38,16 +51,99 @@ def _import_image_prompt_modules():
         from api.image_gen.schemas.generate import Prompt
         from api.image_gen.services.scene_analyzer import (
             SceneAnalyzer,
+            has_explicit_nude_or_sex_context,
             infer_nsfw_level_from_history,
         )
     except ImportError:
         from backend.api.image_gen.schemas.generate import Prompt
         from backend.api.image_gen.services.scene_analyzer import (
             SceneAnalyzer,
+            has_explicit_nude_or_sex_context,
             infer_nsfw_level_from_history,
         )
 
-    return Prompt, SceneAnalyzer, infer_nsfw_level_from_history
+    return Prompt, SceneAnalyzer, has_explicit_nude_or_sex_context, infer_nsfw_level_from_history
+
+
+def _default_body_profile(gender: str) -> dict:
+    if gender == "male":
+        return {
+            "schema_version": 1,
+            "body_type": "athletic",
+            "height": "average",
+            "outfit_preset": "casual",
+        }
+    return {
+        "schema_version": 1,
+        "body_type": "proportional",
+        "height": "average",
+        "breast_size": "medium",
+        "butt_size": "rounded",
+        "outfit_preset": "casual",
+    }
+
+
+async def _ensure_identity_reference(
+    session,
+    content: dict,
+    character_id: str,
+) -> dict:
+    visual = content.get("visual") or {}
+    identity_reference = visual.get("identity_reference") or {}
+    if not visual.get("custom_avatar") or identity_reference.get("status") == "ready":
+        return content
+
+    from sqlalchemy import select
+    from shared.models import Character
+    from shared.services.cache import get_cache
+
+    result = await session.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+    if not character:
+        return content
+
+    visual_data = dict(character.visual_data or {})
+    avatar = visual_data.get("avatar") or content.get("avatar")
+    if not avatar:
+        raise ValueError("Custom avatar identity reference is missing source avatar")
+
+    if not str(avatar).startswith("/images/"):
+        avatar = await persist_avatar_reference(str(avatar), character_id)
+        visual_data["avatar"] = avatar
+
+    image_data_url = await local_image_to_data_url(str(avatar))
+    identity = await analyze_identity_reference(image_data_url)
+    identity_reference = {
+        "status": "ready",
+        "source_image": avatar,
+        "provider": "openrouter",
+        "model": identity["model"],
+        "analyzed_at": identity["analyzed_at"],
+        "identity_prompt": identity["identity_prompt"],
+        "visible_traits": identity["visible_traits"],
+        "avoid": identity["avoid"],
+        "notes": identity["notes"],
+        "consent_confirmed": True,
+    }
+    visual_data["model_type"] = "real"
+    visual_data["custom_avatar"] = True
+    visual_data["identity_reference"] = identity_reference
+    visual_data.setdefault("body_profile", _default_body_profile(visual_data.get("gender", "female")))
+    character.visual_data = visual_data
+    await session.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    updated = dict(content)
+    updated["model_type"] = "real"
+    updated["avatar"] = visual_data.get("avatar", "")
+    updated["visual"] = {
+        k: v for k, v in visual_data.items()
+        if k not in ["model_type", "appearance", "avatar", "example_dialogue"]
+    }
+    return updated
 
 
 async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
@@ -58,6 +154,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     (
         Prompt,
         SceneAnalyzer,
+        has_explicit_nude_or_sex_context,
         infer_nsfw_level_from_history,
     ) = _import_image_prompt_modules()
 
@@ -75,8 +172,9 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     content = await get_character(chat.target_id) if chat.chat_type == "character" else await get_world(chat.target_id)
     if not content:
         raise ValueError(f"Content {chat.target_id} not found")
-    if content.get("visual", {}).get("custom_avatar", False):
-        raise ValueError("Photo generation is not available for this character")
+    if chat.chat_type == "character" and content.get("visual", {}).get("custom_avatar", False):
+        async with get_session() as session:
+            content = await _ensure_identity_reference(session, content, chat.target_id)
 
     history = [
         {"role": msg.role.value, "content": msg.content}
@@ -85,6 +183,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     state_meta = chat.state_meta or {}
     heat_level = get_heat_level(chat)
     allow_nsfw = params.get("allow_nsfw", content.get("is_nsfw", True))
+    early_non_explicit_context = (
+        requested_outfit == "default_outfit"
+        and len(history) <= 4
+        and not has_explicit_nude_or_sex_context(history)
+    )
 
     nsfw_level = 0
     outfit_key = requested_outfit
@@ -166,6 +269,19 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     environment = chat.current_location or environment
+    if allow_nsfw and early_non_explicit_context and nsfw_level > 1:
+        logger.info(
+            "Early non-explicit image context caps nsfw_level: %s -> 1",
+            nsfw_level,
+        )
+        nsfw_level = 1
+    if allow_nsfw and early_non_explicit_context and outfit_key != "default_outfit":
+        logger.info(
+            "Early non-explicit image context keeps default outfit: %s -> default_outfit",
+            outfit_key,
+        )
+        outfit_key = "default_outfit"
+
     prompt = Prompt.from_character(
         character=content,
         outfit_key=outfit_key,
@@ -185,6 +301,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     logger.info(f"  outfit_key={outfit_key}")
     logger.info(f"  clothing={prompt.clothing}")
     logger.info(f"  nsfw_level={nsfw_level}")
+    logger.info(f"  body_profile_phrase={prompt.body_silhouette}")
+    logger.info(
+        "  visual_stage_reason=%s",
+        "explicit nude/sexual context" if nsfw_level >= 4 else "clothed/sensual context",
+    )
     logger.info(f"  scene_description={scene_description}")
     logger.info(f"  nsfw_tags={nsfw_tags}")
     logger.info(f"  emotion={emotion}")
@@ -221,6 +342,11 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
         "pose": pose,
         "seed": seed,
     }
+    visual = content.get("visual", {})
+    identity_reference = visual.get("identity_reference") or {}
+    if chat.chat_type == "character" and visual.get("custom_avatar") and identity_reference.get("status") == "ready":
+        prepared["identity_pipeline"] = True
+        prepared["identity_source_image"] = identity_reference.get("source_image") or content.get("avatar") or visual.get("avatar")
     prepared.pop("prepare_prompt", None)
     return prepared
 
@@ -264,9 +390,17 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
         nsfw_level = params.get("nsfw_level", 0)
         pose = params.get("pose")
         seed = params.get("seed", -1)
+        identity_pipeline = bool(params.get("identity_pipeline"))
+        identity_source_image = params.get("identity_source_image")
 
         # 1. Update status to generating
-        await _update_task_status(redis, task_id, "generating", chat_id=chat_id, user_id=user_id)
+        await _update_task_status(
+            redis,
+            task_id,
+            "generating_target" if identity_pipeline else "generating",
+            chat_id=chat_id,
+            user_id=user_id,
+        )
 
         # 2. Generate image
         image_url = await generate_image(
@@ -281,6 +415,19 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
         if not image_url:
             await _update_task_status(redis, task_id, "failed", error="Generation failed", chat_id=chat_id, user_id=user_id)
             return {"status": "failed", "error": "Generation failed"}
+
+        if identity_pipeline:
+            if not identity_source_image:
+                raise ImageProviderError(
+                    "Identity source image is missing",
+                    code="facefusion_swap_failed",
+                    provider="runpod_facefusion",
+                    user_message="Не удалось применить лицо к фото, попробуйте еще раз",
+                    retryable=False,
+                )
+            await _update_task_status(redis, task_id, "face_swapping", chat_id=chat_id, user_id=user_id)
+            source_image_data = await local_image_to_data_url(identity_source_image)
+            image_url = await swap_face(source_image=source_image_data, target_image=image_url)
 
         # 3. Download and save locally
         await _update_task_status(redis, task_id, "downloading", chat_id=chat_id, user_id=user_id)
@@ -309,7 +456,7 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
                         user_id=user_id,
                         chat_id=chat_id,
                         prompt=positive_prompt,
-                        provider_url=None if image_url.startswith("data:image/") else image_url,
+                        provider_url=None if identity_pipeline or image_url.startswith("data:image/") else image_url,
                         local_path=local_path,
                         file_size=file_size,
                         content_type=content_type,
@@ -337,7 +484,10 @@ async def generate_image_task(ctx: dict[str, Any], task_id: str, params: dict) -
                             "character_id": str(character_id) if character_id else None,
                             "model_type": model_type,
                             "world_id": str(world_id) if world_id else None,
-                            "nsfw_level": nsfw_level
+                            "nsfw_level": nsfw_level,
+                            "identity_pipeline": identity_pipeline,
+                            "face_swap_backend": "facefusion" if identity_pipeline else None,
+                            "face_swap_preset": RUNPOD_FACEFUSION_PRESET if identity_pipeline else None,
                         }
                     )
 

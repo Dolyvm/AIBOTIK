@@ -12,7 +12,13 @@ from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RA
 from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
 from shared.services.prompt_service import create_or_update_character_modifiers
-from shared.services.image_storage import save_avatar, ALLOWED_CONTENT_TYPES
+from shared.services.image_storage import (
+    ALLOWED_CONTENT_TYPES,
+    local_image_to_data_url,
+    persist_avatar_reference,
+    save_avatar,
+)
+from shared.services.identity_reference import IdentityReferenceError, analyze as analyze_identity_reference
 from shared.config import IMAGES_STORAGE_PATH
 from shared.services.redis_client import get_redis
 from shared.services.model_types import validate_model_gender
@@ -22,7 +28,7 @@ from shared.database import get_session
 from auth.telegram_auth import get_current_user
 from api.image_gen.schemas.generate import Prompt as ImagePrompt
 
-from .cc_schemas import CreateCharacterRequest
+from .cc_schemas import BodyProfile, CreateCharacterRequest
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +42,63 @@ def _clean_visual_field(value: str) -> str:
     return value.strip().rstrip('",').rstrip('"').strip()
 
 
+def _default_body_profile(gender: str) -> dict:
+    if gender == "male":
+        return {
+            "schema_version": 1,
+            "body_type": "athletic",
+            "height": "average",
+            "outfit_preset": "casual",
+        }
+    return {
+        "schema_version": 1,
+        "body_type": "proportional",
+        "height": "average",
+        "breast_size": "medium",
+        "butt_size": "rounded",
+        "outfit_preset": "casual",
+    }
+
+
+def _normalize_body_profile(profile: BodyProfile | None, gender: str) -> dict:
+    base = _default_body_profile(gender)
+    if profile:
+        base.update(profile.model_dump(exclude_none=True))
+    base["schema_version"] = 1
+    if gender == "male":
+        base.pop("breast_size", None)
+        base.pop("butt_size", None)
+    else:
+        base.setdefault("breast_size", "medium")
+        base.setdefault("butt_size", "rounded")
+    return base
+
+
+async def _build_custom_identity_metadata(
+    *,
+    avatar_url: str,
+    character_id: str,
+    gender: str,
+    body_profile: BodyProfile | None,
+) -> tuple[str, dict, dict]:
+    avatar_path = await persist_avatar_reference(avatar_url, character_id)
+    image_data_url = await local_image_to_data_url(avatar_path)
+    identity = await analyze_identity_reference(image_data_url)
+    identity_reference = {
+        "status": "ready",
+        "source_image": avatar_path,
+        "provider": "openrouter",
+        "model": identity["model"],
+        "analyzed_at": identity["analyzed_at"],
+        "identity_prompt": identity["identity_prompt"],
+        "visible_traits": identity["visible_traits"],
+        "avoid": identity["avoid"],
+        "notes": identity["notes"],
+        "consent_confirmed": True,
+    }
+    return avatar_path, identity_reference, _normalize_body_profile(body_profile, gender)
+
+
 @router.post("/api/create_character")
 async def create_character(
     data: CreateCharacterRequest,
@@ -43,8 +106,15 @@ async def create_character(
 ):
     if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
+    model_type = "real" if data.custom_avatar else data.model_type
+    if data.custom_avatar:
+        if not data.avatar_url:
+            raise HTTPException(status_code=400, detail="Avatar photo is required for custom photo identity")
+        if not data.identity_consent_confirmed:
+            raise HTTPException(status_code=400, detail="Identity consent confirmation is required")
+
     try:
-        validate_model_gender(data.model_type, data.gender)
+        validate_model_gender(model_type, data.gender)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -64,9 +134,9 @@ async def create_character(
 
         style_tags = data.visual_style_tags or ""
         if not style_tags.strip():
-            if data.model_type == "anime":
+            if model_type == "anime":
                 style_tags = "anime style, cel shading, vibrant colors"
-            elif data.model_type == "real":
+            elif model_type == "real":
                 style_tags = "soft natural lighting, film photography, warm tones"
             else:
                 style_tags = ""
@@ -81,7 +151,7 @@ async def create_character(
             wardrobe.setdefault("underwear", "white bra, white panties")
 
         visual_data = {
-            "model_type": data.model_type,
+            "model_type": model_type,
             "gender": data.gender,
             "appearance": _clean_visual_field(data.appearance or ""),
             "body": _clean_visual_field(data.visual_body or ""),
@@ -92,7 +162,23 @@ async def create_character(
             "custom_avatar": data.custom_avatar,
         }
 
-        if data.avatar_url:
+        if data.custom_avatar:
+            try:
+                avatar_path, identity_reference, body_profile = await _build_custom_identity_metadata(
+                    avatar_url=data.avatar_url,
+                    character_id=character_id,
+                    gender=data.gender,
+                    body_profile=data.body_profile,
+                )
+                visual_data["avatar"] = avatar_path
+                visual_data["identity_reference"] = identity_reference
+                visual_data["body_profile"] = body_profile
+            except IdentityReferenceError as e:
+                raise HTTPException(status_code=502, detail=str(e))
+            except Exception as e:
+                logger.warning("Failed to prepare custom identity avatar: %s", e)
+                raise HTTPException(status_code=400, detail="Failed to process custom avatar")
+        elif data.avatar_url:
             try:
                 avatar_path = await save_avatar(data.avatar_url, character_id)
                 visual_data["avatar"] = f"/images/{avatar_path}"
@@ -187,8 +273,15 @@ async def update_character(
 
         if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
             raise HTTPException(status_code=400, detail="All main fields are required")
+        model_type = "real" if data.custom_avatar else data.model_type
+        if data.custom_avatar:
+            if not data.avatar_url and not (character.visual_data or {}).get("avatar"):
+                raise HTTPException(status_code=400, detail="Avatar photo is required for custom photo identity")
+            if not data.identity_consent_confirmed:
+                raise HTTPException(status_code=400, detail="Identity consent confirmation is required")
+
         try:
-            validate_model_gender(data.model_type, data.gender)
+            validate_model_gender(model_type, data.gender)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -197,20 +290,19 @@ async def update_character(
         if not allowed:
             from shared.database.exceptions import UsageLimitExceeded
             raise UsageLimitExceeded("content_edits", limit)
-        await sub_service.increment_usage(user.telegram_id, "content_edits", db)
 
         style_tags = data.visual_style_tags or ""
         if not style_tags.strip():
-            if data.model_type == "anime":
+            if model_type == "anime":
                 style_tags = "anime style, cel shading, vibrant colors"
-            elif data.model_type == "real":
+            elif model_type == "real":
                 style_tags = "soft natural lighting, film photography, warm tones"
             else:
                 style_tags = ""
 
         old_visual = character.visual_data or {}
         visual_data = {
-            "model_type": data.model_type,
+            "model_type": model_type,
             "gender": data.gender,
             "appearance": _clean_visual_field(data.appearance or ""),
             "body": _clean_visual_field(data.visual_body or ""),
@@ -222,7 +314,31 @@ async def update_character(
             "custom_avatar": data.custom_avatar,
         }
 
-        if data.avatar_url and data.avatar_url != old_visual.get("avatar", ""):
+        if data.custom_avatar:
+            avatar_changed = bool(data.avatar_url and data.avatar_url != old_visual.get("avatar", ""))
+            if avatar_changed:
+                try:
+                    avatar_path, identity_reference, body_profile = await _build_custom_identity_metadata(
+                        avatar_url=data.avatar_url,
+                        character_id=character_id,
+                        gender=data.gender,
+                        body_profile=data.body_profile,
+                    )
+                    visual_data["avatar"] = avatar_path
+                    visual_data["identity_reference"] = identity_reference
+                    visual_data["body_profile"] = body_profile
+                except IdentityReferenceError as e:
+                    raise HTTPException(status_code=502, detail=str(e))
+                except Exception as e:
+                    logger.warning("Failed to prepare custom identity avatar: %s", e)
+                    raise HTTPException(status_code=400, detail="Failed to process custom avatar")
+            else:
+                visual_data["identity_reference"] = old_visual.get("identity_reference")
+                visual_data["body_profile"] = _normalize_body_profile(
+                    data.body_profile,
+                    data.gender,
+                ) if data.body_profile else old_visual.get("body_profile") or _normalize_body_profile(None, data.gender)
+        elif data.avatar_url and data.avatar_url != old_visual.get("avatar", ""):
             try:
                 avatar_path = await save_avatar(data.avatar_url, character_id)
                 visual_data["avatar"] = f"/images/{avatar_path}"
@@ -258,6 +374,7 @@ async def update_character(
         if not data.is_public:
             character.is_verified = False
 
+        await sub_service.increment_usage(user.telegram_id, "content_edits", db)
         await db.commit()
 
     cache = get_cache()
