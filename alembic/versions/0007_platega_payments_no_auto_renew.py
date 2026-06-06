@@ -1,7 +1,7 @@
 """add platega payment fields and remove renewal flag
 
 Revision ID: 0007_platega_payments
-Revises: 0006_chat_target_message_count_index
+Revises: 0006_chat_msg_count_idx
 Create Date: 2026-06-06
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0007_platega_payments"
-down_revision: Union[str, None] = "0006_chat_target_message_count_index"
+down_revision: Union[str, None] = "0006_chat_msg_count_idx"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
