@@ -44,7 +44,6 @@ def upgrade() -> None:
         sa.Column('balance', sa.Integer(), nullable=True),
         sa.Column('subscription_plan', subscriptionplan_enum, nullable=False, server_default='free'),
         sa.Column('subscription_start_date', sa.DateTime(), nullable=True),
-        sa.Column('subscription_auto_renew', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('is_subscribed', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('subscription_end_date', sa.DateTime(), nullable=True),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),

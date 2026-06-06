@@ -1,6 +1,8 @@
 """Конфигурация подписочных планов."""
 from shared.models import SubscriptionPlan
 
+MIN_PLATEGA_PAYMENT_RUB = 10
+
 PLAN_LIMITS = {
     SubscriptionPlan.FREE: {
         "display_name": "Free",
@@ -17,6 +19,7 @@ PLAN_LIMITS = {
     SubscriptionPlan.PLUS_WEEKLY: {
         "display_name": "PLUS 1 нед",
         "price_rub": 299,
+        "platega_price_rub": MIN_PLATEGA_PAYMENT_RUB,
         "price_stars": 299,
         "duration_days": 7,
         "messages": 750,
@@ -29,6 +32,7 @@ PLAN_LIMITS = {
     SubscriptionPlan.PLUS_MONTHLY: {
         "display_name": "PLUS",
         "price_rub": 799,
+        "platega_price_rub": MIN_PLATEGA_PAYMENT_RUB,
         "price_stars": 799,
         "duration_days": 30,
         "messages": 3000,
@@ -41,6 +45,7 @@ PLAN_LIMITS = {
     SubscriptionPlan.PRO: {
         "display_name": "PRO",
         "price_rub": 1299,
+        "platega_price_rub": MIN_PLATEGA_PAYMENT_RUB,
         "price_stars": 1299,
         "duration_days": 30,
         "display_as_unlimited": True,

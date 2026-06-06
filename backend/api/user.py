@@ -64,7 +64,6 @@ async def get_user_profile(user_id: int, user: User = Depends(get_current_user))
             "plan": plan_value,
             "plan_display": plan_config.get("display_name", "Free"),
             "end_date": db_user.subscription_end_date.isoformat() if db_user.subscription_end_date else None,
-            "auto_renew": db_user.subscription_auto_renew,
         },
         "usage": summary.get("usage", {}),
     }

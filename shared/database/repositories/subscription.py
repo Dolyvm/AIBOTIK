@@ -123,12 +123,22 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         plan: SubscriptionPlan,
         amount_stars: int,
         amount_rub: int,
+        provider: str = "telegram_stars",
+        currency: str = "XTR",
+        provider_payment_id: str | None = None,
+        provider_payment_url: str | None = None,
+        provider_payload: dict | None = None,
     ) -> SubscriptionPayment:
         payment = SubscriptionPayment(
             user_id=user_id,
             plan=plan,
             amount_stars=amount_stars,
             amount_rub=amount_rub,
+            provider=provider,
+            currency=currency,
+            provider_payment_id=provider_payment_id,
+            provider_payment_url=provider_payment_url,
+            provider_payload=provider_payload,
             status="pending",
         )
         self.session.add(payment)
@@ -138,6 +148,7 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
 
     async def update_payment_status(
         self, payment_id: int, status: str, charge_id: str | None = None,
+        provider_payload: dict | None = None,
         auto_commit: bool = True,
     ) -> SubscriptionPayment | None:
         payment = await self.get_by_id(payment_id)
@@ -146,12 +157,59 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         payment.status = status
         if charge_id:
             payment.telegram_payment_charge_id = charge_id
+        if provider_payload is not None:
+            payment.provider_payload = provider_payload
         if status == "completed":
             payment.completed_at = datetime.utcnow()
         if auto_commit:
             await self.session.commit()
             await self.session.refresh(payment)
         return payment
+
+    async def update_payment_provider_fields(
+        self,
+        payment_id: int,
+        provider_payment_id: str | None = None,
+        provider_payment_url: str | None = None,
+        provider_payload: dict | None = None,
+        auto_commit: bool = True,
+    ) -> SubscriptionPayment | None:
+        payment = await self.get_by_id(payment_id)
+        if not payment:
+            return None
+        if provider_payment_id is not None:
+            payment.provider_payment_id = provider_payment_id
+        if provider_payment_url is not None:
+            payment.provider_payment_url = provider_payment_url
+        if provider_payload is not None:
+            payment.provider_payload = provider_payload
+        if auto_commit:
+            await self.session.commit()
+            await self.session.refresh(payment)
+        return payment
+
+    async def get_by_provider_payment_id(
+        self, provider: str, provider_payment_id: str
+    ) -> SubscriptionPayment | None:
+        result = await self.session.execute(
+            select(SubscriptionPayment).where(
+                SubscriptionPayment.provider == provider,
+                SubscriptionPayment.provider_payment_id == provider_payment_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_completed_payment(self, user_id: int) -> SubscriptionPayment | None:
+        result = await self.session.execute(
+            select(SubscriptionPayment)
+            .where(
+                SubscriptionPayment.user_id == user_id,
+                SubscriptionPayment.status == "completed",
+            )
+            .order_by(SubscriptionPayment.completed_at.desc(), SubscriptionPayment.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def get_user_payments(self, user_id: int, limit: int = 50) -> list[SubscriptionPayment]:
         result = await self.session.execute(

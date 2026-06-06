@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBAPP_URL = os.getenv("WEBAPP_URL")
 
 CONTENT_BASE_PATH = Path(os.getenv("CONTENT_PATH", "/app/content"))
 
@@ -54,6 +55,10 @@ SCENE_ANALYZER_TIMEOUT = int(os.getenv("SCENE_ANALYZER_TIMEOUT", "10"))
 IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  
 ADMIN_TELEGRAM_IDS = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip()]
+
+PLATEGA_MERCHANT_ID = os.getenv("PLATEGA_MERCHANT_ID")
+PLATEGA_SECRET = os.getenv("PLATEGA_SECRET")
+PLATEGA_BASE_URL = os.getenv("PLATEGA_BASE_URL", "https://app.platega.io/").rstrip("/") + "/"
 
 RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY") or os.getenv("RUNPOD_KEY")
 RUNPOD_MANHWA_ENDPOINT_ID = os.getenv("RUNPOD_MANHWA_ENDPOINT_ID")

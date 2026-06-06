@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from shared.services.image_provider import ImageProviderError, generate_image
@@ -26,9 +26,8 @@ from shared.config import (
 )
 
 from shared.services.analytics import AnalyticsService
-from shared.models import User, SubscriptionPlan, SubscriptionPayment
+from shared.models import User, SubscriptionPlan
 from shared.database.repositories import ChatRepository, MessageRepository
-from shared.subscription_plans import PLAN_LIMITS
 from shared.constants import get_heat_level
 
 logger = logging.getLogger(__name__)
@@ -618,7 +617,6 @@ async def expire_subscriptions_task(ctx: dict[str, Any]) -> dict:
                 is_subscribed=False,
                 subscription_end_date=None,
                 subscription_start_date=None,
-                subscription_auto_renew=False,
             )
         )
         await session.commit()
@@ -642,91 +640,3 @@ async def expire_subscriptions_task(ctx: dict[str, Any]) -> dict:
 
     logger.info(f"expire_subscriptions: downgraded {len(expired_user_ids)} users")
     return {"status": "ok", "expired": len(expired_user_ids)}
-
-
-async def auto_renew_subscriptions_task(ctx: dict[str, Any]) -> dict:
-    """Cron: отправка invoice пользователям с auto_renew=True, подписка истекает в ближайшие 24ч."""
-    from sqlalchemy import select
-    from aiogram import Bot
-    from aiogram.types import LabeledPrice
-
-    get_session = ctx.get("get_session")
-    if not get_session:
-        logger.error("auto_renew_task: no get_session in context")
-        return {"status": "failed"}
-
-    now = datetime.utcnow()
-    threshold = now + timedelta(hours=24)
-
-    async with get_session() as session:
-        result = await session.execute(
-            select(User).where(
-                User.subscription_auto_renew == True,
-                User.subscription_plan != SubscriptionPlan.FREE,
-                User.subscription_end_date != None,
-                User.subscription_end_date <= threshold,
-                User.subscription_end_date > now,
-            )
-        )
-        users = result.scalars().all()
-
-        if not users:
-            logger.info("auto_renew: no users to renew")
-            return {"status": "ok", "sent": 0}
-
-        bot_token = os.getenv("BOT_TOKEN")
-        if not bot_token:
-            logger.error("auto_renew: BOT_TOKEN not set")
-            return {"status": "failed"}
-
-        from shared.database.repositories.subscription import SubscriptionRepository
-
-        bot = Bot(token=bot_token)
-        sent = 0
-        try:
-            for user in users:
-                plan = user.subscription_plan
-                try:
-                    plan_config = PLAN_LIMITS[plan]
-                except KeyError:
-                    logger.error(f"auto_renew: unknown plan {plan} for user {user.telegram_id}")
-                    continue
-                price = plan_config["price_stars"]
-
-                # Проверить существующие pending платежи — не дублировать invoice
-                existing = await session.execute(
-                    select(SubscriptionPayment).where(
-                        SubscriptionPayment.user_id == user.telegram_id,
-                        SubscriptionPayment.plan == plan,
-                        SubscriptionPayment.status == "pending",
-                    )
-                )
-                if existing.scalar_one_or_none():
-                    logger.info(f"auto_renew: pending payment already exists for user {user.telegram_id}")
-                    continue
-
-                repo = SubscriptionRepository(session)
-                payment = await repo.create_payment(
-                    user_id=user.telegram_id,
-                    plan=plan,
-                    amount_stars=price,
-                    amount_rub=plan_config["price_rub"],
-                )
-
-                try:
-                    await bot.send_invoice(
-                        chat_id=user.telegram_id,
-                        title=f"Автопродление: {plan_config['display_name']}",
-                        description=f"Автопродление подписки на {plan_config.get('duration_days', 30)} дней",
-                        payload=str(payment.id),
-                        currency="XTR",
-                        prices=[LabeledPrice(label="Подписка", amount=price)],
-                    )
-                    sent += 1
-                except Exception as e:
-                    logger.warning(f"Failed to send renewal invoice to {user.telegram_id}: {e}")
-        finally:
-            await bot.session.close()
-
-    logger.info(f"auto_renew: sent {sent} invoices")
-    return {"status": "ok", "sent": sent}

@@ -27,7 +27,6 @@ def user_to_dict(user: User) -> dict:
         "subscription_plan": user.subscription_plan.value if user.subscription_plan else "free",
         "subscription_start_date": user.subscription_start_date.isoformat() if user.subscription_start_date else None,
         "subscription_end_date": user.subscription_end_date.isoformat() if user.subscription_end_date else None,
-        "subscription_auto_renew": user.subscription_auto_renew,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "last_active_at": user.last_active_at.isoformat() if user.last_active_at else None,
         "settings": {
@@ -52,7 +51,6 @@ def dict_to_user(data: dict) -> User:
         balance=data.get("balance", 1000),
         is_subscribed=data.get("is_subscribed", False),
         subscription_plan=plan,
-        subscription_auto_renew=data.get("subscription_auto_renew", False),
     )
 
     if data.get("subscription_start_date"):
@@ -77,7 +75,7 @@ def dict_to_user(data: dict) -> User:
 async def get_current_user(
     authorization: Optional[str] = Header(None)
 ) -> User:
-    logging.info(f"[AUTH] Received authorization header: {authorization[:50] if authorization else 'None'}...")
+    logging.info("[AUTH] Received authorization header: present=%s", bool(authorization))
 
     if not authorization:
         logging.error("[AUTH] Missing Authorization header")
