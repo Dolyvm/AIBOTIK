@@ -86,6 +86,10 @@ services:
       - IMAGES_STORAGE_PATH=/app/generated_images
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
       - SECRET_KEY=${SECRET_KEY}
+      - WEBAPP_URL=${WEBAPP_URL}
+      - PLATEGA_MERCHANT_ID=${PLATEGA_MERCHANT_ID}
+      - PLATEGA_SECRET=${PLATEGA_SECRET}
+      - PLATEGA_BASE_URL=${PLATEGA_BASE_URL:-https://app.platega.io/}
       - DEV_MODE=${DEV_MODE:-true}
       - FRONTEND_URL=http://frontend:5173  # dev
     volumes:

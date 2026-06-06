@@ -2150,6 +2150,28 @@ body.desktop .grid {
     font-size: 14px;
 }
 
+.plan-preview-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.plan-preview-actions .plan-preview-buy {
+    margin-top: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.plan-preview-buy-secondary {
+    background: var(--tg-theme-secondary-bg-color);
+    color: var(--tg-theme-button-color);
+    border: 1px solid color-mix(in srgb, var(--tg-theme-button-color) 35%, transparent);
+}
+
 /* === Avatar Gallery === */
 .avatar-gallery {
     display: flex;

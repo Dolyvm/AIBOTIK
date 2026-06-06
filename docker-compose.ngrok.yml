@@ -6,6 +6,10 @@ services:
       - ./content:/data/content:ro
       - frontend_dist:/usr/share/nginx/html:ro
 
+  backend:
+    environment:
+      WEBAPP_URL: ${NGROK_URL}
+
   bot:
     environment:
       IS_PROD: "true"

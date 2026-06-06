@@ -54,7 +54,6 @@ class User(Base):
         default=SubscriptionPlan.FREE, nullable=False
     )
     subscription_start_date = Column(DateTime, nullable=True)
-    subscription_auto_renew = Column(Boolean, default=False, nullable=False)
     is_subscribed = Column(Boolean, default=False)
     subscription_end_date = Column(DateTime, nullable=True)
 
@@ -279,6 +278,11 @@ class SubscriptionPayment(Base):
     amount_stars = Column(Integer, nullable=False)
     amount_rub = Column(Integer, nullable=False)
     telegram_payment_charge_id = Column(String(255), nullable=True)
+    provider = Column(String(50), default="telegram_stars", nullable=False)
+    provider_payment_id = Column(String(255), nullable=True)
+    provider_payment_url = Column(String(1000), nullable=True)
+    currency = Column(String(10), default="XTR", nullable=False)
+    provider_payload = Column(JSONB, nullable=True)
     status = Column(String(50), default="pending", nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime, nullable=True)

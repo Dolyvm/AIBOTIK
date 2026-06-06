@@ -10,7 +10,6 @@ from shared.queue.tasks import (
     generate_image_task,
     generate_avatar_task,
     expire_subscriptions_task,
-    auto_renew_subscriptions_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,7 +48,6 @@ class WorkerSettings:
 
     cron_jobs = [
         cron(expire_subscriptions_task, minute=0),  # каждый час
-        cron(auto_renew_subscriptions_task, minute=30),  # каждый час в :30
     ]
 
     redis_settings = RedisSettings.from_dsn(

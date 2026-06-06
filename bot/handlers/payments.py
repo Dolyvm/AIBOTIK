@@ -20,7 +20,36 @@ router = Router()
 
 @router.pre_checkout_query()
 async def on_pre_checkout(query: PreCheckoutQuery):
-    """Always approve pre-checkout — validation already done at invoice creation."""
+    """Validate Telegram Stars invoice before Telegram accepts checkout."""
+    payload = query.invoice_payload
+    try:
+        payment_id = int(payload)
+    except (ValueError, TypeError):
+        logger.warning("Rejected pre-checkout with invalid payload: %r", payload)
+        await query.answer(ok=False, error_message="Некорректный платёж.")
+        return
+
+    async with get_session() as session:
+        repo = SubscriptionRepository(session)
+        payment = await repo.get_by_id(payment_id)
+
+    if not payment:
+        logger.warning("Rejected pre-checkout for missing payment id=%s", payment_id)
+        await query.answer(ok=False, error_message="Платёж не найден.")
+        return
+
+    if (
+        payment.provider != "telegram_stars"
+        or payment.status != "pending"
+        or payment.user_id != query.from_user.id
+        or payment.currency != "XTR"
+        or payment.amount_stars != query.total_amount
+        or query.currency != "XTR"
+    ):
+        logger.warning("Rejected pre-checkout for payment id=%s", payment_id)
+        await query.answer(ok=False, error_message="Платёж не прошёл проверку.")
+        return
+
     await query.answer(ok=True)
 
 
@@ -48,20 +77,40 @@ async def on_successful_payment(message: Message):
     async with get_session() as session:
         repo = SubscriptionRepository(session)
 
-        # Update payment record (без commit — будет один общий)
-        payment = await repo.update_payment_status(
-            payment_id, status="completed", charge_id=charge_id,
-            auto_commit=False,
-        )
+        payment = await repo.get_by_id(payment_id)
         if not payment:
             logger.error(f"Payment {payment_id} not found")
             await message.answer("Ошибка обработки платежа. Обратитесь в поддержку.")
             return
 
-        if payment.user_id != user_id:
-            logger.error(f"Payment user mismatch: payment.user_id={payment.user_id}, payer={user_id}")
-            await message.answer("Ошибка: этот платёж принадлежит другому пользователю.")
+        if payment.status == "completed":
+            logger.info("Payment %s already completed", payment_id)
+            await message.answer("Платёж уже был обработан.")
             return
+
+        if (
+            payment.provider != "telegram_stars"
+            or payment.status != "pending"
+            or payment.user_id != user_id
+            or payment.currency != payment_info.currency
+            or payment.amount_stars != payment_info.total_amount
+            or payment_info.currency != "XTR"
+        ):
+            logger.error(
+                "Payment validation failed: payment_id=%s provider=%s status=%s payer=%s",
+                payment_id,
+                payment.provider,
+                payment.status,
+                user_id,
+            )
+            await message.answer("Ошибка проверки платежа. Обратитесь в поддержку.")
+            return
+
+        # Update payment record (без commit — будет один общий)
+        payment = await repo.update_payment_status(
+            payment_id, status="completed", charge_id=charge_id,
+            auto_commit=False,
+        )
 
         # Activate subscription (без commit — будет один общий)
         user = await service.activate_subscription(

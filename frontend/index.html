@@ -656,7 +656,7 @@
                                      :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
                                      @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
                                     <div class="plan-card-name">{{ p.display_name }}</div>
-                                    <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
+                                    <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.platega_price_rub || p.price_rub }} ₽ / {{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
                                     <div class="plan-card-price" v-else>Бесплатно</div>
                                     <div class="plan-card-current" v-if="p.plan === subscription.plan">Текущий</div>
                                 </div>
@@ -670,19 +670,19 @@
                                         <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
                                     </div>
                                 </div>
-                                <button class="plan-card-btn plan-preview-buy"
-                                        v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'"
-                                        @click="purchasePlan(previewPlanData.plan)">
-                                    Купить
-                                </button>
-                            </div>
-
-                            <div class="setting-item" v-if="subscription.plan !== 'free'" style="margin-top: 12px;">
-                                <span class="setting-label">Автопродление</span>
-                                <label class="toggle">
-                                    <input type="checkbox" v-model="autoRenew" @change="toggleAutoRenew">
-                                    <span class="toggle-slider"></span>
-                                </label>
+                                <div class="plan-preview-actions"
+                                     v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'">
+                                    <button class="plan-card-btn plan-preview-buy"
+                                            @click="purchasePlan(previewPlanData.plan, 'platega')">
+                                        <i class="fas fa-credit-card"></i>
+                                        Platega {{ previewPlanData.platega_price_rub || previewPlanData.price_rub }} ₽
+                                    </button>
+                                    <button class="plan-card-btn plan-preview-buy plan-preview-buy-secondary"
+                                            @click="purchasePlan(previewPlanData.plan, 'telegram_stars')">
+                                        <i class="fas fa-star"></i>
+                                        Stars
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1757,7 +1757,6 @@
                 // Subscription
                 const subscription = ref(null);
                 const availablePlans = ref([]);
-                const autoRenew = ref(false);
                 const selectedPlanPreview = ref(null);
                 const previewPlanData = computed(() => {
                     if (!selectedPlanPreview.value) return null;
@@ -1786,15 +1785,26 @@
                         ]);
                         subscription.value = statusRes.data;
                         availablePlans.value = plansRes.data.plans;
-                        autoRenew.value = false; // will be set from user data if needed
                     } catch (e) {
                         console.error('Failed to load subscription:', e);
                     }
                 };
 
-                const purchasePlan = async (planId) => {
+                const purchasePlan = async (planId, provider = 'telegram_stars') => {
                     try {
-                        const res = await axios.post('/api/subscription/purchase', { plan: planId });
+                        const res = await axios.post('/api/subscription/purchase', { plan: planId, provider });
+                        if (provider === 'platega') {
+                            if (!res.data.payment_url) {
+                                throw new Error('Missing Platega payment URL');
+                            }
+                            if (typeof tg.openLink === 'function') {
+                                tg.openLink(res.data.payment_url);
+                            } else {
+                                window.location.href = res.data.payment_url;
+                            }
+                            showToast('Откройте оплату Platega', 'success');
+                            return;
+                        }
                         tg.openInvoice(res.data.invoice_url, (status) => {
                             if (status === 'paid') {
                                 showToast('Подписка активирована!', 'success');
@@ -1805,21 +1815,6 @@
                     } catch (e) {
                         console.error('Purchase failed:', e);
                         showToast(e.response?.data?.detail || 'Ошибка покупки', 'error');
-                    }
-                };
-
-                const toggleAutoRenew = async () => {
-                    try {
-                        if (!autoRenew.value) {
-                            await axios.post('/api/subscription/cancel');
-                            showToast('Автопродление отключено', 'success');
-                        } else {
-                            await axios.post('/api/subscription/auto-renew');
-                            showToast('Автопродление включено', 'success');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        autoRenew.value = !autoRenew.value;
                     }
                 };
 
@@ -2156,6 +2151,16 @@
 
                     const urlParams = new URLSearchParams(window.location.search);
                     userId.value = tg.initDataUnsafe?.user?.id || urlParams.get('user_id');
+                    const paymentStatus = urlParams.get('payment');
+                    if (paymentStatus === 'success') {
+                        showToast('Платёж отправлен на подтверждение', 'success');
+                        setTimeout(() => {
+                            loadSubscription();
+                            loadProfile();
+                        }, 1200);
+                    } else if (paymentStatus === 'failed') {
+                        showToast('Оплата не завершена', 'error');
+                    }
 
                     if (!userId.value) {
                          // В демо режиме или браузере
@@ -2274,7 +2279,6 @@
                             userProfile.value.balance = res.data.balance;
                             profileSettings.value.nsfw_blur = res.data.nsfw_blur;
                             profileSettings.value.nickname = res.data.nickname || '';
-                            autoRenew.value = res.data.subscription?.auto_renew || false;
                             // Даём Vue обработать изменение перед сбросом флага
                             await nextTick();
                             isLoadingSettings = false;
@@ -3803,9 +3807,9 @@
                     // Profile
                     userProfile, profileSettings, loadProfile,
                     // Subscription
-                    subscription, availablePlans, autoRenew, usageLabels,
+                    subscription, availablePlans, usageLabels,
                     selectedPlanPreview, previewPlanData,
-                    purchasePlan, toggleAutoRenew, loadSubscription,
+                    purchasePlan, loadSubscription,
                     isEditingNickname, nicknameDraft, isSavingNickname,
                     startEditNickname, cancelEditNickname, saveNickname,
                     // Documents & Support
