@@ -2600,7 +2600,6 @@ body.desktop .grid {
     border: 1px solid var(--cc-border);
 }
 
-.cc-btn--generate,
 .cc-btn--final,
 .create-character-final-btn {
     min-height: 48px;
@@ -2613,6 +2612,10 @@ body.desktop .grid {
     width: auto;
     min-width: min(100%, 240px);
     padding: 0 18px;
+    background: color-mix(in srgb, var(--cc-primary) 12%, var(--cc-surface-elevated));
+    color: var(--cc-primary);
+    border: 1px solid color-mix(in srgb, var(--cc-primary) 34%, var(--cc-border));
+    box-shadow: none;
 }
 
 .create-character-final-btn {
