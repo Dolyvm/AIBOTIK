@@ -1823,19 +1823,28 @@ body.desktop .grid {
 
 .cc-creator-view {
     width: 100%;
+    height: var(--tg-viewport-stable-height);
     max-height: var(--tg-viewport-stable-height);
+    display: block;
+    padding-top: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
 }
 
 .cc-creator-header {
     position: sticky;
     top: 0;
-    z-index: 30;
+    z-index: 160;
     flex-shrink: 0;
     margin-left: -10px;
     margin-right: -10px;
-    padding: 12px 14px 10px;
-    background: color-mix(in srgb, var(--cc-bg) 92%, transparent);
+    padding: calc(12px + var(--tg-safe-area-inset-top) + var(--tg-content-safe-area-inset-top)) 14px 10px;
+    background: var(--cc-bg);
     border-bottom: 1px solid var(--cc-border);
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--cc-bg) 72%, transparent);
     backdrop-filter: saturate(160%) blur(16px);
     -webkit-backdrop-filter: saturate(160%) blur(16px);
 }
@@ -1918,6 +1927,13 @@ body.desktop .grid {
     display: flex;
     flex-direction: column;
     padding: 12px 0 calc(156px + var(--tg-safe-area-inset-bottom) + var(--tg-content-safe-area-inset-bottom) + var(--keyboard-height));
+}
+
+.cc-creator-view .final-step-container {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+    display: block;
 }
 
 .cc-form-panel,
