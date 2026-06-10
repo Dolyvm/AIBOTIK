@@ -223,7 +223,7 @@ services:
         echo 'Waiting for migrations to complete...' &&
         sleep 10 &&
         echo 'Initializing prompts...' &&
-        python /app/scripts/init_prompts.py --sync-compact &&
+        python /app/scripts/init_prompts.py --sync-compact --sync-image-safety &&
         echo 'Seeding content...' &&
         python /app/scripts/seed_content.py
       "

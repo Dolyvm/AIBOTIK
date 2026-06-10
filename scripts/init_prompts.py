@@ -12,6 +12,7 @@ from shared.services.cache import get_cache
 from shared.services.prompt_service import (
     COMPACT_RUNTIME_PROMPT_KEYS,
     DEFAULT_PROMPTS,
+    IMAGE_SAFETY_PROMPT_KEYS,
     clear_cache,
 )
 
@@ -280,20 +281,26 @@ PROMPT_METADATA = {
 }
 
 
-async def refresh_compact_prompt_cache():
+async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
     await clear_cache()
 
     cache = get_cache()
     if not cache:
         return
 
-    for key in COMPACT_RUNTIME_PROMPT_KEYS:
+    for key in keys:
         content = DEFAULT_PROMPTS.get(key)
         if content is not None:
             await cache.set_prompt(key, content)
 
 
-async def init_prompts(sync_compact: bool = False):
+async def init_prompts(sync_compact: bool = False, sync_image_safety: bool = False):
+    sync_keys = set()
+    if sync_compact:
+        sync_keys.update(COMPACT_RUNTIME_PROMPT_KEYS)
+    if sync_image_safety:
+        sync_keys.update(IMAGE_SAFETY_PROMPT_KEYS)
+
     async with get_session() as db:
         result = await db.execute(select(Prompt))
         existing_prompts = {p.key: p for p in result.scalars().all()}
@@ -307,7 +314,7 @@ async def init_prompts(sync_compact: bool = False):
                 continue
 
             if key in existing_prompts:
-                if sync_compact and key in COMPACT_RUNTIME_PROMPT_KEYS:
+                if key in sync_keys:
                     prompt = existing_prompts[key]
                     if prompt.content != content:
                         prompt.content = content
@@ -324,10 +331,15 @@ async def init_prompts(sync_compact: bool = False):
 
         await db.commit()
 
-    if sync_compact:
-        await refresh_compact_prompt_cache()
+    if sync_keys:
+        await refresh_prompt_cache(sync_keys)
 
-    mode = "sync-compact" if sync_compact else "create-missing"
+    modes = []
+    if sync_compact:
+        modes.append("sync-compact")
+    if sync_image_safety:
+        modes.append("sync-image-safety")
+    mode = "+".join(modes) if modes else "create-missing"
     print(f"Prompts initialized ({mode}): created={created_count}, updated={updated_count}")
 
 
@@ -338,6 +350,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Update only compact runtime prompt keys in DB and invalidate prompt cache.",
     )
+    parser.add_argument(
+        "--sync-image-safety",
+        action="store_true",
+        help="Update only image safety prompt keys in DB and invalidate prompt cache.",
+    )
     args = parser.parse_args()
 
-    asyncio.run(init_prompts(sync_compact=args.sync_compact))
+    asyncio.run(
+        init_prompts(
+            sync_compact=args.sync_compact,
+            sync_image_safety=args.sync_image_safety,
+        )
+    )

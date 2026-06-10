@@ -98,7 +98,7 @@ def test_anime_prompt_does_not_receive_real_layers():
         "id": "anime_a",
         "name": "Aiko",
         "model_type": "anime",
-        "appearance": "solo, 1girl, anime girl, blue hair",
+        "appearance": "1girl, anime girl, blue hair",
         "visual": {"gender": "female"},
     }
     prompt = Prompt.from_character(character, nsfw_level=0)
@@ -108,3 +108,24 @@ def test_anime_prompt_does_not_receive_real_layers():
     assert "anime style" in positive
     assert "photorealistic adult woman" not in positive
     assert "distinct individual face" not in positive
+
+
+def test_anime_prompt_prioritizes_character_clothing_and_pose_before_quality():
+    character = {
+        "id": "anime_pose",
+        "name": "Aiko",
+        "model_type": "anime",
+        "appearance": "1girl, anime girl, blue hair",
+        "visual": {
+            "gender": "female",
+            "default_outfit": "school uniform, pleated skirt",
+        },
+    }
+    prompt = Prompt.from_character(character, nsfw_level=0)
+    prompt.action = "standing nervously near desk"
+
+    positive, _ = asyncio.run(prompt.build_prompt(ModelType.anime, gender="female"))
+
+    assert positive.startswith("1girl")
+    assert "school uniform" in positive
+    assert positive.index("standing nervously near desk") < positive.index("masterpiece")

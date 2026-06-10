@@ -24,21 +24,6 @@
             will-change: transform;
         }
 
-        /* Tags in Modal */
-        .modal-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-bottom: 16px;
-        }
-        .tag-badge {
-            background: var(--tg-theme-secondary-bg-color);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: var(--tg-theme-hint-color);
-        }
-
         .auto-continue-bar {
             padding: 10px;
             text-align: center;
@@ -137,25 +122,6 @@
         .generating-placeholder span {
             font-size: 14px;
         }
-
-        /* Push content below Telegram fullscreen header (status bar via env + TG header ~60px) */
-        .grid-container {
-            padding-top: calc(env(safe-area-inset-top, 50px) + 60px) !important;
-        }
-        .modal-overlay {
-            padding-top: calc(env(safe-area-inset-top, 50px) + 60px) !important;
-        }
-        /* Card counters */
-        .card-counters { display:flex; gap:8px; margin-top:4px; }
-        .card-counter { font-size:11px; color:var(--tg-theme-hint-color); display:flex; align-items:center; gap:3px; }
-        .card-counter .fa-heart { color:#e74c3c; }
-        /* Like + author row inside modal */
-        .modal-author-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
-        .modal-author-link { font-size:13px; color:var(--tg-theme-hint-color); }
-        .modal-author-link:hover { text-decoration:underline; }
-        .like-btn { display:flex; align-items:center; gap:5px; background:none; border:1px solid rgba(231,76,60,.3); border-radius:20px; padding:4px 12px; color:var(--tg-theme-hint-color); font-size:13px; cursor:pointer; transition:all .2s; }
-        .like-btn.liked, .like-btn.liked .fa-heart { color:#e74c3c; border-color:rgba(231,76,60,.7); }
-        .private-badge { position:absolute; top:6px; left:6px; background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 6px; border-radius:4px; }
 
         /* ============== Profile redesign ============== */
         .profile-page {
@@ -354,37 +320,6 @@
         .empty-author i { font-size:40px; margin-bottom:12px; opacity:.5; }
         .empty-author p { font-size:14px; margin:0; }
 
-        .sub-tabs {
-            display: flex;
-            background: var(--tg-theme-secondary-bg-color);
-            border-radius: 10px;
-            padding: 3px;
-            margin: 12px 10px;
-            gap: 3px;
-        }
-        .sub-tabs button {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            background: transparent;
-            border-radius: 7px;
-            font-weight: 500;
-            font-size: 13px;
-            color: var(--tg-theme-hint-color);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .sub-tabs button.active {
-            background: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-        }
-        .verified-badge {
-            color: #1da1f2;
-            font-size: 13px;
-            margin-left: 4px;
-            vertical-align: middle;
-        }
     </style>
 </head>
 <body>
@@ -393,81 +328,94 @@
         <div v-if="currentView === 'selection'" class="selection-view">
             <div class="grid-container">
                 <!-- Sub tabs (Main / Community) -->
-                <div v-if="tab === 'characters' || tab === 'worlds'" class="sub-tabs">
-                    <button :class="{active: subTab[tab] === 'main'}" @click="setSubTab('main')">Главная</button>
-                    <button :class="{active: subTab[tab] === 'community'}" @click="setSubTab('community')">Сообщество</button>
+                <div v-if="tab === 'characters' || tab === 'worlds'" class="sub-tabs cc-segmented cc-selection-tabs">
+                    <button class="cc-segment" :class="{active: subTab[tab] === 'main'}" @click="setSubTab('main')">Главная</button>
+                    <button class="cc-segment" :class="{active: subTab[tab] === 'community'}" @click="setSubTab('community')">Сообщество</button>
                 </div>
 
                 <!-- Filters Characters -->
-                <div v-if="tab === 'characters'">
-                    <div class="filters">
-                        <select v-model="characterFilters.tag" @change="loadCharacters">
-                            <option :value="null">Теги</option>
-                            <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
-                        </select>
-                        <select v-model="characterFilters.style" @change="loadCharacters">
-                            <option :value="null">Стиль</option>
-                            <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ modelTypeLabel(style) }}</option>
-                        </select>
+                <div v-if="tab === 'characters'" class="cc-form-panel cc-filter-panel">
+                    <div class="cc-filter-grid cc-filter-grid--characters">
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="characterFilters.tag" @change="loadCharacters">
+                                <option :value="null">Теги</option>
+                                <option v-for="tag in filterOptions.tags" :key="tag" :value="tag">{{ tag }}</option>
+                            </select>
+                        </div>
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="characterFilters.style" @change="loadCharacters">
+                                <option :value="null">Стиль</option>
+                                <option v-for="style in filterOptions.styles" :key="style" :value="style">{{ modelTypeLabel(style) }}</option>
+                            </select>
+                        </div>
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="characterFilters.gender" @change="loadCharacters">
+                                <option :value="null">Пол</option>
+                                <option value="female">Женские</option>
+                                <option value="male">Мужские</option>
+                            </select>
+                        </div>
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="characterFilters.creator_type" @change="loadCharacters">
+                                <option :value="null">Автор</option>
+                                <option value="me">Мои</option>
+                                <option value="public">Сообщество</option>
+                            </select>
+                        </div>
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="characterFilters.nsfw" @change="loadCharacters">
+                                <option :value="null">NSFW</option>
+                                <option value="exclude">Без NSFW</option>
+                                <option value="only">Только NSFW</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="filters">
-                        <select v-model="characterFilters.gender" @change="loadCharacters">
-                            <option :value="null">Пол</option>
-                            <option value="female">Женские</option>
-                            <option value="male">Мужские</option>
-                        </select>
-                        <select v-model="characterFilters.creator_type" @change="loadCharacters">
-                            <option :value="null">Автор</option>
-                            <option value="me">Мои персонажи</option>
-                            <option value="public">Персонажи сообщества</option>
-                        </select>
-                        <select v-model="characterFilters.nsfw" @change="loadCharacters">
-                            <option :value="null">NSFW: все</option>
-                            <option value="exclude">Только SFW</option>
-                            <option value="only">Только NSFW</option>
-                        </select>
-                    </div>
-                    <div class="filters">
-                        <input type="text" v-model="characterFilters.author_search"
+                    <div class="cc-field cc-filter-search">
+                        <input type="text" class="cc-name-input cc-filter-input" v-model="characterFilters.author_search"
                                @input="debouncedLoadCharacters"
-                               placeholder="Поиск по автору..."
-                               style="flex:1; padding:8px 12px; border:1px solid var(--tg-theme-hint-color); border-radius:8px; background:var(--tg-theme-secondary-bg-color); color:var(--tg-theme-text-color); font-size:14px;">
+                               placeholder="Автор...">
                     </div>
                 </div>
 
 
 
                 <!-- Filters Worlds -->
-                <div v-if="tab === 'worlds'">
-                    <div class="filters">
-                        <select v-model="worldFilters.tag" @change="loadWorlds">
-                            <option :value="null">Теги</option>
-                            <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
-                        </select>
-                        <select v-model="worldFilters.creator_type" @change="loadWorlds">
-                            <option :value="null">Автор</option>
-                            <option value="me">Мои миры</option>
-                            <option value="public">Миры от сообщества</option>
-                        </select>
+                <div v-if="tab === 'worlds'" class="cc-form-panel cc-filter-panel">
+                    <div class="cc-filter-grid cc-filter-grid--worlds">
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="worldFilters.tag" @change="loadWorlds">
+                                <option :value="null">Теги</option>
+                                <option v-for="tag in filterOptions.worldTags" :key="tag" :value="tag">{{ tag }}</option>
+                            </select>
+                        </div>
+                        <div class="cc-field cc-filter-field">
+                            <select class="cc-filter-select cc-name-input" v-model="worldFilters.creator_type" @change="loadWorlds">
+                                <option :value="null">Автор</option>
+                                <option value="me">Мои</option>
+                                <option value="public">Сообщество</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="filters">
-                        <input type="text" v-model="worldFilters.author_search"
+                    <div class="cc-field cc-filter-search">
+                        <input type="text" class="cc-name-input cc-filter-input" v-model="worldFilters.author_search"
                                @input="debouncedLoadWorlds"
-                               placeholder="Поиск по автору..."
-                               style="flex:1; padding:8px 12px; border:1px solid var(--tg-theme-hint-color); border-radius:8px; background:var(--tg-theme-secondary-bg-color); color:var(--tg-theme-text-color); font-size:14px;">
+                               placeholder="Автор...">
                     </div>
                 </div>
 
                 <!-- Grid Characters -->
-                <div v-if="tab === 'characters'" class="grid">
-                    <div class="card" @click="createCharacterOnClick()">
+                <div v-if="tab === 'characters'" class="grid cc-library-grid">
+                    <div class="card cc-library-card cc-library-card--create" @click="createCharacterOnClick()">
                         <img src="/create-character-cover.png" loading="lazy">
                         <div class="card-title">
-                            Создать персонажа
+                            <div class="card-name-row">
+                                <i class="fas fa-plus-circle card-action-icon"></i>
+                                <span class="card-name">Создать</span>
+                            </div>
                         </div>
                     </div>
                     <div v-for="char in characters" :key="char.id"
-                         class="card"
+                         class="card cc-library-card"
                          :class="{revealed: isRevealed('card-'+char.id)}"
                          @click="shouldBlurCard(char) && !isRevealed('card-'+char.id) ? revealCard($event, char.id) : selectItem('character', char)">
                         <img :src="char.avatar"
@@ -475,10 +423,13 @@
                              :class="{'nsfw-blur': shouldBlurCard(char) && !isRevealed('card-'+char.id)}">
                         <span v-if="char.is_nsfw" class="nsfw-badge">NSFW</span>
                         <div v-if="shouldBlurCard(char) && !isRevealed('card-'+char.id)" class="nsfw-blur-overlay">
-                            <span class="click-hint">👁</span>
+                            <span class="click-hint"><i class="fas fa-eye"></i></span>
                         </div>
                         <div class="card-title">
-                            {{ char.name }}<i v-if="char.is_verified" class="fas fa-check-circle verified-badge"></i>
+                            <div class="card-name-row">
+                                <span class="card-name">{{ char.name }}</span>
+                                <i v-if="char.is_verified" class="fas fa-check-circle verified-badge"></i>
+                            </div>
                             <div v-if="char.short_description" class="card-subtitle">{{ char.short_description }}</div>
                             <div class="card-counters" v-if="char.message_count !== undefined || char.chat_count !== undefined || char.like_count !== undefined">
                                 <span class="card-counter"><i class="fas fa-comments"></i> {{ char.message_count ?? char.chat_count ?? 0 }}</span>
@@ -490,15 +441,18 @@
                 </div>
 
                 <!-- Grid Worlds -->
-                <div v-if="tab === 'worlds'" class="grid">
-                    <div class="card" @click="createWorldOnClick()">
+                <div v-if="tab === 'worlds'" class="grid cc-library-grid">
+                    <div class="card cc-library-card cc-library-card--create" @click="createWorldOnClick()">
                         <img src="/create-world-cover.png" loading="lazy">
                         <div class="card-title">
-                            Создать мир
+                            <div class="card-name-row">
+                                <i class="fas fa-plus-circle card-action-icon"></i>
+                                <span class="card-name">Создать</span>
+                            </div>
                         </div>
                     </div>
                     <div v-for="world in worlds" :key="world.id"
-                         class="card"
+                         class="card cc-library-card"
                          :class="{revealed: isRevealed('card-'+world.id)}"
                          @click="shouldBlurCard(world) && !isRevealed('card-'+world.id) ? revealCard($event, world.id) : selectItem('world', world)">
                         <img :src="world.cover_image"
@@ -506,10 +460,13 @@
                              :class="{'nsfw-blur': shouldBlurCard(world) && !isRevealed('card-'+world.id)}">
                         <span v-if="world.is_nsfw" class="nsfw-badge">NSFW</span>
                         <div v-if="shouldBlurCard(world) && !isRevealed('card-'+world.id)" class="nsfw-blur-overlay">
-                            <span class="click-hint">👁</span>
+                            <span class="click-hint"><i class="fas fa-eye"></i></span>
                         </div>
                         <div class="card-title">
-                            {{ world.name }}<i v-if="world.is_verified" class="fas fa-check-circle verified-badge"></i>
+                            <div class="card-name-row">
+                                <span class="card-name">{{ world.name }}</span>
+                                <i v-if="world.is_verified" class="fas fa-check-circle verified-badge"></i>
+                            </div>
                             <div v-if="world.short_description" class="card-subtitle">{{ world.short_description }}</div>
                             <div class="card-counters" v-if="world.message_count !== undefined || world.chat_count !== undefined">
                                 <span class="card-counter"><i class="fas fa-comments"></i> {{ world.message_count ?? world.chat_count ?? 0 }}</span>
@@ -518,7 +475,6 @@
                     </div>
                     <div v-if="worlds.length === 0" class="empty-state">Миры не найдены</div>
                 </div>
-
                 <!-- List Chats -->
                 <div v-if="tab === 'chats'" class="chats-list">
                     <div v-for="chat in activeChats" :key="chat.id"
@@ -554,7 +510,7 @@
         </div>
 
         <!-- View: Profile (own) -->
-        <div v-if="currentView === 'profile'" class="profile-page">
+        <div v-if="currentView === 'profile'" class="profile-page profile-shell">
             <div class="page-header">
                 <span class="page-icon-btn page-icon-btn--placeholder"></span>
                 <div class="page-header__title">Профиль</div>
@@ -600,15 +556,22 @@
                 </div>
 
                 <!-- Subscription -->
-                <div v-if="subscription">
+                <div v-if="subscription" class="profile-subscription">
                     <div class="section-header">Подписка</div>
-                    <div class="sub-card">
-                        <div class="sub-card__top">
+                    <div class="sub-card profile-sub-card">
+                        <div class="profile-sub-current">
                             <div>
-                                <div class="sub-card__plan">{{ subscription.plan_display_name }}</div>
-                                <div class="sub-card__date" v-if="subscription.subscription_end_date">
-                                    до {{ new Date(subscription.subscription_end_date).toLocaleDateString('ru-RU') }}
+                                <div class="profile-sub-eyebrow">Текущий план</div>
+                                <div class="profile-sub-title">{{ subscription.plan_display_name }}</div>
+                                <div class="profile-sub-date">
+                                    <template v-if="subscription.subscription_end_date">
+                                        до {{ new Date(subscription.subscription_end_date).toLocaleDateString('ru-RU') }}
+                                    </template>
+                                    <template v-else>
+                                        без срока
+                                    </template>
                                 </div>
+                                <div class="profile-sub-status">Активен</div>
                             </div>
                             <span class="plan-badge"
                                   :class="'plan-badge--' + (subscription.plan === 'free' ? 'free' : (subscription.plan === 'pro' ? 'pro' : 'plus'))">
@@ -616,71 +579,56 @@
                             </span>
                         </div>
 
-                        <template v-if="subscription.usage">
-                            <template v-for="(info, key) in subscription.usage" :key="key">
-                                <div v-if="key === 'messages_sent' && info.limit !== -1">
-                                    <div class="sub-card__usage-label">
-                                        <span>{{ usageLabels[key] || key }}</span>
-                                        <span>{{ info.used }} / {{ info.limit }}</span>
-                                    </div>
-                                    <div class="sub-bar">
-                                        <div class="sub-bar__fill"
-                                             :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"></div>
-                                    </div>
-                                </div>
-                            </template>
-                        </template>
-
-                        <button class="sub-toggle-btn" @click="showFullSubscription = !showFullSubscription">
-                            {{ showFullSubscription ? 'Свернуть' : 'Подробнее' }}
-                            <i class="fas" :class="showFullSubscription ? 'fa-chevron-up' : 'fa-chevron-down'" style="margin-left:4px;font-size:11px"></i>
+                        <button class="sub-toggle-btn profile-sub-toggle" type="button"
+                                @click="showFullSubscription = !showFullSubscription">
+                            <span>{{ showFullSubscription ? 'Свернуть' : 'Подробнее' }}</span>
+                            <i class="fas" :class="showFullSubscription ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                         </button>
 
-                        <div v-if="showFullSubscription" style="margin-top:14px;">
-                            <div class="usage-bars" v-if="subscription.usage">
-                                <div class="usage-bar-item" v-for="(info, key) in subscription.usage" :key="key" v-if="key !== 'messages_sent'">
-                                    <div class="usage-bar-header">
-                                        <span class="usage-bar-label">{{ usageLabels[key] || key }}</span>
-                                        <span class="usage-bar-count">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
-                                    </div>
-                                    <div class="usage-bar-track" v-if="info.limit !== -1">
-                                        <div class="usage-bar-fill" :style="{ width: Math.min(100, info.limit ? (info.used / info.limit * 100) : 0) + '%' }"
-                                             :class="{ 'usage-bar-warning': info.limit && info.used / info.limit > 0.8, 'usage-bar-full': info.limit && info.used >= info.limit }">
-                                        </div>
-                                    </div>
+                        <div v-if="showFullSubscription" class="profile-sub-details">
+                            <div class="profile-subsection-title">Лимиты сейчас</div>
+                            <div class="usage-bars profile-limit-list" v-if="subscription.usage">
+                                <div class="profile-limit-row" v-for="(info, key) in subscription.usage" :key="key">
+                                    <span class="profile-limit-label">{{ usageLabels[key] || key }}</span>
+                                    <span class="profile-limit-value">{{ info.limit === -1 ? 'Не ограничено' : (info.used + ' / ' + info.limit) }}</span>
                                 </div>
                             </div>
 
-                            <div class="plan-cards" v-if="availablePlans.length" style="margin-top:12px;">
-                                <div class="plan-card" v-for="p in availablePlans" :key="p.plan"
-                                     :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
-                                     @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
-                                    <div class="plan-card-name">{{ p.display_name }}</div>
-                                    <div class="plan-card-price" v-if="p.price_stars > 0">{{ p.platega_price_rub || p.price_rub }} ₽ / {{ p.price_stars }} ⭐ <span v-if="p.duration_days">/ {{ p.duration_days }}д</span></div>
-                                    <div class="plan-card-price" v-else>Бесплатно</div>
-                                    <div class="plan-card-current" v-if="p.plan === subscription.plan">Текущий</div>
-                                </div>
+                            <div class="profile-subsection-title" v-if="availablePlans.length">Выбрать тариф</div>
+                            <div class="plan-cards profile-plan-grid" v-if="availablePlans.length">
+                                <button class="plan-card profile-plan-card" type="button"
+                                        v-for="p in availablePlans" :key="p.plan"
+                                        :class="{ 'plan-card-active': p.plan === subscription.plan, 'plan-card-selected': p.plan === selectedPlanPreview }"
+                                        @click="selectedPlanPreview = selectedPlanPreview === p.plan ? null : p.plan">
+                                    <span class="profile-plan-name">{{ p.display_name }}</span>
+                                    <span class="profile-plan-price" v-if="p.price_stars > 0">
+                                        {{ p.platega_price_rub || p.price_rub }} ₽ / {{ p.price_stars }} ⭐
+                                    </span>
+                                    <span class="profile-plan-price" v-else>Бесплатно</span>
+                                    <span class="profile-plan-duration" v-if="p.duration_days">{{ p.duration_days }}д</span>
+                                    <span class="profile-plan-current" v-if="p.plan === subscription.plan">Текущий</span>
+                                </button>
                             </div>
 
-                            <div class="plan-preview" v-if="previewPlanData">
-                                <div class="plan-preview-title">{{ previewPlanData.display_name }} — лимиты:</div>
-                                <div class="plan-preview-limits">
-                                    <div class="plan-preview-row" v-for="(val, key) in previewPlanData.limits" :key="key">
-                                        <span class="plan-preview-label">{{ usageLabels[key] || key }}</span>
-                                        <span class="plan-preview-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
+                            <div class="plan-preview profile-plan-preview" v-if="previewPlanData">
+                                <div class="profile-subsection-title">{{ previewPlanData.display_name }} — лимиты</div>
+                                <div class="plan-preview-limits profile-limit-list">
+                                    <div class="profile-limit-row" v-for="(val, key) in previewPlanData.limits" :key="key">
+                                        <span class="profile-limit-label">{{ usageLabels[key] || key }}</span>
+                                        <span class="profile-limit-value">{{ val === -1 ? 'Не ограничено' : val }}</span>
                                     </div>
                                 </div>
-                                <div class="plan-preview-actions"
+                                <div class="profile-buy-actions"
                                      v-if="previewPlanData.plan !== subscription.plan && previewPlanData.plan !== 'free'">
-                                    <button class="plan-card-btn plan-preview-buy"
+                                    <button class="cc-btn cc-btn--primary" type="button"
                                             @click="purchasePlan(previewPlanData.plan, 'platega')">
                                         <i class="fas fa-credit-card"></i>
                                         Platega {{ previewPlanData.platega_price_rub || previewPlanData.price_rub }} ₽
                                     </button>
-                                    <button class="plan-card-btn plan-preview-buy plan-preview-buy-secondary"
+                                    <button class="cc-btn cc-btn--secondary" type="button"
                                             @click="purchasePlan(previewPlanData.plan, 'telegram_stars')">
                                         <i class="fas fa-star"></i>
-                                        Stars
+                                        Stars {{ previewPlanData.price_stars }} ⭐
                                     </button>
                                 </div>
                             </div>
@@ -702,7 +650,7 @@
                     <div class="list-row list-row--no-press">
                         <div class="list-row__icon"><i class="fas fa-user-pen"></i></div>
                         <span class="list-row__label">Никнейм</span>
-                        <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname" style="cursor:pointer">
+                        <div v-if="!isEditingNickname" class="nickname-display" @click="startEditNickname">
                             <span class="nickname-value">{{ profileSettings.nickname || 'Не задан' }}</span>
                             <i class="fas fa-pen nickname-edit-icon"></i>
                         </div>
@@ -971,404 +919,472 @@
         </div>
 
         <!-- View: Create Character -->
-        <div v-if="currentView === 'create-character'" class="create-character-view" @click="hideKeyboard">
-            <!-- Прогресс-бар -->
-            <div class="create-character-steps">
-                <div v-for="i in 4" :key="i" class="cc-step" :class="{ active: ccStep >= i - 1 }" @click="goToStep(i - 1)"></div>
+        <div v-if="currentView === 'create-character'" class="create-character-view cc-creator-view" @click="hideKeyboard">
+            <div class="cc-creator-header">
+                <div class="cc-creator-header__top">
+                    <div>
+                        <div class="cc-creator-kicker">Создание персонажа</div>
+                        <h2 class="cc-creator-title">{{ characterCreatorSteps[ccStep].title }}</h2>
+                    </div>
+                    <div class="cc-step-count">Шаг {{ ccStep + 1 }} из 4</div>
+                </div>
+                <div class="create-character-steps" aria-label="Прогресс создания персонажа">
+                    <button v-for="(step, idx) in characterCreatorSteps"
+                            :key="step.title"
+                            class="cc-step"
+                            :class="{ active: ccStep >= idx, current: ccStep === idx }"
+                            :aria-label="step.title"
+                            type="button"
+                            @click="goToStep(idx)"></button>
+                </div>
             </div>
 
             <div class="final-step-container">
 
                 <!-- Шаг 1: Имя и стиль -->
                 <div v-if="ccStep === 0">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Имя и стиль</h3>
-
+                    <section class="cc-form-panel">
                         <div class="cc-field">
-                            <label>Имя персонажа: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <label>Имя персонажа <span class="cc-required">*</span></label>
                             <input v-model="createCharacterData.name" type="text" class="cc-name-input" placeholder="Имя персонажа">
                         </div>
 
                         <div class="cc-field">
-                            <label>Пол: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'female' }" @click="setCreateCharacterGender('female')" style="flex: 1;">Женский</button>
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.gender !== 'male' }" @click="setCreateCharacterGender('male')" style="flex: 1;">Мужской</button>
-                            </div>
-                        </div>
-
-                        <div class="cc-field">
-                            <label>Стиль: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'anime' }" @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'anime')" :disabled="createCharacterData.custom_avatar" style="flex: 1;">Anime</button>
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'real' }" @click="createCharacterData.model_type = 'real'" style="flex: 1;">Real</button>
-                                <button v-if="createCharacterData.gender === 'male'" class="change-step-button" :class="{ secondary: createCharacterData.model_type !== 'manhwa' }" @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'manhwa')" :disabled="createCharacterData.custom_avatar" style="flex: 1;">Manhwa</button>
-                            </div>
-                            <div v-if="createCharacterData.gender !== 'male'" style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Manhwa доступен для мужских персонажей.</div>
-                        </div>
-
-                        <div class="cc-field">
-                            <label>Короткое описание (макс. 30 символов):</label>
-                            <input v-model="createCharacterData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
-                        </div>
-
-                        <div class="cc-field">
-                            <label>Теги:</label>
-                            <input v-model="createCharacterData.tags_str" type="text" class="cc-name-input" placeholder="anime, female, fantasy, romance">
-                            <div style="font-size: 11px; color: var(--tg-theme-hint-color); margin-top: 4px;">Через запятую: anime, female, fantasy...</div>
-                        </div>
-
-                        <div class="cc-field">
-                            <label>Аватар:</label>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = false; createCharacterData.identity_consent_confirmed = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }" style="flex: 1; font-size: 12px;">
-                                    <i class="fas fa-palette"></i> Сгенерировать
+                            <label>Пол <span class="cc-required">*</span></label>
+                            <div class="cc-segmented" role="group" aria-label="Пол персонажа">
+                                <button class="cc-segment"
+                                        :class="{ active: createCharacterData.gender === 'female' }"
+                                        @click="setCreateCharacterGender('female')"
+                                        type="button">
+                                    Женский
                                 </button>
-                                <button class="change-step-button" :class="{ secondary: !createCharacterData.custom_avatar }" @click="createCharacterData.custom_avatar = true; createCharacterData.model_type = 'real'; $refs.customAvatarInput.click()" style="flex: 1; font-size: 12px;">
-                                    <i class="fas fa-camera"></i> Загрузить фото
+                                <button class="cc-segment"
+                                        :class="{ active: createCharacterData.gender === 'male' }"
+                                        @click="setCreateCharacterGender('male')"
+                                        type="button">
+                                    Мужской
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Стиль <span class="cc-required">*</span></label>
+                            <div class="cc-segmented" role="group" aria-label="Стиль персонажа">
+                                <button class="cc-segment"
+                                        :class="{ active: createCharacterData.model_type === 'anime' }"
+                                        @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'anime')"
+                                        :disabled="createCharacterData.custom_avatar"
+                                        type="button">
+                                    Anime
+                                </button>
+                                <button class="cc-segment"
+                                        :class="{ active: createCharacterData.model_type === 'real' }"
+                                        @click="createCharacterData.model_type = 'real'"
+                                        type="button">
+                                    Real
+                                </button>
+                                <button v-if="createCharacterData.gender === 'male'"
+                                        class="cc-segment"
+                                        :class="{ active: createCharacterData.model_type === 'manhwa' }"
+                                        @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'manhwa')"
+                                        :disabled="createCharacterData.custom_avatar"
+                                        type="button">
+                                    Manhwa
+                                </button>
+                            </div>
+                            <div v-if="createCharacterData.gender !== 'male'" class="cc-helper">Manhwa доступен для мужских персонажей.</div>
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Описание карточки</label>
+                            <input v-model="createCharacterData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="До 30 символов">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Теги</label>
+                            <input v-model="createCharacterData.tags_str" type="text" class="cc-name-input" placeholder="anime, female, fantasy, romance">
+                        </div>
+
+                        <div class="cc-field">
+                            <label>Аватар</label>
+                            <div class="cc-upload-grid">
+                                <button class="cc-upload-card"
+                                        :class="{ active: !createCharacterData.custom_avatar }"
+                                        @click="createCharacterData.custom_avatar = false; createCharacterData.identity_consent_confirmed = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }"
+                                        type="button">
+                                    <span class="cc-upload-card__icon"><i class="fas fa-palette"></i></span>
+                                    <span class="cc-upload-card__title">Сгенерировать</span>
+                                </button>
+                                <button class="cc-upload-card"
+                                        :class="{ active: createCharacterData.custom_avatar }"
+                                        @click="createCharacterData.custom_avatar = true; createCharacterData.model_type = 'real'; $refs.customAvatarInput.click()"
+                                        type="button">
+                                    <span class="cc-upload-card__icon"><i class="fas fa-camera"></i></span>
+                                    <span class="cc-upload-card__title">Фото</span>
                                 </button>
                             </div>
                             <input type="file" ref="customAvatarInput" accept="image/jpeg,image/png,image/webp" style="display: none;" @change="handleCustomAvatarUpload($event)">
 
-                            <div v-if="createCharacterData.custom_avatar && newCharacterPreview" style="margin-top: 12px; text-align: center;">
-                                <img :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Custom avatar" style="width: 100px; height: 133px;">
-                                <div style="margin-top: 8px;">
-                                    <button class="change-step-button secondary" style="font-size: 12px; padding: 6px 12px;" @click="newCharacterPreview = null; createCharacterData.custom_avatar = false;">
-                                        <i class="fas fa-trash"></i> Удалить
-                                    </button>
-                                </div>
+                            <div v-if="createCharacterData.custom_avatar && newCharacterPreview" class="cc-inline-preview">
+                                <img :src="newCharacterPreview" class="cc-inline-preview__image" alt="Custom avatar">
+                                <button class="cc-icon-btn cc-icon-btn--danger" @click="newCharacterPreview = null; createCharacterData.custom_avatar = false;" type="button" aria-label="Удалить фото">
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </div>
-                            <div v-if="isUploadingAvatar" style="margin-top: 12px; text-align: center; color: var(--tg-theme-hint-color);">
+                            <div v-if="isUploadingAvatar" class="cc-inline-status">
                                 <div class="cc-spinner"></div>
                                 <span>Загрузка...</span>
                             </div>
                         </div>
-                    </div>
+                    </section>
                 </div>
 
                 <!-- Шаг 2: Описание и сценарий -->
                 <div v-if="ccStep === 1">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Описание и сценарий</h3>
-
+                    <section class="cc-form-panel">
                         <div class="cc-field">
-                            <label>Описание для AI: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createCharacterData.description" class="scenario-textarea" placeholder="Подробное описание персонажа для AI..."></textarea>
+                            <label>Описание для AI <span class="cc-required">*</span></label>
+                            <textarea v-model="createCharacterData.description" class="scenario-textarea cc-textarea" placeholder="Описание персонажа..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Характер для AI: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createCharacterData.personality" class="scenario-textarea" placeholder="Черты характера, модели поведения, стиль речи..."></textarea>
+                            <label>Характер для AI <span class="cc-required">*</span></label>
+                            <textarea v-model="createCharacterData.personality" class="scenario-textarea cc-textarea" placeholder="Характер, поведение, речь..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Сценарий: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createCharacterData.scenario" class="scenario-textarea" placeholder="Контекст или ситуация встречи..."></textarea>
+                            <label>Сценарий <span class="cc-required">*</span></label>
+                            <textarea v-model="createCharacterData.scenario" class="scenario-textarea cc-textarea" placeholder="Контекст или ситуация встречи..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Первое сообщение: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createCharacterData.first_message" class="scenario-textarea" placeholder="Первое сообщение персонажа игроку..."></textarea>
+                            <label>Первое сообщение <span class="cc-required">*</span></label>
+                            <textarea v-model="createCharacterData.first_message" class="scenario-textarea cc-textarea" placeholder="Первое сообщение..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Уровень откровенности:</label>
-                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                                <button v-for="hl in [{v:0,l:'🌱 Медленно'},{v:1,l:'💋 Флирт'},{v:2,l:'🔥 Быстро'},{v:3,l:'🔥🔥🔥 Сразу'}]"
+                            <label>Темп</label>
+                            <div class="cc-choice-grid cc-choice-grid--heat">
+                                <button v-for="hl in heatLevelOptions"
                                         :key="hl.v"
-                                        class="change-step-button"
-                                        :class="{ secondary: createCharacterData.heat_level !== hl.v }"
+                                        class="cc-choice-card"
+                                        :class="{ active: createCharacterData.heat_level === hl.v }"
                                         @click="createCharacterData.heat_level = hl.v"
-                                        type="button"
-                                        style="flex: 1; min-width: 70px; font-size: 12px; padding: 8px 4px;">
-                                    {{ hl.l }}
+                                        type="button">
+                                    <span class="cc-choice-card__icon"><i :class="hl.icon"></i></span>
+                                    <span class="cc-choice-card__title">{{ hl.l }}</span>
                                 </button>
                             </div>
                         </div>
 
                         <div class="cc-field">
-                            <label>Альтернативные сценарии:</label>
-                            <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" class="cc-wardrobe-item">
-                                <div class="cc-wardrobe-key-row">
-                                    <span style="font-size: 13px; color: var(--tg-theme-hint-color);">Сценарий {{ idx + 1 }}</span>
-                                    <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeAlternateGreeting(idx)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
+                            <label>Альтернативные сценарии</label>
+                            <div class="cc-repeat-list">
+                                <div v-for="(greeting, idx) in createCharacterData.alternate_greetings" :key="idx" class="cc-repeat-item">
+                                    <div class="cc-repeat-header">
+                                        <span>Сценарий {{ idx + 1 }}</span>
+                                        <button class="cc-icon-btn cc-icon-btn--danger" @click="removeAlternateGreeting(idx)" type="button" aria-label="Удалить сценарий">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                    <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea cc-textarea cc-textarea--compact" placeholder="Альтернативный сценарий..."></textarea>
                                 </div>
-                                <textarea v-model="createCharacterData.alternate_greetings[idx]" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Альтернативный сценарий..."></textarea>
                             </div>
-                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateGreeting">
+                            <button class="cc-add-btn" @click="addAlternateGreeting" type="button">
                                 <i class="fas fa-plus"></i> Добавить сценарий
                             </button>
                         </div>
-                    </div>
+                    </section>
                 </div>
 
                 <!-- Шаг 3: Внешность и аватар -->
                 <div v-if="ccStep === 2">
-                    <div class="cc-summary-section">
-                        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
-                            <h3 class="cc-summary-title" style="margin:0;">Внешность и аватар</h3>
-                            <button class="change-step-button secondary"
+                    <section class="cc-form-panel">
+                        <div class="cc-panel-header">
+                            <div>
+                                <h3 class="cc-summary-title">Внешность и аватар</h3>
+                            </div>
+                            <button class="cc-icon-text-btn"
                                     @click="openAppearanceInstruction"
-                                    style="padding:8px 10px; min-width:auto; font-size:12px; flex-shrink:0;">
-                                <i class="fas fa-file-pdf"></i> Инструкция заполнения
+                                    type="button">
+                                <i class="fas fa-file-pdf"></i> Инструкция
                             </button>
                         </div>
 
                         <template v-if="!createCharacterData.custom_avatar">
-                        <div class="cc-field">
-                            <label>Внешность (EN): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createCharacterData.appearance" class="scenario-textarea" placeholder="young woman, fair skin, delicate features..."></textarea>
-                        </div>
+                            <div class="cc-field">
+                                <label>Внешность (EN) <span class="cc-required">*</span></label>
+                                <textarea v-model="createCharacterData.appearance" class="scenario-textarea cc-textarea" placeholder="appearance tags..."></textarea>
+                            </div>
 
-                        <div class="cc-field">
-                            <label>Тело (EN):</label>
-                            <textarea v-model="createCharacterData.visual_body" class="scenario-textarea" placeholder="petite slender figure, slim waist..."></textarea>
-                        </div>
+                            <div class="cc-field">
+                                <label>Тело (EN)</label>
+                                <textarea v-model="createCharacterData.visual_body" class="scenario-textarea cc-textarea" placeholder="body tags..."></textarea>
+                            </div>
 
-                        <div class="cc-field">
-                            <label>Лицо (EN):</label>
-                            <textarea v-model="createCharacterData.visual_face" class="scenario-textarea" placeholder="bright green eyes, full lips, long red hair..."></textarea>
-                        </div>
+                            <div class="cc-field">
+                                <label>Лицо (EN)</label>
+                                <textarea v-model="createCharacterData.visual_face" class="scenario-textarea cc-textarea" placeholder="face tags..."></textarea>
+                            </div>
 
-                        <div class="cc-field">
-                            <label>Стандартный наряд (EN):</label>
-                            <textarea v-model="createCharacterData.visual_default_outfit" class="scenario-textarea" placeholder="casual outfit, jeans and top..."></textarea>
-                        </div>
+                            <div class="cc-field">
+                                <label>Стандартный наряд (EN)</label>
+                                <textarea v-model="createCharacterData.visual_default_outfit" class="scenario-textarea cc-textarea" placeholder="outfit tags..."></textarea>
+                            </div>
+
+                            <div class="cc-field">
+                                <label>Гардероб</label>
+                                <div class="cc-repeat-list">
+                                    <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" class="cc-repeat-item cc-repeat-item--inline">
+                                        <input v-model="createCharacterData.wardrobe[key]" class="cc-name-input" placeholder="Одежда (EN)">
+                                        <button class="cc-icon-btn cc-icon-btn--danger" @click="removeWardrobeItem(key)" type="button" aria-label="Удалить наряд">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <button class="cc-add-btn" @click="addWardrobeItem" type="button">
+                                    <i class="fas fa-plus"></i> Добавить наряд
+                                </button>
+                            </div>
+
+                            <div class="cc-media-well">
+                                <div v-if="isGeneratingPreview" class="cc-preview-loading">
+                                    <div class="cc-spinner"></div>
+                                    <span>Генерация аватара...</span>
+                                </div>
+                                <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="cc-preview-image" alt="Avatar">
+                                <div v-else class="cc-preview-placeholder">
+                                    <i class="fas fa-user-circle"></i>
+                                    <span>Аватар не сгенерирован</span>
+                                </div>
+
+                                <div v-if="generatedAvatars.length > 1" class="avatar-gallery">
+                                    <div v-for="(url, idx) in generatedAvatars" :key="idx"
+                                         class="avatar-thumb" :class="{ selected: idx === selectedAvatarIndex }"
+                                         @click="selectedAvatarIndex = idx; newCharacterPreview = url">
+                                        <img :src="url" alt="Avatar variant">
+                                    </div>
+                                </div>
+
+                                <button class="cc-btn cc-btn--generate" @click="generateNewCharacterPreview"
+                                        :disabled="isGeneratingPreview || !avatarGenerationAllowed"
+                                        type="button">
+                                    <i class="fas fa-image"></i>
+                                    <template v-if="isGeneratingPreview">Генерация...</template>
+                                    <template v-else-if="!avatarGenerationAllowed">Лимит исчерпан</template>
+                                    <template v-else>Сгенерировать аватар</template>
+                                </button>
+                                <div v-if="!avatarGenerationAllowed" class="cc-limit-hint">
+                                    Лимит генераций аватара исчерпан
+                                </div>
+                            </div>
                         </template>
 
                         <template v-else>
+                            <div class="cc-reference-card">
+                                <img v-if="newCharacterPreview" :src="newCharacterPreview" class="cc-reference-card__image" alt="Reference avatar">
+                                <div v-else class="cc-reference-card__placeholder">
+                                    <i class="fas fa-camera"></i>
+                                </div>
+                                <div class="cc-reference-card__body">
+                                    <div class="cc-reference-card__title">Фото</div>
+                                    <div class="cc-reference-card__text">{{ newCharacterPreview ? 'Загружено' : 'Не загружено' }}</div>
+                                </div>
+                            </div>
+
+                            <div class="cc-subsection-title">Конструктор</div>
+
                             <div class="cc-field">
-                                <label>Телосложение:</label>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <label>Телосложение</label>
+                                <div class="cc-chip-grid">
                                     <button v-for="opt in (createCharacterData.gender === 'male' ? maleBodyTypes : femaleBodyTypes)"
                                             :key="opt.v"
-                                            class="change-step-button"
-                                            :class="{ secondary: createCharacterData.body_profile.body_type !== opt.v }"
+                                            class="cc-chip"
+                                            :class="{ active: createCharacterData.body_profile.body_type === opt.v }"
                                             @click="createCharacterData.body_profile.body_type = opt.v"
-                                            type="button"
-                                            style="flex:1; min-width:86px; font-size:12px; padding:8px 4px;">
+                                            type="button">
                                         {{ opt.l }}
                                     </button>
                                 </div>
                             </div>
                             <div class="cc-field">
-                                <label>Рост:</label>
-                                <div style="display:flex; gap:6px;">
-                                    <button v-for="opt in heightOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.height !== opt.v }" @click="createCharacterData.body_profile.height = opt.v" type="button" style="flex:1; font-size:12px;">{{ opt.l }}</button>
+                                <label>Рост</label>
+                                <div class="cc-chip-grid cc-chip-grid--three">
+                                    <button v-for="opt in heightOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.height === opt.v }" @click="createCharacterData.body_profile.height = opt.v" type="button">{{ opt.l }}</button>
                                 </div>
                             </div>
                             <div v-if="createCharacterData.gender === 'female'" class="cc-field">
-                                <label>Грудь:</label>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button v-for="opt in breastSizeOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.breast_size !== opt.v }" @click="createCharacterData.body_profile.breast_size = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                <label>Грудь</label>
+                                <div class="cc-chip-grid">
+                                    <button v-for="opt in breastSizeOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.breast_size === opt.v }" @click="createCharacterData.body_profile.breast_size = opt.v" type="button">{{ opt.l }}</button>
                                 </div>
                             </div>
                             <div v-if="createCharacterData.gender === 'female'" class="cc-field">
-                                <label>Ягодицы:</label>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button v-for="opt in buttSizeOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.butt_size !== opt.v }" @click="createCharacterData.body_profile.butt_size = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                <label>Ягодицы</label>
+                                <div class="cc-chip-grid">
+                                    <button v-for="opt in buttSizeOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.butt_size === opt.v }" @click="createCharacterData.body_profile.butt_size = opt.v" type="button">{{ opt.l }}</button>
                                 </div>
                             </div>
                             <div class="cc-field">
-                                <label>Наряд:</label>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button v-for="opt in outfitPresetOptions" :key="opt.v" class="change-step-button" :class="{ secondary: createCharacterData.body_profile.outfit_preset !== opt.v }" @click="createCharacterData.body_profile.outfit_preset = opt.v" type="button" style="flex:1; min-width:76px; font-size:12px; padding:8px 4px;">{{ opt.l }}</button>
+                                <label>Наряд</label>
+                                <div class="cc-chip-grid">
+                                    <button v-for="opt in outfitPresetOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.outfit_preset === opt.v }" @click="createCharacterData.body_profile.outfit_preset = opt.v" type="button">{{ opt.l }}</button>
                                 </div>
                             </div>
                         </template>
-
-                        <!-- Гардероб -->
-                        <div v-if="!createCharacterData.custom_avatar" class="cc-field">
-                            <label>Гардероб:</label>
-                            <div v-for="(val, key) in createCharacterData.wardrobe" :key="key" class="cc-wardrobe-item">
-                                <div class="cc-wardrobe-key-row">
-                                    <input :value="key" @change="renameWardrobeKey(key, $event.target.value)" class="cc-name-input" placeholder="Ключ (casual, formal...)">
-                                    <button class="change-step-button secondary" style="padding: 8px 12px; min-width: auto; flex-shrink: 0;" @click="removeWardrobeItem(key)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                                <input v-model="createCharacterData.wardrobe[key]" class="cc-name-input" placeholder="Описание одежды (EN)">
-                            </div>
-                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addWardrobeItem">
-                                <i class="fas fa-plus"></i> Добавить наряд
-                            </button>
-                        </div>
-
-                        <!-- Аватар -->
-                        <div v-if="!createCharacterData.custom_avatar" class="cc-preview-section">
-                            <div v-if="isGeneratingPreview" class="cc-preview-loading">
-                                <div class="cc-spinner"></div>
-                                <span>Генерация аватара...</span>
-                            </div>
-                            <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Avatar">
-                            <div v-else class="cc-preview-placeholder">
-                                <i class="fas fa-user-circle"></i>
-                                <span>Аватар не сгенерирован</span>
-                            </div>
-
-                            <!-- Avatar Gallery -->
-                            <div v-if="generatedAvatars.length > 1" class="avatar-gallery">
-                                <div v-for="(url, idx) in generatedAvatars" :key="idx"
-                                     class="avatar-thumb" :class="{ selected: idx === selectedAvatarIndex }"
-                                     @click="selectedAvatarIndex = idx; newCharacterPreview = url">
-                                    <img :src="url" alt="Avatar variant">
-                                </div>
-                            </div>
-
-                            <button class="cc-generate-btn" @click="generateNewCharacterPreview"
-                                    :disabled="isGeneratingPreview || !avatarGenerationAllowed">
-                                <i class="fas fa-image"></i>
-                                <template v-if="isGeneratingPreview">Генерация...</template>
-                                <template v-else-if="!avatarGenerationAllowed">Лимит исчерпан</template>
-                                <template v-else>Сгенерировать аватар</template>
-                            </button>
-                            <div v-if="!avatarGenerationAllowed" class="cc-limit-hint">
-                                Лимит генераций аватара исчерпан
-                            </div>
-                        </div>
-                    </div>
+                    </section>
                 </div>
 
                 <!-- Шаг 4: Финал -->
                 <div v-if="ccStep === 3">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Финал</h3>
-
-                        <div v-if="newCharacterPreview" class="cc-preview-section" style="margin-top: 12px;">
-                            <img :src="newCharacterPreview" class="modal-character-image cc-preview-image" alt="Avatar" style="width: 100px; height: 133px;">
+                    <section class="cc-form-panel">
+                        <div class="cc-final-preview">
+                            <img v-if="newCharacterPreview" :src="newCharacterPreview" class="cc-final-preview__image" alt="Avatar">
+                            <div v-else class="cc-final-preview__placeholder">
+                                <i class="fas fa-user-circle"></i>
+                            </div>
+                            <div class="cc-final-preview__meta">
+                                <div class="cc-final-preview__name">{{ createCharacterData.name || 'Новый персонаж' }}</div>
+                                <div class="cc-final-preview__text">{{ createCharacterData.short_description || modelTypeLabel(createCharacterData.model_type) }}</div>
+                            </div>
                         </div>
 
-                        <div class="cc-form-group" style="margin-top: 16px;">
-                            <label class="cc-input-label">Видимость</label>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: !createCharacterData.is_public }" @click="createCharacterData.is_public = true" style="flex: 1;">Публичный</button>
-                                <button class="change-step-button" :class="{ secondary: createCharacterData.is_public }" @click="createCharacterData.is_public = false" style="flex: 1;">Скрытый</button>
+                        <div class="cc-field">
+                            <label>Видимость</label>
+                            <div class="cc-segmented" role="group" aria-label="Видимость персонажа">
+                                <button class="cc-segment" :class="{ active: createCharacterData.is_public }" @click="createCharacterData.is_public = true" type="button">Публичный</button>
+                                <button class="cc-segment" :class="{ active: !createCharacterData.is_public }" @click="createCharacterData.is_public = false" type="button">Скрытый</button>
                             </div>
-                            <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 6px;">
+                            <div class="cc-helper">
                                 {{ createCharacterData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
                             </div>
                         </div>
 
-                        <label v-if="createCharacterData.custom_avatar" style="display:flex; gap:10px; align-items:flex-start; margin:16px 0; font-size:13px; color:var(--tg-theme-text-color);">
-                            <input type="checkbox" v-model="createCharacterData.identity_consent_confirmed" style="margin-top:2px;">
-                            <span>Я подтверждаю согласие на использование загруженного фото для создания identity reference и генерации фото персонажа.</span>
+                        <label v-if="createCharacterData.custom_avatar" class="cc-consent-row">
+                            <input type="checkbox" v-model="createCharacterData.identity_consent_confirmed">
+                            <span>Согласен использовать фото для генерации персонажа.</span>
                         </label>
-
-                        <button
-                            class="create-character-final-btn"
-                            @click="createCharacterFinal"
-                            :disabled="isCreatingCharacter"
-                        >
-                            <i class="fas fa-check"></i>
-                            {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
-                        </button>
-                    </div>
+                    </section>
                 </div>
             </div>
 
             <!-- Навигация -->
             <div class="cc-navigation">
-                <button class="change-step-button" @click="ccNextStep" v-if="ccStep < 3">Далее</button>
-                <button class="change-step-button secondary" @click="ccPrevStep">Назад</button>
+                <button v-if="ccStep < 3" class="cc-btn cc-btn--primary" @click="ccNextStep" type="button">Далее</button>
+                <button v-else
+                        class="cc-btn cc-btn--final"
+                        @click="createCharacterFinal"
+                        :disabled="isCreatingCharacter"
+                        type="button">
+                    <i class="fas fa-check"></i>
+                    {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
+                </button>
+                <button class="cc-btn cc-btn--secondary" @click="ccPrevStep" type="button">Назад</button>
             </div>
         </div>
 
         <!-- View: Create World -->
-        <div v-if="currentView === 'create-world'" class="create-character-view" @click="hideKeyboard">
-            <!-- Прогресс-бар -->
-            <div class="create-character-steps">
-                <div v-for="i in 3" :key="i" class="cc-step" :class="{ active: cwStep >= i - 1 }" @click="cwGoToStep(i - 1)"></div>
+        <div v-if="currentView === 'create-world'" class="create-character-view cc-creator-view" @click="hideKeyboard">
+            <div class="cc-creator-header">
+                <div class="cc-creator-header__top">
+                    <div>
+                        <div class="cc-creator-kicker">Создание мира</div>
+                        <h2 class="cc-creator-title">{{ worldCreatorSteps[cwStep].title }}</h2>
+                    </div>
+                    <div class="cc-step-count">Шаг {{ cwStep + 1 }} из 3</div>
+                </div>
+                <div class="create-character-steps" aria-label="Прогресс создания мира">
+                    <button v-for="(step, idx) in worldCreatorSteps"
+                            :key="step.title"
+                            class="cc-step"
+                            :class="{ active: cwStep >= idx, current: cwStep === idx }"
+                            :aria-label="step.title"
+                            type="button"
+                            @click="cwGoToStep(idx)"></button>
+                </div>
             </div>
 
             <div class="final-step-container">
-
-                <!-- Шаг 1: Название и описание -->
                 <div v-if="cwStep === 0">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Название и описание</h3>
-
+                    <section class="cc-form-panel">
                         <div class="cc-field">
-                            <label>Название мира: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
+                            <label>Название мира <span class="cc-required">*</span></label>
                             <input v-model="createWorldData.name" type="text" class="cc-name-input" placeholder="Название мира">
                         </div>
 
                         <div class="cc-field">
-                            <label>Короткое описание (макс. 30 символов):</label>
-                            <input v-model="createWorldData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="Краткое описание для карточки">
+                            <label>Описание карточки</label>
+                            <input v-model="createWorldData.short_description" type="text" class="cc-name-input" maxlength="30" placeholder="До 30 символов">
                         </div>
 
                         <div class="cc-field">
-                            <label>Описание (используется в AI промпте): <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createWorldData.description" class="scenario-textarea" placeholder="Подробное описание мира для AI..."></textarea>
+                            <label>Описание для AI <span class="cc-required">*</span></label>
+                            <textarea v-model="createWorldData.description" class="scenario-textarea cc-textarea" placeholder="Описание мира..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Инструкции для ГМ:</label>
-                            <textarea v-model="createWorldData.gm_instructions" class="scenario-textarea" placeholder="Инструкции для AI о том, как вести этот мир..."></textarea>
+                            <label>Инструкции ГМ</label>
+                            <textarea v-model="createWorldData.gm_instructions" class="scenario-textarea cc-textarea" placeholder="Как вести мир..."></textarea>
                         </div>
-                    </div>
+                    </section>
                 </div>
 
-                <!-- Шаг 2: Сценарий и введение -->
                 <div v-if="cwStep === 1">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Сценарий и введение</h3>
-
+                    <section class="cc-form-panel">
                         <div class="cc-field">
-                            <label>Название основного сценария:</label>
+                            <label>Основной сценарий</label>
                             <input v-model="createWorldData.main_scenario_title" type="text" class="cc-name-input" placeholder="Основной">
                         </div>
 
                         <div class="cc-field">
-                            <label>Стартовое сообщение основного сценария: <span style="color: var(--tg-theme-destructive-text-color);">*</span></label>
-                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea" placeholder="Сообщение, которое игрок увидит при входе в основной сценарий..."></textarea>
+                            <label>Первое сообщение <span class="cc-required">*</span></label>
+                            <textarea v-model="createWorldData.intro_message" class="scenario-textarea cc-textarea" placeholder="Первое сообщение..."></textarea>
                         </div>
 
                         <div class="cc-field">
-                            <label>Альтернативные сценарии:</label>
-                            <div v-for="(alt, idx) in createWorldData.alternate_scenarios" :key="idx" style="margin-bottom: 16px; padding: 12px; background: var(--tg-theme-secondary-bg-color); border-radius: 8px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                    <strong style="font-size: 13px; color: var(--tg-theme-hint-color);">Сценарий {{ idx + 1 }}</strong>
-                                    <button class="change-step-button secondary" style="padding: 4px 10px; min-width: auto; font-size: 12px;" @click="removeAlternateScenario(idx)">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                                <div class="cc-field" style="margin-bottom: 8px;">
-                                    <label style="font-size: 13px;">Название:</label>
-                                    <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название сценария">
-                                </div>
-                                <div class="cc-field" style="margin-bottom: 8px;">
-                                    <label style="font-size: 13px;">Стартовое сообщение:</label>
-                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Сообщение, которое игрок увидит при входе в этот сценарий..."></textarea>
-                                </div>
-                                <div class="cc-field">
-                                    <label style="font-size: 13px;">Инструкции для ГМ:</label>
-                                    <textarea v-model="createWorldData.alternate_scenarios[idx].gm_instructions" class="scenario-textarea" style="margin-bottom: 0;" placeholder="Инструкции ГМ для этого сценария..."></textarea>
+                            <label>Альтернативные сценарии</label>
+                            <div class="cc-repeat-list">
+                                <div v-for="(alt, idx) in createWorldData.alternate_scenarios" :key="idx" class="cc-repeat-item cc-repeat-item--scenario">
+                                    <div class="cc-repeat-header">
+                                        <span>Сценарий {{ idx + 1 }}</span>
+                                        <button class="cc-icon-btn cc-icon-btn--danger" @click="removeAlternateScenario(idx)" type="button" aria-label="Удалить сценарий">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                    <input v-model="createWorldData.alternate_scenarios[idx].title" type="text" class="cc-name-input" placeholder="Название">
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].intro" class="scenario-textarea cc-textarea cc-textarea--compact" placeholder="Первое сообщение"></textarea>
+                                    <textarea v-model="createWorldData.alternate_scenarios[idx].gm_instructions" class="scenario-textarea cc-textarea cc-textarea--compact" placeholder="Инструкции ГМ"></textarea>
                                 </div>
                             </div>
-                            <button class="cc-generate-btn" style="margin-top: 4px;" @click="addAlternateScenario">
+                            <button class="cc-add-btn" @click="addAlternateScenario" type="button">
                                 <i class="fas fa-plus"></i> Добавить сценарий
                             </button>
                         </div>
-                    </div>
+                    </section>
                 </div>
 
-                <!-- Шаг 3: Обложка, теги и финал -->
                 <div v-if="cwStep === 2">
-                    <div class="cc-summary-section">
-                        <h3 class="cc-summary-title">Обложка и финал</h3>
-
+                    <section class="cc-form-panel">
                         <div class="cc-field">
-                            <label>Обложка мира:</label>
-                            <button class="change-step-button"
-                                    :disabled="isUploadingWorldCover"
-                                    @click="$refs.worldCoverInput.click()"
-                                    style="width: 100%; font-size: 13px;">
-                                <i :class="isUploadingWorldCover ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
-                                {{ isUploadingWorldCover ? 'Загружаю...' : (createWorldData.cover_image_url ? 'Заменить фото' : 'Загрузить фото') }}
-                            </button>
+                            <label>Обложка</label>
+                            <div class="cc-media-well">
+                                <div v-if="isUploadingWorldCover" class="cc-preview-loading">
+                                    <div class="cc-spinner"></div>
+                                    <span>Загрузка обложки...</span>
+                                </div>
+                                <img v-else-if="createWorldData.cover_image_url" :src="createWorldData.cover_image_url" class="cc-preview-image cc-preview-image--cover" alt="Cover">
+                                <div v-else class="cc-preview-placeholder cc-preview-placeholder--cover">
+                                    <i class="fas fa-image"></i>
+                                    <span>Обложка не загружена</span>
+                                </div>
+                                <button class="cc-btn cc-btn--primary"
+                                        :disabled="isUploadingWorldCover"
+                                        @click="$refs.worldCoverInput.click()"
+                                        type="button">
+                                    <i class="fas fa-image"></i>
+                                    {{ isUploadingWorldCover ? 'Загружаю...' : (createWorldData.cover_image_url ? 'Заменить фото' : 'Загрузить фото') }}
+                                </button>
+                            </div>
                             <input type="file"
                                    ref="worldCoverInput"
                                    accept="image/jpeg,image/png,image/webp"
@@ -1376,49 +1392,42 @@
                                    @change="handleWorldCoverUpload($event)">
                         </div>
 
-                        <div v-if="createWorldData.cover_image_url" class="cc-preview-section" style="margin-top: 8px; margin-bottom: 16px;">
-                            <img :src="createWorldData.cover_image_url" class="modal-character-image cc-preview-image" alt="Cover" style="width: 200px; height: auto; max-height: 200px; object-fit: cover;">
-                        </div>
-
                         <div class="cc-field">
-                            <label>Теги (через запятую):</label>
+                            <label>Теги</label>
                             <input v-model="createWorldData.tags_str" type="text" class="cc-name-input" placeholder="fantasy, medieval, adventure">
                         </div>
 
                         <div class="cc-field">
-                            <label>Видимость:</label>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="change-step-button" :class="{ secondary: !createWorldData.is_public }" @click="createWorldData.is_public = true" style="flex: 1;">Публичный</button>
-                                <button class="change-step-button" :class="{ secondary: createWorldData.is_public }" @click="createWorldData.is_public = false" style="flex: 1;">Скрытый</button>
+                            <label>Видимость</label>
+                            <div class="cc-segmented" role="group" aria-label="Видимость мира">
+                                <button class="cc-segment" :class="{ active: createWorldData.is_public }" @click="createWorldData.is_public = true" type="button">Публичный</button>
+                                <button class="cc-segment" :class="{ active: !createWorldData.is_public }" @click="createWorldData.is_public = false" type="button">Скрытый</button>
                             </div>
-                            <div style="font-size: 12px; color: var(--tg-theme-hint-color); margin-top: 6px;">
+                            <div class="cc-helper">
                                 {{ createWorldData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
                             </div>
                         </div>
-
-                        <button
-                            class="create-character-final-btn"
-                            @click="createWorldFinal"
-                            :disabled="isCreatingWorld"
-                            style="margin-top: 16px;"
-                        >
-                            <i class="fas fa-check"></i>
-                            {{ isCreatingWorld ? (editingWorldId ? 'Сохранение...' : 'Создание...') : (editingWorldId ? 'Сохранить' : 'Создать мир') }}
-                        </button>
-                    </div>
+                    </section>
                 </div>
             </div>
 
-            <!-- Навигация -->
             <div class="cc-navigation">
-                <button class="change-step-button" @click="cwNextStep" v-if="cwStep < 2">Далее</button>
-                <button class="change-step-button secondary" @click="cwPrevStep">Назад</button>
+                <button v-if="cwStep < 2" class="cc-btn cc-btn--primary" @click="cwNextStep" type="button">Далее</button>
+                <button v-else
+                        class="cc-btn cc-btn--final"
+                        @click="createWorldFinal"
+                        :disabled="isCreatingWorld"
+                        type="button">
+                    <i class="fas fa-check"></i>
+                    {{ isCreatingWorld ? (editingWorldId ? 'Сохранение...' : 'Создание...') : (editingWorldId ? 'Сохранить' : 'Создать мир') }}
+                </button>
+                <button class="cc-btn cc-btn--secondary" @click="cwPrevStep" type="button">Назад</button>
             </div>
         </div>
 
         <!-- Modal: Scenario Selection -->
-        <div v-if="showScenarioModal" class="modal-overlay" @click.self="closeModal">
-            <div class="modal-content">
+        <div v-if="showScenarioModal" class="modal-overlay cc-detail-overlay" @click.self="closeModal">
+            <div class="modal-content cc-detail-modal">
                 <button class="modal-close" @click="closeModal">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1430,20 +1439,21 @@
                 </div>
 
                 <!-- Content -->
-                <div v-else-if="selectedCharacter" class="modal-body">
-                    <div class="modal-character-header">
+                <div v-else-if="selectedCharacter" class="modal-body cc-detail-body">
+                    <div class="modal-character-header cc-detail-hero">
                         <!-- FIX: Use avatar OR cover_image -->
-                        <img :src="selectedCharacter.avatar || selectedCharacter.cover_image" class="modal-character-image" alt="Cover">
-                        <div class="modal-character-info">
+                        <div class="cc-media-well cc-detail-media">
+                            <img :src="selectedCharacter.avatar || selectedCharacter.cover_image" class="modal-character-image cc-preview-image" alt="Cover">
+                        </div>
+                        <div class="modal-character-info cc-detail-info">
                             <h2>{{ selectedCharacter.name }}</h2>
                             <!-- Author Info -->
                             <div class="modal-author-row" v-if="selectedCharacter.author">
                                 <span class="modal-author-link"
-                                      @click="openAuthorProfileFromCard(selectedCharacter.author)"
-                                      style="cursor:pointer">
+                                      @click="openAuthorProfileFromCard(selectedCharacter.author)">
                                     Made by {{ selectedCharacter.author.display_name }}
                                 </span>
-                                <button class="like-btn" v-if="selectedCharacter.type === 'character'"
+                                <button class="like-btn cc-detail-like" v-if="selectedCharacter.type === 'character'"
                                         @click.stop="toggleLike" :disabled="isLiking"
                                         :class="{ liked: selectedCharacter.is_liked }">
                                     <i class="fas fa-heart"></i> {{ selectedCharacter.like_count || 0 }}
@@ -1454,39 +1464,41 @@
                     </div>
 
                     <!-- Tags + Delete -->
-                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
-                        <div class="modal-tags" v-if="selectedCharacter.tags" style="flex:1; margin:0;">
-                            <span class="tag-badge" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
+                    <div class="cc-detail-meta-row">
+                        <div class="modal-tags cc-detail-tags" v-if="selectedCharacter.tags && selectedCharacter.tags.length">
+                            <span class="cc-static-tag" v-for="tag in selectedCharacter.tags" :key="tag">{{ tag }}</span>
                         </div>
                         <div v-if="selectedCharacter.author && selectedCharacter.author.user_id == userId"
-                             style="display:flex; gap:6px; flex-shrink:0;">
+                             class="cc-detail-actions">
                             <button @click="selectedCharacter.type === 'character' ? editCharacterOnClick(selectedCharacter.id) : editWorldOnClick(selectedCharacter.id)"
-                                    style="background:#3498db; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                    class="cc-btn cc-btn--secondary cc-detail-action-btn">
+                                <i class="fas fa-pen"></i>
                                 Редактировать
                             </button>
                             <button @click="selectedCharacter.type === 'character' ? deleteCharacter(selectedCharacter.id) : deleteWorld(selectedCharacter.id)"
-                                    style="background:#e74c3c; color:#fff; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:13px; white-space:nowrap;">
+                                    class="cc-btn cc-btn--secondary cc-detail-action-btn cc-detail-action-btn--danger">
+                                <i class="fas fa-trash"></i>
                                 Удалить
                             </button>
                         </div>
                     </div>
 
-                    <div class="modal-scenarios">
-                        <h3>{{ selectedCharacter.type === 'character' ? 'Выберите сценарий:' : 'Начало истории:' }}</h3>
+                    <div class="modal-scenarios cc-detail-scenarios">
+                        <h3>{{ selectedCharacter.type === 'character' ? 'Сценарии' : 'Начало истории' }}</h3>
 
                         <!-- List Scenarios -->
                         <div v-for="scenario in (selectedCharacter.scenarios || [])" :key="scenario.index"
-                             class="scenario-card"
+                             class="scenario-card cc-repeat-item cc-repeat-item--scenario cc-detail-scenario"
                              @click="startChatWithScenario(scenario.index)">
-                            <div class="scenario-header">
+                            <div class="scenario-header cc-repeat-header">
                                 <span class="scenario-icon">
-                                    {{ scenario.index === 0 ? '🎬' : '🔀' }}
+                                    <i :class="scenario.index === 0 ? 'fas fa-clapperboard' : 'fas fa-shuffle'"></i>
                                 </span>
                                 <span class="scenario-name">{{ scenario.name }}</span>
                                 <span v-if="scenario.heat_level >= 1"
                                       class="scenario-heat-badge"
                                       :class="'heat-' + scenario.heat_level">
-                                    {{ scenario.heat_level === 1 ? '💋 Флирт' : scenario.heat_level === 2 ? '🔥 Быстро' : '🔥🔥🔥 Сразу' }}
+                                    {{ scenario.heat_level === 1 ? 'Флирт' : scenario.heat_level === 2 ? 'Быстро' : 'Сразу' }}
                                 </span>
                                 <span v-if="existingChatsForCharacter.some(c => c.scenario_index === scenario.index)"
                                       class="scenario-existing-badge">чат уже есть</span>
@@ -1496,10 +1508,10 @@
 
                         <!-- Fallback for World without explicit scenarios -->
                         <div v-if="selectedCharacter.type === 'world' && (!selectedCharacter.scenarios || selectedCharacter.scenarios.length === 0)"
-                             class="scenario-card"
+                             class="scenario-card cc-repeat-item cc-repeat-item--scenario cc-detail-scenario"
                              @click="startChatWithScenario(0)">
-                             <div class="scenario-header">
-                                <span class="scenario-icon">🌍</span>
+                             <div class="scenario-header cc-repeat-header">
+                                <span class="scenario-icon"><i class="fas fa-globe"></i></span>
                                 <span class="scenario-name">Начать приключение</span>
                             </div>
                         </div>
@@ -1556,19 +1568,22 @@
         <!-- Modal: Author Profile -->
         <!-- 18+ Age Confirmation Overlay -->
         <div v-if="showAgeConfirmation" class="age-confirmation-overlay">
-            <div class="age-confirmation-card">
-                <div class="age-badge">18+</div>
-                <h2>Подтверждение возраста</h2>
-                <p>Данное приложение содержит контент, предназначенный исключительно для лиц старше 18 лет.</p>
-                <p>Продолжая использование, вы подтверждаете, что вам исполнилось 18 лет и вы соглашаетесь с условиями:</p>
-                <div class="age-doc-links">
-                    <span class="age-doc-link" @click="openDocument('privacy')">Политика конфиденциальности</span>
-                    <span class="age-doc-link" @click="openDocument('terms')">Пользовательское соглашение</span>
+            <div class="age-confirmation-card cc-form-panel">
+                <div class="age-badge">
+                    <i class="fas fa-shield-halved"></i>
+                    <span>18+</span>
                 </div>
-                <button class="age-confirm-btn" @click="confirmAge" :disabled="isConfirmingAge">
+                <h2>Подтвердите возраст</h2>
+                <p>Контент приложения предназначен для пользователей старше 18 лет.</p>
+                <p>Продолжая, вы подтверждаете возраст и соглашаетесь с документами.</p>
+                <div class="age-doc-links">
+                    <button class="age-doc-link" @click="openDocument('privacy')" type="button">Политика</button>
+                    <button class="age-doc-link" @click="openDocument('terms')" type="button">Условия</button>
+                </div>
+                <button class="cc-btn cc-btn--primary age-confirm-btn" @click="confirmAge" :disabled="isConfirmingAge" type="button">
                     {{ isConfirmingAge ? 'Подтверждение...' : 'Мне есть 18 лет' }}
                 </button>
-                <button class="age-decline-btn" @click="declineAge">Мне нет 18 лет</button>
+                <button class="cc-btn cc-btn--secondary age-decline-btn" @click="declineAge" type="button">Мне нет 18 лет</button>
             </div>
         </div>
 
@@ -1660,6 +1675,18 @@
                     { v: 'casual', l: 'Casual' }, { v: 'elegant', l: 'Elegant' },
                     { v: 'sporty', l: 'Sporty' }, { v: 'home', l: 'Home' },
                 ];
+                const characterCreatorSteps = [
+                    { title: 'Имя и стиль' },
+                    { title: 'Описание и сценарий' },
+                    { title: 'Внешность и аватар' },
+                    { title: 'Финал' },
+                ];
+                const heatLevelOptions = [
+                    { v: 0, l: 'Медленно', text: 'Плавное развитие', icon: 'fas fa-seedling' },
+                    { v: 1, l: 'Флирт', text: 'Легкая романтика', icon: 'fas fa-heart' },
+                    { v: 2, l: 'Быстро', text: 'Активный темп', icon: 'fas fa-bolt' },
+                    { v: 3, l: 'Сразу', text: 'Максимальный темп', icon: 'fas fa-fire' },
+                ];
                 const createCharacterData = ref(defaultCreateCharacterData());
                 const newCharacterPreview = ref(null);
                 const generatedAvatars = ref([]);
@@ -1677,6 +1704,11 @@
                     cover_image_url: '', tags_str: '',
                     is_public: true,
                 });
+                const worldCreatorSteps = [
+                    { title: 'Название и описание' },
+                    { title: 'Сценарий и введение' },
+                    { title: 'Обложка и финал' },
+                ];
                 const createWorldData = ref(defaultCreateWorldData());
                 const cwStep = ref(0);
                 const editingWorldId = ref(null);
@@ -3793,6 +3825,7 @@
                     generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenerationAllowed,
                     modelTypeLabel, setCreateCharacterGender,
                     femaleBodyTypes, maleBodyTypes, heightOptions, breastSizeOptions, buttSizeOptions, outfitPresetOptions,
+                    characterCreatorSteps, heatLevelOptions,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     handleCustomAvatarUpload, isUploadingAvatar, customAvatarInput,
                     addAlternateGreeting, removeAlternateGreeting,
@@ -3800,7 +3833,7 @@
                     isCreatingCharacter, createCharacterFinal,
                     // World creation
                     createWorldOnClick, editWorldOnClick, deleteWorld, editingWorldId, createWorldData,
-                    cwStep, cwNextStep, cwPrevStep, cwGoToStep,
+                    worldCreatorSteps, cwStep, cwNextStep, cwPrevStep, cwGoToStep,
                     addAlternateScenario, removeAlternateScenario,
                     handleWorldCoverUpload, isUploadingWorldCover, worldCoverInput,
                     isCreatingWorld, createWorldFinal,

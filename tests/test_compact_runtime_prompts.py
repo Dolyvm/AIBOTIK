@@ -278,3 +278,82 @@ def test_sync_compact_updates_only_whitelisted_prompts(monkeypatch):
     assert image_prompt.content == "old image"
     assert cleared["value"] is True
     assert cached == {"common_style_guide": "new compact"}
+
+
+def test_sync_image_safety_updates_only_image_safety_prompts(monkeypatch):
+    import scripts.init_prompts as init_prompts_module
+
+    scene_prompt = types.SimpleNamespace(key="scene_analyzer_prompt", content="old scene")
+    nsfw_prompt = types.SimpleNamespace(key="nsfw_level_2", content="old nsfw")
+    image_prompt = types.SimpleNamespace(key="anime_base_positive", content="old image")
+
+    class FakeResult:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return [scene_prompt, nsfw_prompt, image_prompt]
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def execute(self, _statement):
+            return FakeResult()
+
+        def add(self, _prompt):
+            raise AssertionError("test data should not create prompts")
+
+        async def commit(self):
+            self.committed = True
+
+    cleared = {"value": False}
+    cached = {}
+
+    async def fake_clear_cache():
+        cleared["value"] = True
+
+    class FakeCache:
+        async def set_prompt(self, key, content):
+            cached[key] = content
+
+    monkeypatch.setattr(
+        init_prompts_module,
+        "DEFAULT_PROMPTS",
+        {
+            "scene_analyzer_prompt": "new scene",
+            "nsfw_level_2": "new nsfw",
+            "anime_base_positive": "new image",
+        },
+    )
+    monkeypatch.setattr(
+        init_prompts_module,
+        "PROMPT_METADATA",
+        {
+            "scene_analyzer_prompt": {"category": "scene_analysis", "name": "Scene"},
+            "nsfw_level_2": {"category": "image", "name": "NSFW2"},
+            "anime_base_positive": {"category": "image", "name": "Anime"},
+        },
+    )
+    monkeypatch.setattr(
+        init_prompts_module,
+        "IMAGE_SAFETY_PROMPT_KEYS",
+        frozenset({"scene_analyzer_prompt", "nsfw_level_2"}),
+    )
+    monkeypatch.setattr(init_prompts_module, "get_session", lambda: FakeSession())
+    monkeypatch.setattr(init_prompts_module, "clear_cache", fake_clear_cache)
+    monkeypatch.setattr(init_prompts_module, "get_cache", lambda: FakeCache())
+
+    asyncio.run(init_prompts_module.init_prompts(sync_image_safety=True))
+
+    assert scene_prompt.content == "new scene"
+    assert nsfw_prompt.content == "new nsfw"
+    assert image_prompt.content == "old image"
+    assert cleared["value"] is True
+    assert cached == {
+        "scene_analyzer_prompt": "new scene",
+        "nsfw_level_2": "new nsfw",
+    }
