@@ -1028,8 +1028,8 @@ DEFAULT_PROMPTS = {
     "nsfw_level_1_neg": "nudity, sexual act",
     "nsfw_level_2": "sensual clothed pose, teasing expression, fully clothed, fitted opaque outfit, covered styling",
     "nsfw_level_2_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration",
-    "nsfw_level_3": "nsfw, taking off her clothes, showing her nude tits, aroused, bottomless",
-    "nsfw_level_3_neg": "penetration, explicit sex",
+    "nsfw_level_3": "partial nudity, topless or shirtless, exposed chest, suggestive pose, aroused expression",
+    "nsfw_level_3_neg": "fully nude, visible genitals, penetration, explicit sex",
     "nsfw_level_4": "nsfw, naked body, nude pussy, aroused",
     "nsfw_level_4_neg": "general, clothes",
     "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
@@ -1092,6 +1092,13 @@ COMPACT_RUNTIME_PROMPT_KEYS = frozenset({
     "scene_analyzer_prompt",
     "scene_analyzer_prompt_sfw",
 })
+
+IMAGE_SAFETY_PROMPT_KEYS = frozenset(
+    key
+    for key in DEFAULT_PROMPTS
+    if key.startswith("nsfw_level_")
+    or key in {"scene_analyzer_prompt", "scene_analyzer_prompt_sfw"}
+)
 
 
 def _is_blank_compact_runtime_prompt(key: str, content: Optional[str]) -> bool:

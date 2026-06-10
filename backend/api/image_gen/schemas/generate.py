@@ -618,20 +618,21 @@ class Prompt(BaseModel):
             build_as_type = build_as_type.value
         prompt_parts = []
         negative_parts = []
+        base_positive = ""
+        quality_positive = ""
 
         if build_as_type == "anime":
             base_positive = await get_anime_base_positive()
             if self.nsfw_level > 0:
                 base_positive = base_positive.replace("general, ", "")
-            prompt_parts.append(base_positive)
             negative_parts.append(await get_anime_base_negative())
         elif build_as_type == "manhwa":
-            prompt_parts.append(await get_manhwa_base_positive())
+            base_positive = await get_manhwa_base_positive()
             negative_parts.append(await get_manhwa_base_negative())
         elif build_as_type == "real":
-            prompt_parts.append(await get_real_base_positive(gender))
+            base_positive = await get_real_base_positive(gender)
             negative_parts.append(await get_real_base_negative(gender))
-            prompt_parts.append(REAL_PHOTO_QUALITY_PROMPT)
+            quality_positive = REAL_PHOTO_QUALITY_PROMPT
             negative_parts.append(REAL_ARTIFACT_NEGATIVE_PROMPT)
         nsfw_levels = await get_nsfw_levels()
 
@@ -673,19 +674,19 @@ class Prompt(BaseModel):
                 negative_parts.append(nsfw_level.negative_prompt)
 
         priority_fields = [
-            "nsfw_level",
+            "character_base",
+            "signature",
             "clothing_guard",
             "body_silhouette",
             "clothing",
             "body_state",
             "action",
             "facial_expression",
-            "character_base",
-            "signature",
             "environment",
             "scene_details",
             "camera",
             "style",
+            "nsfw_level",
         ]
         seen_fields = set()
 
@@ -699,6 +700,11 @@ class Prompt(BaseModel):
             if value in ("", None):
                 continue
             prompt_parts.append(value)
+
+        if base_positive:
+            prompt_parts.append(base_positive)
+        if quality_positive:
+            prompt_parts.append(quality_positive)
 
         for field_name, _ in self.__class__.model_fields.items():
             if field_name in seen_fields:

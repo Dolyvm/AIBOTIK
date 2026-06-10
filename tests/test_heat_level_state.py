@@ -55,5 +55,5 @@ def test_get_modifier_for_stage_uses_heat_level(monkeypatch):
 
 
 def test_image_fallback_uses_heat_level():
-    assert [calculate_nsfw_fallback(level) for level in range(4)] == [0, 1, 2, 3]
+    assert [calculate_nsfw_fallback(level) for level in range(4)] == [0, 1, 2, 2]
     assert [calculate_sfw_fallback(level) for level in range(4)] == [0, 1, 1, 1]

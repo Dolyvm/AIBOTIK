@@ -49,19 +49,30 @@ def _import_image_prompt_modules():
     try:
         from api.image_gen.schemas.generate import Prompt
         from api.image_gen.services.scene_analyzer import (
+            SceneAnalysis,
             SceneAnalyzer,
-            has_explicit_nude_or_sex_context,
+            analyze_visual_context,
+            apply_visual_safety_policy,
             infer_nsfw_level_from_history,
         )
     except ImportError:
         from backend.api.image_gen.schemas.generate import Prompt
         from backend.api.image_gen.services.scene_analyzer import (
+            SceneAnalysis,
             SceneAnalyzer,
-            has_explicit_nude_or_sex_context,
+            analyze_visual_context,
+            apply_visual_safety_policy,
             infer_nsfw_level_from_history,
         )
 
-    return Prompt, SceneAnalyzer, has_explicit_nude_or_sex_context, infer_nsfw_level_from_history
+    return (
+        Prompt,
+        SceneAnalysis,
+        SceneAnalyzer,
+        analyze_visual_context,
+        apply_visual_safety_policy,
+        infer_nsfw_level_from_history,
+    )
 
 
 def _default_body_profile(gender: str) -> dict:
@@ -152,8 +163,10 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
 
     (
         Prompt,
+        SceneAnalysis,
         SceneAnalyzer,
-        has_explicit_nude_or_sex_context,
+        analyze_visual_context,
+        apply_visual_safety_policy,
         infer_nsfw_level_from_history,
     ) = _import_image_prompt_modules()
 
@@ -182,11 +195,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     state_meta = chat.state_meta or {}
     heat_level = get_heat_level(chat)
     allow_nsfw = params.get("allow_nsfw", content.get("is_nsfw", True))
-    early_non_explicit_context = (
-        requested_outfit == "default_outfit"
-        and len(history) <= 4
-        and not has_explicit_nude_or_sex_context(history)
-    )
+    visual_context = analyze_visual_context(history)
 
     nsfw_level = 0
     outfit_key = requested_outfit
@@ -229,6 +238,7 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
                 current_location=chat.current_location or "",
                 model_type="anime" if content.get("model_type") == "manhwa" else content.get("model_type", "anime"),
                 gender=content.get("visual", {}).get("gender", "female"),
+                requested_outfit=requested_outfit,
             )
 
             nsfw_level = scene.nsfw_level
@@ -249,10 +259,6 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
                 arousal=chat.arousal,
                 allow_nsfw=allow_nsfw,
             )
-            if nsfw_level >= 4:
-                outfit_key = "nude"
-            elif nsfw_level >= 2:
-                outfit_key = "underwear"
             environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
     else:
         nsfw_level = infer_nsfw_level_from_history(
@@ -261,25 +267,45 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
             arousal=chat.arousal,
             allow_nsfw=allow_nsfw,
         )
-        if nsfw_level >= 4:
-            outfit_key = "nude"
-        elif nsfw_level >= 2:
-            outfit_key = "underwear"
         environment = ", ".join(content.get("tags", [])).replace("NSFW, ", "")
 
     environment = chat.current_location or environment
-    if allow_nsfw and early_non_explicit_context and nsfw_level > 1:
-        logger.info(
-            "Early non-explicit image context caps nsfw_level: %s -> 1",
-            nsfw_level,
-        )
-        nsfw_level = 1
-    if allow_nsfw and early_non_explicit_context and outfit_key != "default_outfit":
-        logger.info(
-            "Early non-explicit image context keeps default outfit: %s -> default_outfit",
-            outfit_key,
-        )
-        outfit_key = "default_outfit"
+    visual = content.get("visual", {})
+    wardrobe = visual.get("wardrobe", {})
+    if not isinstance(wardrobe, dict):
+        wardrobe = {}
+    available_outfits = {"default_outfit": visual.get("default_outfit", "")}
+    for key, desc in wardrobe.items():
+        available_outfits[key] = desc
+
+    scene_for_safety = SceneAnalysis(
+        location=environment,
+        pose=pose,
+        outfit_key=outfit_key,
+        emotion=emotion,
+        nsfw_level=nsfw_level,
+        reasoning=scene_reasoning,
+        scene_description=scene_description,
+        nsfw_tags=nsfw_tags,
+    )
+    scene_for_safety, visual_context = apply_visual_safety_policy(
+        scene_for_safety,
+        history,
+        available_outfits,
+        allow_nsfw=allow_nsfw,
+        requested_outfit=requested_outfit,
+        heat_level=heat_level,
+        arousal=chat.arousal,
+        mood=chat.current_mood or "neutral",
+    )
+    environment = scene_for_safety.location
+    pose = scene_for_safety.pose
+    outfit_key = scene_for_safety.outfit_key
+    emotion = scene_for_safety.emotion
+    nsfw_level = scene_for_safety.nsfw_level
+    scene_reasoning = scene_for_safety.reasoning
+    scene_description = scene_for_safety.scene_description
+    nsfw_tags = scene_for_safety.nsfw_tags
 
     prompt = Prompt.from_character(
         character=content,
@@ -297,6 +323,8 @@ async def _prepare_chat_image_params(ctx: dict[str, Any], params: dict) -> dict:
     logger.info(f"  model_type={content.get('model_type')}")
     logger.info(f"  allow_nsfw={allow_nsfw}")
     logger.info(f"  heat_level={heat_level}")
+    logger.info(f"  visual_context={visual_context.trigger_type}:{visual_context.level}")
+    logger.info(f"  visual_context_terms={','.join(visual_context.matched_terms)}")
     logger.info(f"  outfit_key={outfit_key}")
     logger.info(f"  clothing={prompt.clothing}")
     logger.info(f"  nsfw_level={nsfw_level}")

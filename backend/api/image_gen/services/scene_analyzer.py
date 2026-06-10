@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import re
+from dataclasses import dataclass
 from typing import Optional, Union
 from pydantic import BaseModel
 from shared.services.llm import LLMClient
@@ -177,22 +178,53 @@ def calculate_sfw_fallback(heat_level: int) -> int:
     return 1 if normalize_heat_level(heat_level) > 0 else 0
 
 
-_HISTORY_EXPLICIT_HINTS = (
-    "sex", "fuck", "intercourse", "penetrat", "orgasm", "cum", "masturbat",
-    "секс", "трах", "проник", "оргаз", "конч", "мастурб",
-)
+@dataclass(frozen=True)
+class VisualContext:
+    level: int = 0
+    trigger_type: str = "none"
+    matched_terms: tuple[str, ...] = ()
 
-_HISTORY_NUDE_HINTS = (
-    "nude", "naked", "undress", "undressed", "bare", "lingerie", "bra", "panties",
-    "обнаж", "голая", "голый", "голое", "разде", "снимает одеж", "снимаю одеж",
-    "снимает бель", "снимаю бель", "белье", "бельё", "лифчик", "бюстгальтер",
-    "трус", "без одежды",
-)
+    @property
+    def explicit_nude_or_sex(self) -> bool:
+        return self.level >= 4
 
-_HISTORY_REVEALING_HINTS = (
-    "kiss", "kissing", "bed", "bedroom", "hotel room", "desire", "want you",
-    "поцел", "целу", "кровать", "постел", "номер", "спальн", "отель",
-    "хочу тебя", "желан", "страст", "прижим", "ласка", "соблазн",
+
+@dataclass(frozen=True)
+class _VisualPattern:
+    level: int
+    trigger_type: str
+    pattern: re.Pattern
+
+
+def _compile_visual_patterns(items: tuple[tuple[int, str, str], ...]) -> tuple[_VisualPattern, ...]:
+    return tuple(
+        _VisualPattern(level, trigger_type, re.compile(pattern, re.IGNORECASE | re.UNICODE))
+        for level, trigger_type, pattern in items
+    )
+
+
+_VISUAL_PATTERNS = _compile_visual_patterns(
+    (
+        # Level 5: explicit visual activity, not just a romantic or teasing tone.
+        (5, "explicit_sex", r"\b(?:masturbat\w*|penetrat\w*|intercourse|blowjob|deepthroat|oral sex|creampie|orgasm\w*)\b"),
+        (5, "explicit_sex", r"\b(?:fuck(?:ing|ed|s)?|fucked)\b"),
+        (5, "explicit_sex", r"\b(?:мастурб\w*|проник(?:а\w*|новен\w*)|минет\w*|оргазм\w*|траха\w*|трахн\w*)\b"),
+        # Level 4: explicit nude context. Avoid broad stems like "обнаж" because
+        # story text often has safe phrases such as "обнажая зубы".
+        (4, "nude", r"\b(?:nude|naked|fully nude|fully naked|without clothes|no clothes)\b"),
+        (4, "nude", r"\b(?:undress(?:ed|ing|es)?|strips? (?:off )?(?:her|his|their )?clothes)\b"),
+        (4, "nude", r"\b(?:гол(?:ая|ый|ое|ые|ыми)|наг(?:ая|ой|ое|ие|ими)|без одежды|полностью обнажен\w*)\b"),
+        (4, "nude", r"\b(?:раздева\w*|раздел(?:ась|ся|ись)|снима(?:ет|ю|ешь|ют|ла|л)\s+одежд\w*)\b"),
+        (4, "nude", r"\bобнажил[аи]?\s+(?:грудь|тело|торс|плечи|бедра|себя|кожу)\b"),
+        (4, "sex_context", r"\b(?:sex|sexual act|cum(?:ming)?|semen)\b"),
+        (4, "sex_context", r"\b(?:секс|сперм\w*|клитор|вагин\w*|анальн\w*|половой\s+член|эрегированн\w*\s+член)\b"),
+        # Level 3: partial nudity. This may change wardrobe, but must not force nude.
+        (3, "partial_nudity", r"\b(?:topless|bottomless|shirtless|exposed breasts?|exposed chest|visible nipples?|bare breasts?)\b"),
+        (3, "partial_nudity", r"\b(?:топлес|без верха|без рубашки|гол(?:ая|ую)\s+грудь|обнаженн\w*\s+грудь|соск\w*)\b"),
+        # Level 2: sensual or revealing, still clothed.
+        (2, "revealing", r"\b(?:lingerie|underwear|bra|panties|swimwear|bikini|bed|bedroom|hotel room|desire|want you|kiss(?:ing)?|caress\w*)\b"),
+        (2, "revealing", r"\b(?:бель[её]|лифчик|бюстгальтер|трусик\w*|трусы|трусах|трусами|кровать|постел\w*|спальн\w*|отель|поцел\w*|целу\w*|желан\w*|страст\w*|прижим\w*|ласка\w*|соблазн\w*)\b"),
+    )
 )
 
 
@@ -204,14 +236,35 @@ def _history_text(history: list[dict], limit: int = 8) -> str:
     ).lower()
 
 
-def _has_any(text: str, hints: tuple[str, ...]) -> bool:
-    return any(hint in text for hint in hints)
+def analyze_visual_context(history: list[dict], limit: int = 8) -> VisualContext:
+    text = _history_text(history, limit=limit)
+    best_level = 0
+    best_type = "none"
+    matches: list[str] = []
+
+    for visual_pattern in _VISUAL_PATTERNS:
+        found = [match.group(0).strip() for match in visual_pattern.pattern.finditer(text)]
+        if not found:
+            continue
+        if visual_pattern.level > best_level:
+            best_level = visual_pattern.level
+            best_type = visual_pattern.trigger_type
+            matches = []
+        if visual_pattern.level == best_level:
+            for term in found:
+                if term and term not in matches:
+                    matches.append(term)
+
+    return VisualContext(
+        level=best_level,
+        trigger_type=best_type,
+        matched_terms=tuple(matches[:6]),
+    )
 
 
 def has_explicit_nude_or_sex_context(history: list[dict]) -> bool:
     """True only when recent text explicitly supports fully nude/explicit imagery."""
-    text = _history_text(history)
-    return _has_any(text, _HISTORY_EXPLICIT_HINTS) or _has_any(text, _HISTORY_NUDE_HINTS)
+    return analyze_visual_context(history).explicit_nude_or_sex
 
 
 def infer_nsfw_level_from_history(
@@ -221,6 +274,8 @@ def infer_nsfw_level_from_history(
     allow_nsfw: bool = True,
 ) -> int:
     """Conservative visual fallback when SceneAnalyzer LLM is unavailable."""
+    from shared.constants import normalize_heat_level
+
     base_level = (
         calculate_nsfw_fallback(heat_level)
         if allow_nsfw else calculate_sfw_fallback(heat_level)
@@ -228,7 +283,8 @@ def infer_nsfw_level_from_history(
     if not allow_nsfw:
         return min(base_level, 1)
 
-    text = _history_text(history)
+    heat_level = normalize_heat_level(heat_level)
+    visual_context = analyze_visual_context(history)
     inferred = base_level
 
     if arousal >= 70:
@@ -236,14 +292,105 @@ def infer_nsfw_level_from_history(
     elif arousal >= 40:
         inferred = max(inferred, 2)
 
-    if _has_any(text, _HISTORY_EXPLICIT_HINTS):
-        inferred = max(inferred, 4)
-    elif _has_any(text, _HISTORY_NUDE_HINTS):
-        inferred = max(inferred, 4)
-    elif _has_any(text, _HISTORY_REVEALING_HINTS):
-        inferred = max(inferred, 2)
+    if visual_context.level:
+        inferred = max(inferred, visual_context.level)
+
+    if not visual_context.explicit_nude_or_sex:
+        inferred = min(inferred, 2)
+        if len(history) <= 4 and heat_level <= 1 and visual_context.level == 0:
+            inferred = min(inferred, 1)
 
     return max(0, min(5, inferred))
+
+
+def apply_visual_safety_policy(
+    scene: SceneAnalysis,
+    history: list[dict],
+    available_outfits: Union[list[str], dict[str, str]],
+    allow_nsfw: bool = True,
+    requested_outfit: str = "default_outfit",
+    heat_level: int = 0,
+    arousal: int = 0,
+    mood: str = "neutral",
+) -> tuple[SceneAnalysis, VisualContext]:
+    """Clamp a scene to what the recent text can visually justify."""
+    visual_context = analyze_visual_context(history)
+    requested_outfit = requested_outfit or "default_outfit"
+    if isinstance(available_outfits, dict):
+        outfit_keys = set(available_outfits.keys())
+    else:
+        outfit_keys = set(available_outfits)
+
+    max_level = infer_nsfw_level_from_history(
+        history,
+        heat_level=heat_level,
+        arousal=arousal,
+        allow_nsfw=allow_nsfw,
+    )
+    if requested_outfit == "nude" and allow_nsfw:
+        max_level = max(max_level, 4)
+    elif requested_outfit == "underwear" and allow_nsfw:
+        max_level = max(max_level, 2)
+
+    if not allow_nsfw:
+        max_level = min(max_level, 1)
+    if mood.lower() in SceneAnalyzer.NEGATIVE_MOODS:
+        max_level = min(max_level, 1)
+
+    early_non_explicit_context = (
+        requested_outfit == "default_outfit"
+        and len(history) <= 4
+        and not visual_context.explicit_nude_or_sex
+    )
+    if early_non_explicit_context:
+        max_level = min(max_level, 1)
+
+    if scene.nsfw_level > max_level:
+        logger.info(
+            "nsfw_level clamped by visual safety: %s -> %s (trigger=%s terms=%s)",
+            scene.nsfw_level,
+            max_level,
+            visual_context.trigger_type,
+            ",".join(visual_context.matched_terms),
+        )
+        scene.nsfw_level = max_level
+    elif requested_outfit == "nude" and max_level >= 4 and scene.nsfw_level < 4:
+        scene.nsfw_level = 4
+    elif requested_outfit == "underwear" and max_level >= 2 and scene.nsfw_level < 2:
+        scene.nsfw_level = 2
+
+    original_outfit = scene.outfit_key
+    if early_non_explicit_context:
+        scene.outfit_key = "default_outfit"
+    elif scene.nsfw_level >= 4:
+        if requested_outfit == "nude" and "nude" in outfit_keys:
+            scene.outfit_key = "nude"
+        elif scene.outfit_key != "nude" and "nude" in outfit_keys:
+            scene.outfit_key = "nude"
+    elif scene.nsfw_level == 3:
+        if scene.outfit_key == "nude":
+            scene.outfit_key = "underwear" if "underwear" in outfit_keys else "default_outfit"
+        elif scene.outfit_key not in outfit_keys:
+            scene.outfit_key = "underwear" if "underwear" in outfit_keys else "default_outfit"
+    elif scene.nsfw_level <= 2 and scene.outfit_key in ("nude", "underwear"):
+        if requested_outfit == "underwear" and scene.nsfw_level >= 2 and "underwear" in outfit_keys:
+            scene.outfit_key = "underwear"
+        else:
+            scene.outfit_key = "default_outfit"
+
+    if scene.outfit_key not in outfit_keys and outfit_keys:
+        scene.outfit_key = "default_outfit"
+
+    if original_outfit != scene.outfit_key:
+        logger.info(
+            "Outfit overridden by visual safety: %s -> %s (nsfw_level=%s trigger=%s)",
+            original_outfit,
+            scene.outfit_key,
+            scene.nsfw_level,
+            visual_context.trigger_type,
+        )
+
+    return scene, visual_context
 
 class SceneAnalyzer:
 
@@ -297,14 +444,20 @@ REAL MODEL EXTRA RULES:
         current_location: str = "",
         model_type: str = "anime",
         gender: str = "female",
+        requested_outfit: str = "default_outfit",
     ) -> SceneAnalysis:
         from shared.services.prompt_service import get_prompt
         from shared.constants import get_heat_context, normalize_heat_level
 
         recent_messages = history[-2:] if len(history) > 2 else history
         heat_level = normalize_heat_level(heat_level)
-        explicit_visual_context = has_explicit_nude_or_sex_context(history)
-        early_non_explicit_context = len(history) <= 4 and not explicit_visual_context
+        visual_context = analyze_visual_context(history)
+        explicit_visual_context = visual_context.explicit_nude_or_sex
+        early_non_explicit_context = (
+            requested_outfit == "default_outfit"
+            and len(history) <= 4
+            and not explicit_visual_context
+        )
         history_fallback_level = infer_nsfw_level_from_history(
             history,
             heat_level=heat_level,
@@ -322,7 +475,8 @@ REAL MODEL EXTRA RULES:
         )
         context_str = (
             f"{character_name}:{allow_nsfw}:{scene_prompt_profile}:{heat_level}:"
-            f"{mood}:{arousal}:{current_location}:{outfit_signature}:{recent_messages}"
+            f"{mood}:{arousal}:{current_location}:{requested_outfit}:"
+            f"{outfit_signature}:{recent_messages}"
         )
         context_hash = hashlib.md5(context_str.encode()).hexdigest()[:16]
 
@@ -332,16 +486,16 @@ REAL MODEL EXTRA RULES:
             if cached:
                 logger.info(f"SceneAnalysis cache HIT for chat {chat_id}")
                 scene = SceneAnalysis(**cached)
-                if not allow_nsfw:
-                    scene.nsfw_level = min(scene.nsfw_level, 1)
-                if mood.lower() in self.NEGATIVE_MOODS:
-                    scene.nsfw_level = min(scene.nsfw_level, 1)
-                elif allow_nsfw and scene.nsfw_level > 1 and early_non_explicit_context:
-                    scene.nsfw_level = 1
-                if allow_nsfw and early_non_explicit_context:
-                    scene.outfit_key = "default_outfit"
-                elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
-                    scene.outfit_key = "default_outfit"
+                scene, _ = apply_visual_safety_policy(
+                    scene,
+                    history,
+                    available_outfits,
+                    allow_nsfw=allow_nsfw,
+                    requested_outfit=requested_outfit,
+                    heat_level=heat_level,
+                    arousal=arousal,
+                    mood=mood,
+                )
                 return scene
 
         formatted = "\n".join([
@@ -416,35 +570,16 @@ REAL MODEL EXTRA RULES:
                     )
                     scene.nsfw_level = fallback_level
 
-            if (
-                allow_nsfw
-                and scene.nsfw_level > 1
-                and early_non_explicit_context
-            ):
-                logger.info(
-                    "nsfw_level capped from %s to 1 for early non-explicit visual context",
-                    scene.nsfw_level,
-                )
-                scene.nsfw_level = 1
-
-            original_outfit = scene.outfit_key
-            outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
-
-            if allow_nsfw and early_non_explicit_context:
-                scene.outfit_key = "default_outfit"
-            elif scene.nsfw_level >= 4 and scene.outfit_key != "nude" and "nude" in outfit_keys:
-                scene.outfit_key = "nude"
-            elif scene.nsfw_level == 3 and scene.outfit_key not in ("nude", "underwear"):
-                if "underwear" in outfit_keys:
-                    scene.outfit_key = "underwear"
-            elif scene.nsfw_level == 2 and scene.outfit_key not in ("underwear", "swimwear", "sleepwear", "nude"):
-                if "swimwear" in outfit_keys:
-                    scene.outfit_key = "swimwear"
-            elif scene.nsfw_level <= 1 and scene.outfit_key in ("nude", "underwear"):
-                scene.outfit_key = "default_outfit"
-
-            if original_outfit != scene.outfit_key:
-                logger.info(f"Outfit overridden: {original_outfit} -> {scene.outfit_key} (nsfw_level={scene.nsfw_level})")
+            scene, visual_context = apply_visual_safety_policy(
+                scene,
+                history,
+                available_outfits,
+                allow_nsfw=allow_nsfw,
+                requested_outfit=requested_outfit,
+                heat_level=heat_level,
+                arousal=arousal,
+                mood=mood,
+            )
 
             # Fallback: extract nsfw_tags from scene_description if LLM didn't provide them
             if scene.nsfw_level >= 4 and not scene.nsfw_tags:
@@ -462,17 +597,20 @@ REAL MODEL EXTRA RULES:
             fallback_level = history_fallback_level
             if allow_nsfw and early_non_explicit_context and fallback_level > 1:
                 fallback_level = 1
-            outfit_key = "default_outfit"
-            outfit_keys = set(available_outfits.keys()) if isinstance(available_outfits, dict) else set(available_outfits)
-            if allow_nsfw and early_non_explicit_context:
-                outfit_key = "default_outfit"
-            elif fallback_level >= 4 and "nude" in outfit_keys:
-                outfit_key = "nude"
-            elif fallback_level >= 2 and "underwear" in outfit_keys:
-                outfit_key = "underwear"
-            return SceneAnalysis(
+            fallback_scene = SceneAnalysis(
                 location=current_location or "unknown",
-                outfit_key=outfit_key,
+                outfit_key=requested_outfit,
                 nsfw_level=fallback_level,
                 reasoning=f"Fallback due to error: {str(e)}"
             )
+            fallback_scene, _ = apply_visual_safety_policy(
+                fallback_scene,
+                history,
+                available_outfits,
+                allow_nsfw=allow_nsfw,
+                requested_outfit=requested_outfit,
+                heat_level=heat_level,
+                arousal=arousal,
+                mood=mood,
+            )
+            return fallback_scene
