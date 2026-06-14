@@ -169,7 +169,6 @@ async def get_character_for_edit(
         "wardrobe": visual.get("wardrobe", {}),
         "body_profile": visual.get("body_profile"),
         "avatar": char.get("avatar", ""),
-        "custom_avatar": visual.get("custom_avatar", False),
         "tags": char.get("tags", []),
         "is_public": char.get("is_public", True),
     }

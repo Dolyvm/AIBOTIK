@@ -36,7 +36,6 @@ class TransactionSource(enum.Enum):
     DAILY_BONUS = "daily_bonus"
     PURCHASE = "purchase"
     MESSAGE_SENT = "message_sent"
-    IMAGE_GENERATED = "image_generated"
     ADMIN_GRANT = "admin_grant"
 
 

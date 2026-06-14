@@ -29,8 +29,6 @@ RUNTIME_PROMPT_LIMITS = {
     "player_prompt": 650,
     "summary_prompt": 500,
     "sfw_content_restriction": 300,
-    "scene_analyzer_prompt": 1800,
-    "scene_analyzer_prompt_sfw": 1300,
 }
 
 
@@ -48,7 +46,6 @@ def test_compact_runtime_prompts_are_short_and_known():
     for key, limit in RUNTIME_PROMPT_LIMITS.items():
         content = DEFAULT_PROMPTS[key]
         assert len(content) <= limit, key
-        assert "send_photo" not in content
         assert "6-8" not in content
         assert "800-1100" not in content
         assert "### ХОРОШО ###" not in content
@@ -100,26 +97,6 @@ def test_compact_runtime_prompts_keep_required_placeholders():
             "heat_context",
             "mood",
             "messages",
-        },
-        "scene_analyzer_prompt": {
-            "character_name",
-            "model_type",
-            "formatted_chat",
-            "mood",
-            "heat_context",
-            "current_location",
-            "available_outfits",
-            "gender_possessive",
-            "nsfw_level_3_desc",
-        },
-        "scene_analyzer_prompt_sfw": {
-            "character_name",
-            "model_type",
-            "formatted_chat",
-            "mood",
-            "heat_context",
-            "current_location",
-            "available_outfits",
         },
     }
 
@@ -184,7 +161,6 @@ def test_built_story_prompts_do_not_reintroduce_old_verbose_sections(monkeypatch
     assert '"arousal_change"' not in character_prompt
     assert "6-8" not in combined
     assert "800-1100" not in combined
-    assert "send_photo" not in combined
     assert "### СТРОГИЙ КОНТРОЛЬ" not in combined
 
 
@@ -212,14 +188,14 @@ def test_sync_compact_updates_only_whitelisted_prompts(monkeypatch):
     import scripts.init_prompts as init_prompts_module
 
     compact_prompt = types.SimpleNamespace(key="common_style_guide", content="old compact")
-    image_prompt = types.SimpleNamespace(key="anime_base_positive", content="old image")
+    non_compact_prompt = types.SimpleNamespace(key="behavior_affinity_cold", content="old behavior")
 
     class FakeResult:
         def scalars(self):
             return self
 
         def all(self):
-            return [compact_prompt, image_prompt]
+            return [compact_prompt, non_compact_prompt]
 
     class FakeSession:
         async def __aenter__(self):
@@ -252,7 +228,7 @@ def test_sync_compact_updates_only_whitelisted_prompts(monkeypatch):
         "DEFAULT_PROMPTS",
         {
             "common_style_guide": "new compact",
-            "anime_base_positive": "new image",
+            "behavior_affinity_cold": "new behavior",
         },
     )
     monkeypatch.setattr(
@@ -260,7 +236,7 @@ def test_sync_compact_updates_only_whitelisted_prompts(monkeypatch):
         "PROMPT_METADATA",
         {
             "common_style_guide": {"category": "character", "name": "Common"},
-            "anime_base_positive": {"category": "image", "name": "Anime"},
+            "behavior_affinity_cold": {"category": "character", "name": "Behavior"},
         },
     )
     monkeypatch.setattr(
@@ -275,85 +251,6 @@ def test_sync_compact_updates_only_whitelisted_prompts(monkeypatch):
     asyncio.run(init_prompts_module.init_prompts(sync_compact=True))
 
     assert compact_prompt.content == "new compact"
-    assert image_prompt.content == "old image"
+    assert non_compact_prompt.content == "old behavior"
     assert cleared["value"] is True
     assert cached == {"common_style_guide": "new compact"}
-
-
-def test_sync_image_safety_updates_only_image_safety_prompts(monkeypatch):
-    import scripts.init_prompts as init_prompts_module
-
-    scene_prompt = types.SimpleNamespace(key="scene_analyzer_prompt", content="old scene")
-    nsfw_prompt = types.SimpleNamespace(key="nsfw_level_2", content="old nsfw")
-    image_prompt = types.SimpleNamespace(key="anime_base_positive", content="old image")
-
-    class FakeResult:
-        def scalars(self):
-            return self
-
-        def all(self):
-            return [scene_prompt, nsfw_prompt, image_prompt]
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-        async def execute(self, _statement):
-            return FakeResult()
-
-        def add(self, _prompt):
-            raise AssertionError("test data should not create prompts")
-
-        async def commit(self):
-            self.committed = True
-
-    cleared = {"value": False}
-    cached = {}
-
-    async def fake_clear_cache():
-        cleared["value"] = True
-
-    class FakeCache:
-        async def set_prompt(self, key, content):
-            cached[key] = content
-
-    monkeypatch.setattr(
-        init_prompts_module,
-        "DEFAULT_PROMPTS",
-        {
-            "scene_analyzer_prompt": "new scene",
-            "nsfw_level_2": "new nsfw",
-            "anime_base_positive": "new image",
-        },
-    )
-    monkeypatch.setattr(
-        init_prompts_module,
-        "PROMPT_METADATA",
-        {
-            "scene_analyzer_prompt": {"category": "scene_analysis", "name": "Scene"},
-            "nsfw_level_2": {"category": "image", "name": "NSFW2"},
-            "anime_base_positive": {"category": "image", "name": "Anime"},
-        },
-    )
-    monkeypatch.setattr(
-        init_prompts_module,
-        "IMAGE_SAFETY_PROMPT_KEYS",
-        frozenset({"scene_analyzer_prompt", "nsfw_level_2"}),
-    )
-    monkeypatch.setattr(init_prompts_module, "get_session", lambda: FakeSession())
-    monkeypatch.setattr(init_prompts_module, "clear_cache", fake_clear_cache)
-    monkeypatch.setattr(init_prompts_module, "get_cache", lambda: FakeCache())
-
-    asyncio.run(init_prompts_module.init_prompts(sync_image_safety=True))
-
-    assert scene_prompt.content == "new scene"
-    assert nsfw_prompt.content == "new nsfw"
-    assert image_prompt.content == "old image"
-    assert cleared["value"] is True
-    assert cached == {
-        "scene_analyzer_prompt": "new scene",
-        "nsfw_level_2": "new nsfw",
-    }

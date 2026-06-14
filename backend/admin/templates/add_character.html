@@ -131,7 +131,7 @@
         <!-- Visual Data Section -->
         <div style="margin-bottom: 30px;">
             <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
-                Визуальные данные (для генерации изображений)
+                Визуальные данные
             </h3>
 
             <div class="form-group">
@@ -227,45 +227,6 @@
                 <button type="button" class="btn btn-secondary btn-small" onclick="addOutfit()">+ Добавить наряд</button>
             </div>
 
-            <!-- Avatar Section -->
-            <div style="margin-top: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px;">
-                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Аватар персонажа</h4>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input
-                            type="checkbox"
-                            id="custom_avatar"
-                            name="custom_avatar"
-                            onchange="toggleCustomAvatar()"
-                            style="width: 18px; height: 18px; cursor: pointer;"
-                        />
-                        <span>Кастомный аватар</span>
-                    </label>
-                </div>
-
-                <div id="uploadAvatarSection" style="margin-bottom: 15px;">
-                    <label style="font-size: 13px; color: #7f8c8d; display: block; margin-bottom: 8px;">Загрузить своё фото:</label>
-                    <input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" onchange="handleAvatarUpload(this)" style="font-size: 13px;">
-                    <div id="uploadStatus" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 13px;"></div>
-                </div>
-
-                <div id="avatarPreview" style="display: none; margin-bottom: 15px; text-align: center;">
-                    <img id="previewImage" src="" alt="Предпросмотр аватара" style="max-width: 256px; max-height: 256px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                    <div style="margin-top: 10px;">
-                        <button type="button" class="btn btn-small" onclick="useAsAvatar()">Использовать как аватар</button>
-                        <button type="button" class="btn btn-secondary btn-small" onclick="generateAvatar()">Перегенерировать</button>
-                    </div>
-                </div>
-
-                <div id="avatarStatus" style="display: none; margin-bottom: 10px; padding: 10px; border-radius: 4px;"></div>
-
-                <button type="button" class="btn" onclick="generateAvatar()" id="generateAvatarBtn">Сгенерировать превью</button>
-                <span id="generatingSpinner" style="display: none; margin-left: 10px; color: #7f8c8d;">Генерация...</span>
-
-                <input type="hidden" name="avatar_url" id="avatarUrlInput">
-                <input type="hidden" name="custom_avatar_flag" id="customAvatarFlag" value="false">
-            </div>
         </div>
 
         <!-- Metadata Section -->
@@ -623,7 +584,7 @@
             <textarea
                 name="wardrobe_value"
                 rows="2"
-                placeholder="Описание наряда для генерации изображений..."
+                placeholder="Описание наряда..."
                 style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; resize: vertical;"
             >${value}</textarea>
             <button type="button" class="btn btn-danger btn-small" onclick="removeOutfit(this)" style="padding: 8px 12px;">Удалить</button>
@@ -636,156 +597,5 @@
         button.closest('.wardrobe-item').remove();
     }
 
-    // ========== AVATAR GENERATION ==========
-    function collectVisualData() {
-        return {
-            gender: document.getElementById('gender').value,
-            model_type: document.getElementById('model_type').value,
-            appearance: document.getElementById('appearance').value,
-            body: document.getElementById('visual_body').value,
-            face: document.getElementById('visual_face').value,
-            default_outfit: document.getElementById('visual_default_outfit').value,
-            style_tags: document.getElementById('visual_style_tags').value
-        };
-    }
-
-    async function generateAvatar() {
-        const generateBtn = document.getElementById('generateAvatarBtn');
-        const spinner = document.getElementById('generatingSpinner');
-        const statusDiv = document.getElementById('avatarStatus');
-        const previewDiv = document.getElementById('avatarPreview');
-
-        // Validate required fields
-        const visual = collectVisualData();
-        if (!visual.appearance && !visual.body && !visual.face) {
-            statusDiv.innerHTML = '<span style="color: #e74c3c;">Пожалуйста, заполните хотя бы одно визуальное поле (Внешность, Тело или Лицо)</span>';
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#fdecea';
-            return;
-        }
-
-        generateBtn.disabled = true;
-        spinner.style.display = 'inline';
-        statusDiv.style.display = 'none';
-
-        try {
-            const response = await fetch('/admin/api/generate-avatar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(visual)
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Generation failed');
-            }
-
-            if (data.task_id) {
-                statusDiv.innerHTML = '<span style="color: #2980b9;">Генерация запущена, ожидаем результат...</span>';
-                statusDiv.style.display = 'block';
-                statusDiv.style.background = '#eaf0f8';
-                const result = await pollAvatarTask(data.task_id);
-                document.getElementById('previewImage').src = result.url;
-            } else {
-                document.getElementById('previewImage').src = data.url;
-            }
-            previewDiv.style.display = 'block';
-
-            statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар сгенерирован! Нажмите "Использовать как аватар", чтобы сохранить его.</span>';
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#e8f8e8';
-
-        } catch (error) {
-            statusDiv.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${error.message}</span>`;
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#fdecea';
-        } finally {
-            generateBtn.disabled = false;
-            spinner.style.display = 'none';
-        }
-    }
-
-    async function pollAvatarTask(taskId) {
-        const maxAttempts = 300;
-        for (let i = 0; i < maxAttempts; i++) {
-            const res = await fetch(`/api/tasks/${taskId}`);
-            const data = await res.json();
-            if (data.status === 'completed') return data.result;
-            if (data.status === 'failed') throw new Error(data.error || 'Generation failed');
-            if (data.status === 'not_found') throw new Error('Task not found');
-            await new Promise(r => setTimeout(r, 3000));
-        }
-        throw new Error('Generation timed out');
-    }
-
-    function useAsAvatar() {
-        const previewImage = document.getElementById('previewImage');
-        const avatarInput = document.getElementById('avatarUrlInput');
-        const statusDiv = document.getElementById('avatarStatus');
-
-        let url = previewImage.src;
-        try {
-            const parsed = new URL(url);
-            if (parsed.origin === window.location.origin) {
-                url = parsed.pathname;
-            }
-        } catch (e) {}
-        avatarInput.value = url;
-
-        statusDiv.innerHTML = '<span style="color: #27ae60;">Аватар выбран! Он будет сохранен при создании персонажа.</span>';
-        statusDiv.style.display = 'block';
-        statusDiv.style.background = '#e8f8e8';
-    }
-
-    function toggleCustomAvatar() {
-        const checkbox = document.getElementById('custom_avatar');
-        document.getElementById('customAvatarFlag').value = checkbox.checked ? 'true' : 'false';
-    }
-
-    async function handleAvatarUpload(input) {
-        const file = input.files[0];
-        if (!file) return;
-
-        const uploadStatus = document.getElementById('uploadStatus');
-        const previewDiv = document.getElementById('avatarPreview');
-        const avatarInput = document.getElementById('avatarUrlInput');
-
-        if (file.size > 5 * 1024 * 1024) {
-            uploadStatus.innerHTML = '<span style="color: #e74c3c;">Файл слишком большой (макс. 5MB)</span>';
-            uploadStatus.style.display = 'block';
-            uploadStatus.style.background = '#fdecea';
-            return;
-        }
-
-        uploadStatus.innerHTML = '<span style="color: #2980b9;">Загрузка...</span>';
-        uploadStatus.style.display = 'block';
-        uploadStatus.style.background = '#eaf0f8';
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            const response = await fetch('/admin/api/upload-avatar', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || 'Upload failed');
-
-            avatarInput.value = data.url;
-            document.getElementById('previewImage').src = data.url;
-            previewDiv.style.display = 'block';
-
-            uploadStatus.innerHTML = '<span style="color: #27ae60;">Фото загружено и выбрано как аватар!</span>';
-            uploadStatus.style.background = '#e8f8e8';
-
-            // Auto-check custom avatar
-            document.getElementById('custom_avatar').checked = true;
-            document.getElementById('customAvatarFlag').value = 'true';
-        } catch (error) {
-            uploadStatus.innerHTML = `<span style="color: #e74c3c;">Ошибка: ${error.message}</span>`;
-            uploadStatus.style.background = '#fdecea';
-        }
-    }
 </script>
 {% endblock %}

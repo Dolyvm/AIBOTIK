@@ -20,35 +20,34 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         return result.scalar_one_or_none()
 
     ALLOWED_FIELDS = frozenset({
-        "messages_sent", "images_generated", "characters_created",
-        "worlds_created", "content_edits", "avatar_generations",
+        "messages_sent", "characters_created",
+        "worlds_created", "content_edits",
     })
 
     ALLOWED_BONUS_FIELDS = frozenset({
-        "bonus_messages_sent", "bonus_images_generated", "bonus_characters_created",
-        "bonus_worlds_created", "bonus_content_edits", "bonus_avatar_generations",
+        "bonus_messages_sent", "bonus_characters_created",
+        "bonus_worlds_created", "bonus_content_edits",
     })
 
     _RETURNING = """
         RETURNING id, user_id, period,
-                  messages_sent, images_generated, characters_created,
-                  worlds_created, content_edits, avatar_generations,
-                  bonus_messages_sent, bonus_images_generated, bonus_characters_created,
-                  bonus_worlds_created, bonus_content_edits, bonus_avatar_generations
+                  messages_sent, characters_created,
+                  worlds_created, content_edits,
+                  bonus_messages_sent, bonus_characters_created,
+                  bonus_worlds_created, bonus_content_edits
     """
 
     def _row_to_usage(self, row) -> MonthlyUsage:
         return MonthlyUsage(
             id=row.id, user_id=row.user_id, period=row.period,
-            messages_sent=row.messages_sent, images_generated=row.images_generated,
-            characters_created=row.characters_created, worlds_created=row.worlds_created,
-            content_edits=row.content_edits, avatar_generations=row.avatar_generations,
+            messages_sent=row.messages_sent,
+            characters_created=row.characters_created,
+            worlds_created=row.worlds_created,
+            content_edits=row.content_edits,
             bonus_messages_sent=row.bonus_messages_sent,
-            bonus_images_generated=row.bonus_images_generated,
             bonus_characters_created=row.bonus_characters_created,
             bonus_worlds_created=row.bonus_worlds_created,
             bonus_content_edits=row.bonus_content_edits,
-            bonus_avatar_generations=row.bonus_avatar_generations,
         )
 
     async def upsert_usage(self, user_id: int, period: str, field: str, increment: int = 1, limit: int | None = None) -> MonthlyUsage | None:
@@ -94,7 +93,7 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
     async def set_bonus_limits(self, user_id: int, period: str, bonuses: dict[str, int]) -> None:
         """Прибавляет бонусные лимиты пользователю за указанный период.
 
-        bonuses = {"bonus_messages_sent": 100, "bonus_images_generated": 20, ...}
+        bonuses = {"bonus_messages_sent": 100, "bonus_characters_created": 2, ...}
         Создаёт запись если её нет, иначе прибавляет к существующим бонусам.
         """
         if not bonuses:

@@ -12,10 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from api import characters, worlds, user, chat, webapp, subscription
-from api.image_gen.routes.generate import router as image_router
 from api.create_character.cc_routes import router as create_character_router
 from api.create_world.cw_routes import router as create_world_router
-from api.tasks import router as tasks_router
 from admin.router import router as admin_router
 from shared.database import get_session
 from shared.database.exceptions import (
@@ -131,7 +129,7 @@ async def startup_event():
         logging.info("arq pool initialized for background tasks")
     except Exception as e:
         logging.error(f"Failed to initialize arq pool: {e}")
-        logging.warning("Image generation will run synchronously")
+        logging.warning("Background tasks will be unavailable")
         app.state.arq_pool = None
 
     try:
@@ -166,10 +164,8 @@ app.include_router(worlds.router)
 app.include_router(user.router)
 app.include_router(chat.router)
 app.include_router(webapp.router)
-app.include_router(image_router)
 app.include_router(create_character_router)
 app.include_router(create_world_router)
-app.include_router(tasks_router)
 app.include_router(admin_router)
 app.include_router(subscription.router)
 

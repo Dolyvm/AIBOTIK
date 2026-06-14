@@ -10,30 +10,18 @@ import json
 import re
 
 from datetime import datetime
-from uuid import uuid4
-from urllib.parse import urlparse as _urlparse
 from shared.models import Prompt, User, Character, World, Chat, get_async_session
-from shared.config import (
-    ADMIN_TELEGRAM_IDS,
-    BOT_TOKEN,
-    IMAGES_STORAGE_PATH,
-)
+from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
 from shared.services.cache import get_cache
 from shared.services.image_storage import (
     get_public_url,
-    local_image_to_data_url,
-    persist_avatar_reference,
-    save_avatar,
     save_world_cover,
 )
-from shared.services.identity_reference import analyze as analyze_identity_reference
 from shared.services.image_cleanup import collect_character_file_paths, delete_files
-from shared.services.redis_client import get_redis
 from shared.services.model_types import validate_model_gender
-from api.image_gen.schemas.generate import invalidate_nsfw_levels_cache, Prompt as ImagePrompt
 from telegram_init_data import validate, parse
 
 from shared.services.statistics import StatisticsService
@@ -53,58 +41,11 @@ PROMPT_CATEGORIES = {
     "character": "Character Prompts",
     "player": "Player Prompts",
     "summary": "Summary Prompts",
-    "scene_analysis": "Scene Analysis",
     "creation": "Character Creation",
-    "image": "Image Generation",
     "modifiers": "Character Modifiers",
 }
 
 HIDDEN_PROMPT_KEYS = {"llm_active_model"}
-
-
-def _admin_default_body_profile(gender: str) -> dict:
-    if gender == "male":
-        return {"schema_version": 1, "body_type": "athletic", "height": "average", "outfit_preset": "casual"}
-    return {
-        "schema_version": 1,
-        "body_type": "proportional",
-        "height": "average",
-        "breast_size": "medium",
-        "butt_size": "rounded",
-        "outfit_preset": "casual",
-    }
-
-
-async def _admin_prepare_identity_visual_data(visual_data: dict, character_id: str, avatar_url: str = "") -> dict:
-    if not visual_data.get("custom_avatar"):
-        return visual_data
-
-    visual_data["model_type"] = "real"
-    avatar = avatar_url or visual_data.get("avatar")
-    if avatar:
-        if _urlparse(avatar).scheme and _urlparse(avatar).path.startswith("/images/"):
-            avatar = _urlparse(avatar).path
-        avatar = await persist_avatar_reference(avatar, character_id)
-        visual_data["avatar"] = avatar
-
-    identity_reference = visual_data.get("identity_reference") or {}
-    if visual_data.get("avatar") and identity_reference.get("status") != "ready":
-        image_data_url = await local_image_to_data_url(visual_data["avatar"])
-        identity = await analyze_identity_reference(image_data_url)
-        visual_data["identity_reference"] = {
-            "status": "ready",
-            "source_image": visual_data["avatar"],
-            "provider": "openrouter",
-            "model": identity["model"],
-            "analyzed_at": identity["analyzed_at"],
-            "identity_prompt": identity["identity_prompt"],
-            "visible_traits": identity["visible_traits"],
-            "avoid": identity["avoid"],
-            "notes": identity["notes"],
-            "consent_confirmed": True,
-        }
-    visual_data.setdefault("body_profile", _admin_default_body_profile(visual_data.get("gender", "female")))
-    return visual_data
 
 
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -281,7 +222,6 @@ async def update_prompt(
 
     await reload_cache(key, content)
     await invalidate_character_modifiers_cache()
-    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} updated prompt '{key}'")
 
@@ -318,7 +258,6 @@ async def reset_prompt(
 
     await reload_cache(key, default_content)
     await invalidate_character_modifiers_cache()
-    await invalidate_nsfw_levels_cache()
 
     logger.info(f"Admin {admin.get('telegram_id')} reset prompt '{key}' to default")
 
@@ -418,113 +357,6 @@ async def check_world_id(
     return {"exists": world is not None}
 
 
-@router.post("/api/generate-avatar")
-async def generate_avatar(
-        request: Request,
-        admin: dict = Depends(get_admin_user)
-):
-    data = await request.json()
-
-    model_type = data.get("model_type", "anime")
-    gender = data.get("gender", "female")
-    try:
-        validate_model_gender(model_type, gender)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    appearance = data.get("appearance", "")
-    body = data.get("body", "")
-    face = data.get("face", "")
-    default_outfit = data.get("default_outfit", "")
-    style_tags = data.get("style_tags", "")
-
-    prompt = ImagePrompt(
-        character_base=", ".join(filter(None, [appearance, body])),
-        facial_expression=face,
-        clothing=default_outfit,
-        style=style_tags,
-        nsfw_level=0
-    )
-
-    pos, neg = await prompt.build_prompt(model_type, gender=gender)
-
-    task_id = str(uuid4())
-    task_params = {
-        "model_type": model_type,
-        "positive_prompt": pos,
-        "negative_prompt": neg,
-        "allow_nsfw": False,
-    }
-
-    redis = await get_redis()
-    await redis.set(
-        f"task:{task_id}",
-        json.dumps({
-            "status": "pending",
-            "created_at": datetime.utcnow().isoformat()
-        }),
-        ex=3600
-    )
-
-    try:
-        from main import app
-        arq_pool = getattr(app.state, "arq_pool", None)
-        if arq_pool:
-            await arq_pool.enqueue_job("generate_avatar_task", task_id, task_params)
-            logger.info(f"Admin avatar task {task_id} enqueued")
-        else:
-            logger.warning("arq pool not configured, executing avatar generation synchronously")
-            from shared.queue.tasks import generate_avatar_task
-            from shared.database import get_session
-            ctx = {"redis": redis, "get_session": get_session}
-            result = await generate_avatar_task(ctx, task_id, task_params)
-            if result.get("status") == "completed":
-                return result.get("result", {})
-            raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Avatar generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
-
-    return {"task_id": task_id, "status": "pending"}
-
-
-@router.post("/api/upload-avatar")
-async def admin_upload_avatar(
-        request: Request,
-        admin: dict = Depends(get_admin_user)
-):
-    import aiofiles
-    from pathlib import Path
-
-    form = await request.form()
-    file = form.get("file")
-    if not file:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
-
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File size must be under 5MB")
-
-    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-    ext = ext_map.get(file.content_type, ".png")
-    import uuid
-    temp_name = f"temp_{uuid.uuid4().hex[:12]}{ext}"
-
-    avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
-    avatars_dir.mkdir(parents=True, exist_ok=True)
-
-    full_path = avatars_dir / temp_name
-    async with aiofiles.open(full_path, "wb") as f:
-        await f.write(content)
-
-    return {"url": f"/images/avatars/{temp_name}"}
-
-
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
         request: Request,
@@ -559,8 +391,6 @@ async def create_character(
     is_verified = form_data.get("is_verified") == "on"
     model_type = form_data.get("model_type", "anime")
     gender = form_data.get("gender", "female")
-    if form_data.get("custom_avatar_flag", "false") == "true":
-        model_type = "real"
 
     try:
         validate_model_gender(model_type, gender)
@@ -603,28 +433,7 @@ async def create_character(
         "default_outfit": form_data.get("visual_default_outfit", "").strip(),
         "style_tags": form_data.get("visual_style_tags", "").strip(),
         "wardrobe": wardrobe,
-        "custom_avatar": form_data.get("custom_avatar_flag", "false") == "true",
     }
-
-    avatar_url = form_data.get("avatar_url", "").strip()
-    if avatar_url and not visual_data.get("custom_avatar"):
-        from urllib.parse import urlparse as _urlparse
-        _parsed = _urlparse(avatar_url)
-        if _parsed.scheme and _parsed.path.startswith("/images/"):
-            avatar_url = _parsed.path
-        if avatar_url.startswith("/images/"):
-            visual_data["avatar"] = avatar_url
-        else:
-            try:
-                avatar_path = await save_avatar(avatar_url, character_id)
-                visual_data["avatar"] = f"/images/{avatar_path}"
-            except Exception as e:
-                logger.warning(f"Failed to save avatar: {e}, using provider URL")
-                visual_data["avatar"] = avatar_url
-    if visual_data.get("custom_avatar"):
-        if not avatar_url and not visual_data.get("avatar"):
-            raise HTTPException(status_code=400, detail="Custom avatar requires an uploaded photo")
-        visual_data = await _admin_prepare_identity_visual_data(visual_data, character_id, avatar_url)
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -800,30 +609,6 @@ async def update_character(
         visual_data = json.loads(visual_data_str)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
-
-    avatar_url = form_data.get("avatar_url", "").strip()
-    logger.info(f"[UPDATE_CHARACTER] character_id={character_id} avatar_url_raw={repr(avatar_url)}")
-    logger.info(f"[UPDATE_CHARACTER] visual_data_before={json.dumps(visual_data.get('avatar'))}")
-    if avatar_url:
-        _parsed = _urlparse(avatar_url)
-        if _parsed.scheme and _parsed.path.startswith("/images/"):
-            avatar_url = _parsed.path
-        if avatar_url.startswith("/images/"):
-            visual_data["avatar"] = avatar_url
-            logger.info(f"[UPDATE_CHARACTER] avatar set to local path: {avatar_url}")
-        else:
-            try:
-                avatar_path = await save_avatar(avatar_url, character_id)
-                visual_data["avatar"] = f"/images/{avatar_path}"
-                logger.info(f"[UPDATE_CHARACTER] avatar saved via save_avatar: {visual_data['avatar']}")
-            except Exception as e:
-                logger.warning(f"Failed to save avatar: {e}, using provider URL")
-                visual_data["avatar"] = avatar_url
-    else:
-        logger.info(f"[UPDATE_CHARACTER] avatar_url is empty, keeping existing avatar")
-
-    if visual_data.get("custom_avatar"):
-        visual_data = await _admin_prepare_identity_visual_data(visual_data, character_id, avatar_url)
 
     try:
         validate_model_gender(visual_data.get("model_type", "anime"), visual_data.get("gender", "female"))

@@ -1,5 +1,4 @@
 """Репозиторий для работы с изображениями."""
-from typing import Optional
 from sqlalchemy import select, delete
 
 from shared.models import GeneratedImage
@@ -8,32 +7,6 @@ from .base import BaseRepository
 
 class GeneratedImageRepository(BaseRepository[GeneratedImage]):
     model = GeneratedImage
-
-    async def save(
-        self,
-        user_id: int,
-        chat_id: int,
-        prompt: str,
-        provider_url: str,
-        local_path: Optional[str] = None,
-        file_size: Optional[int] = None,
-        content_type: Optional[str] = None,
-        nsfw_level: int = 0
-    ) -> GeneratedImage:
-        image = GeneratedImage(
-            user_id=user_id,
-            chat_id=chat_id,
-            prompt=prompt,
-            provider_url=provider_url,
-            local_path=local_path,
-            file_size=file_size,
-            content_type=content_type,
-            nsfw_level=nsfw_level
-        )
-        self.session.add(image)
-        await self.session.commit()
-        await self.session.refresh(image)
-        return image
 
     async def get_by_chat(self, chat_id: int) -> list[GeneratedImage]:
         result = await self.session.execute(

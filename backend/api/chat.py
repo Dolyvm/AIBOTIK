@@ -77,7 +77,6 @@ async def _sync_existing_chat_to_scenario_heat(
     message_repo: MessageRepository,
 ) -> None:
     from shared.constants import HEAT_LEVEL_DEFAULTS, get_heat_level, normalize_heat_level
-    from api.image_gen.services.scene_analyzer import has_explicit_nude_or_sex_context
 
     scenario_heat = normalize_heat_level(scenario_heat)
     current_heat = get_heat_level(chat)
@@ -89,7 +88,7 @@ async def _sync_existing_chat_to_scenario_heat(
         {"role": msg.role.value, "content": msg.content}
         for msg in messages
     ]
-    if len(history) > 4 or has_explicit_nude_or_sex_context(history):
+    if len(history) > 4:
         return
 
     defaults = HEAT_LEVEL_DEFAULTS.get(scenario_heat, HEAT_LEVEL_DEFAULTS[0])
@@ -132,24 +131,6 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
         all_events = msg_dicts + images
         all_events.sort(key=lambda x: x["timestamp"])
 
-        custom_avatar = False
-        photo_generation_available = chat.chat_type == "character"
-        photo_generation_mode = "standard" if chat.chat_type == "character" else "unavailable"
-        if chat.chat_type == "character":
-            from shared.services.content_loader import get_character
-            char_data = await get_character(chat.target_id)
-            if char_data:
-                visual = char_data.get("visual", {})
-                custom_avatar = visual.get("custom_avatar", False)
-                identity_reference = visual.get("identity_reference") or {}
-                if custom_avatar:
-                    photo_generation_available = True
-                    photo_generation_mode = (
-                        "identity_facefusion"
-                        if identity_reference.get("status") == "ready"
-                        else "identity_facefusion"
-                    )
-
         return {
             "history": all_events,
             "target_id": chat.target_id,
@@ -159,9 +140,6 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "arousal": chat.arousal,
             "mood": chat.current_mood,
             "location": chat.current_location,
-            "custom_avatar": custom_avatar,
-            "photo_generation_available": photo_generation_available,
-            "photo_generation_mode": photo_generation_mode,
         }
 
 

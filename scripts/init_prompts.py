@@ -12,7 +12,6 @@ from shared.services.cache import get_cache
 from shared.services.prompt_service import (
     COMPACT_RUNTIME_PROMPT_KEYS,
     DEFAULT_PROMPTS,
-    IMAGE_SAFETY_PROMPT_KEYS,
     clear_cache,
 )
 
@@ -70,165 +69,6 @@ PROMPT_METADATA = {
         "name": "History Summarization"
     },
 
-    "scene_analyzer_prompt": {
-        "category": "scene_analysis",
-        "name": "Scene Analysis for Image Generation"
-    },
-
-    "nsfw_level_0": {
-        "category": "image",
-        "name": "NSFW Level 0 (SFW) - Positive"
-    },
-    "nsfw_level_0_neg": {
-        "category": "image",
-        "name": "NSFW Level 0 (SFW) - Negative"
-    },
-    "nsfw_level_1": {
-        "category": "image",
-        "name": "NSFW Level 1 (Teasing) - Positive"
-    },
-    "nsfw_level_1_neg": {
-        "category": "image",
-        "name": "NSFW Level 1 (Teasing) - Negative"
-    },
-    "nsfw_level_2": {
-        "category": "image",
-        "name": "NSFW Level 2 (Revealing) - Positive"
-    },
-    "nsfw_level_2_neg": {
-        "category": "image",
-        "name": "NSFW Level 2 (Revealing) - Negative"
-    },
-    "nsfw_level_3": {
-        "category": "image",
-        "name": "NSFW Level 3 (Topless) - Positive"
-    },
-    "nsfw_level_3_neg": {
-        "category": "image",
-        "name": "NSFW Level 3 (Topless) - Negative"
-    },
-    "nsfw_level_2_real": {
-        "category": "image",
-        "name": "Real NSFW Level 2 - Positive"
-    },
-    "nsfw_level_2_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 2 - Negative"
-    },
-    "nsfw_level_2_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 2 - Positive"
-    },
-    "nsfw_level_2_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 2 - Negative"
-    },
-    "nsfw_level_3_real": {
-        "category": "image",
-        "name": "Real NSFW Level 3 - Positive"
-    },
-    "nsfw_level_3_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 3 - Negative"
-    },
-    "nsfw_level_3_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 3 - Positive"
-    },
-    "nsfw_level_3_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 3 - Negative"
-    },
-    "nsfw_level_4": {
-        "category": "image",
-        "name": "NSFW Level 4 (Nude) - Positive"
-    },
-    "nsfw_level_4_neg": {
-        "category": "image",
-        "name": "NSFW Level 4 (Nude) - Negative"
-    },
-    "nsfw_level_5": {
-        "category": "image",
-        "name": "NSFW Level 5 (Explicit) - Positive"
-    },
-    "nsfw_level_5_neg": {
-        "category": "image",
-        "name": "NSFW Level 5 (Explicit) - Negative"
-    },
-    "nsfw_level_4_real": {
-        "category": "image",
-        "name": "Real NSFW Level 4 - Positive"
-    },
-    "nsfw_level_4_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 4 - Negative"
-    },
-    "nsfw_level_4_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 4 - Positive"
-    },
-    "nsfw_level_4_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 4 - Negative"
-    },
-    "nsfw_level_5_real": {
-        "category": "image",
-        "name": "Real NSFW Level 5 - Positive"
-    },
-    "nsfw_level_5_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 5 - Negative"
-    },
-    "nsfw_level_5_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 5 - Positive"
-    },
-    "nsfw_level_5_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 5 - Negative"
-    },
-
-    "anime_base_positive": {
-        "category": "image",
-        "name": "Anime Base Positive Prompt"
-    },
-    "anime_base_negative": {
-        "category": "image",
-        "name": "Anime Base Negative Prompt"
-    },
-    "real_base_positive": {
-        "category": "image",
-        "name": "Real Base Positive Prompt"
-    },
-    "real_base_negative": {
-        "category": "image",
-        "name": "Real Base Negative Prompt"
-    },
-    "real_base_positive_female": {
-        "category": "image",
-        "name": "Real Female Base Positive Prompt"
-    },
-    "real_base_negative_female": {
-        "category": "image",
-        "name": "Real Female Base Negative Prompt"
-    },
-    "real_base_positive_male": {
-        "category": "image",
-        "name": "Real Male Base Positive Prompt"
-    },
-    "real_base_negative_male": {
-        "category": "image",
-        "name": "Real Male Base Negative Prompt"
-    },
-    "manhwa_base_positive": {
-        "category": "image",
-        "name": "Manhwa Base Positive Prompt"
-    },
-    "manhwa_base_negative": {
-        "category": "image",
-        "name": "Manhwa Base Negative Prompt"
-    },
-
     "character_modifiers_emily_stage_1": {
         "category": "modifiers",
         "name": "Emily - Stage 1 (Affinity 0-20)"
@@ -274,10 +114,6 @@ PROMPT_METADATA = {
         "category": "character",
         "name": "SFW Content Restriction"
     },
-    "scene_analyzer_prompt_sfw": {
-        "category": "scene_analysis",
-        "name": "Scene Analyzer (SFW)"
-    },
 }
 
 
@@ -294,12 +130,10 @@ async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
             await cache.set_prompt(key, content)
 
 
-async def init_prompts(sync_compact: bool = False, sync_image_safety: bool = False):
+async def init_prompts(sync_compact: bool = False):
     sync_keys = set()
     if sync_compact:
         sync_keys.update(COMPACT_RUNTIME_PROMPT_KEYS)
-    if sync_image_safety:
-        sync_keys.update(IMAGE_SAFETY_PROMPT_KEYS)
 
     async with get_session() as db:
         result = await db.execute(select(Prompt))
@@ -337,8 +171,6 @@ async def init_prompts(sync_compact: bool = False, sync_image_safety: bool = Fal
     modes = []
     if sync_compact:
         modes.append("sync-compact")
-    if sync_image_safety:
-        modes.append("sync-image-safety")
     mode = "+".join(modes) if modes else "create-missing"
     print(f"Prompts initialized ({mode}): created={created_count}, updated={updated_count}")
 
@@ -350,16 +182,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Update only compact runtime prompt keys in DB and invalidate prompt cache.",
     )
-    parser.add_argument(
-        "--sync-image-safety",
-        action="store_true",
-        help="Update only image safety prompt keys in DB and invalidate prompt cache.",
-    )
     args = parser.parse_args()
 
     asyncio.run(
         init_prompts(
             sync_compact=args.sync_compact,
-            sync_image_safety=args.sync_image_safety,
         )
     )

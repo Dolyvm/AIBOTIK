@@ -81,14 +81,6 @@ class RateLimiter:
             window=limits["window"]
         )
 
-    async def check_image_rate_limit(self, telegram_id: int) -> bool:
-        limits = RATE_LIMITS["images"]
-        return await self.is_allowed(
-            key=f"images:user:{telegram_id}",
-            limit=limits["limit"],
-            window=limits["window"]
-        )
-
     async def check_api_rate_limit(self, endpoint: str, telegram_id: int) -> bool:
         limits = RATE_LIMITS.get(endpoint, RATE_LIMITS["chat_send"])
         return await self.is_allowed(
@@ -103,7 +95,6 @@ class RateLimiter:
 
 RATE_LIMITS = {
     "llm": {"limit": 20, "window": 60, "retry_after": 60},
-    "images": {"limit": 50, "window": 3600, "retry_after": 60},
     "chat_send": {"limit": 30, "window": 60, "retry_after": 30},
     "chat_auto_continue": {"limit": 10, "window": 60, "retry_after": 60},
     "characters": {"limit": 60, "window": 60, "retry_after": 30},
