@@ -310,6 +310,13 @@ async def generate_image(chat_id: int, user: User = Depends(get_current_user)):
     except UnsupportedPhotoModelError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except PhotoPromptBudgetError as e:
+        logging.warning(
+            "Photo prompt budget failed: chat_id=%s user_id=%s character_id=%s error=%s",
+            chat.id,
+            user.telegram_id,
+            character.get("id"),
+            e,
+        )
         raise HTTPException(status_code=422, detail=str(e))
     except PhotoProviderError as e:
         logging.exception("Photo provider failed: chat_id=%s error=%s", chat.id, e)

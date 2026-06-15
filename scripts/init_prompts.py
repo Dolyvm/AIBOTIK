@@ -12,6 +12,7 @@ from shared.services.cache import get_cache
 from shared.services.prompt_service import (
     COMPACT_RUNTIME_PROMPT_KEYS,
     DEFAULT_PROMPTS,
+    PHOTO_PROMPT_KEYS,
     clear_cache,
 )
 
@@ -67,6 +68,35 @@ PROMPT_METADATA = {
     "summary_prompt": {
         "category": "summary",
         "name": "History Summarization"
+    },
+
+    "photo_scene_extractor": {
+        "category": "photo",
+        "name": "Photo Scene Extractor"
+    },
+    "photo_prompt_real_female": {
+        "category": "photo",
+        "name": "Photo Prompt: Real Female"
+    },
+    "photo_prompt_real_male": {
+        "category": "photo",
+        "name": "Photo Prompt: Real Male"
+    },
+    "photo_prompt_anime_female": {
+        "category": "photo",
+        "name": "Photo Prompt: Anime Female"
+    },
+    "photo_prompt_anime_male": {
+        "category": "photo",
+        "name": "Photo Prompt: Anime Male"
+    },
+    "photo_negative_anime_female": {
+        "category": "photo",
+        "name": "Photo Negative Prompt: Anime Female"
+    },
+    "photo_negative_anime_male": {
+        "category": "photo",
+        "name": "Photo Negative Prompt: Anime Male"
     },
 
     "character_modifiers_emily_stage_1": {
@@ -130,10 +160,12 @@ async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
             await cache.set_prompt(key, content)
 
 
-async def init_prompts(sync_compact: bool = False):
+async def init_prompts(sync_compact: bool = False, sync_photo: bool = False):
     sync_keys = set()
     if sync_compact:
         sync_keys.update(COMPACT_RUNTIME_PROMPT_KEYS)
+    if sync_photo:
+        sync_keys.update(PHOTO_PROMPT_KEYS)
 
     async with get_session() as db:
         result = await db.execute(select(Prompt))
@@ -171,6 +203,8 @@ async def init_prompts(sync_compact: bool = False):
     modes = []
     if sync_compact:
         modes.append("sync-compact")
+    if sync_photo:
+        modes.append("sync-photo")
     mode = "+".join(modes) if modes else "create-missing"
     print(f"Prompts initialized ({mode}): created={created_count}, updated={updated_count}")
 
@@ -182,10 +216,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Update only compact runtime prompt keys in DB and invalidate prompt cache.",
     )
+    parser.add_argument(
+        "--sync-photo",
+        action="store_true",
+        help="Update only photo prompt keys in DB and invalidate prompt cache.",
+    )
     args = parser.parse_args()
 
     asyncio.run(
         init_prompts(
             sync_compact=args.sync_compact,
+            sync_photo=args.sync_photo,
         )
     )

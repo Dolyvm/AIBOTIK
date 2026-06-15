@@ -24,7 +24,10 @@ from scripts.init_prompts import PROMPT_METADATA
 from shared.database.repositories.subscription import SubscriptionRepository
 from shared.models import SubscriptionPlan
 from shared.services import photo_generation as photo
-from shared.services.prompt_service import DEFAULT_PROMPTS
+from shared.services.prompt_service import (
+    DEFAULT_PROMPTS,
+    PHOTO_PROMPT_KEYS as DEFAULT_PHOTO_PROMPT_KEYS,
+)
 from shared.subscription_plans import PLAN_LIMITS, USAGE_TYPE_MAP
 
 
@@ -363,10 +366,84 @@ def test_manhwa_rejected_before_provider(monkeypatch):
 
 
 def test_photo_prompts_are_registered_for_admin_and_defaults():
+    assert PHOTO_PROMPT_KEYS == DEFAULT_PHOTO_PROMPT_KEYS
     assert PHOTO_PROMPT_KEYS <= set(DEFAULT_PROMPTS)
     assert PHOTO_PROMPT_KEYS <= set(PROMPT_METADATA)
     assert {PROMPT_METADATA[key]["category"] for key in PHOTO_PROMPT_KEYS} == {"photo"}
     assert all("nsfw_level" not in DEFAULT_PROMPTS[key] for key in PHOTO_PROMPT_KEYS)
+
+
+@pytest.mark.parametrize(
+    ("gender", "subject_tag", "identity_tag", "body_tag", "clothing_tag", "setting_tag"),
+    [
+        ("female", "1girl", "blonde hair", "medium breasts", "bunny cosplay", "cafe"),
+        ("male", "1boy", "black hair", "athletic build", "black shirt", "street"),
+    ],
+)
+def test_default_anime_prompts_are_short_tag_prompts(
+    monkeypatch,
+    gender,
+    subject_tag,
+    identity_tag,
+    body_tag,
+    clothing_tag,
+    setting_tag,
+):
+    async def fake_get_prompt(key):
+        return DEFAULT_PROMPTS[key]
+
+    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
+
+    character = {
+        "name": "Aiko" if gender == "female" else "Ren",
+        "model_type": "anime",
+        "appearance": (
+            "solo, 1girl, waifu, gorgeous beauty, long blonde hair, blue eyes, soft blush"
+            if gender == "female"
+            else "solo, 1boy, handsome man, short black hair, gray eyes, sharp gaze"
+        ),
+        "visual": {
+            "gender": gender,
+            "body_type": "curvy figure" if gender == "female" else "athletic build",
+            "boobs": "medium breasts" if gender == "female" else "",
+            "hair_color": "blonde" if gender == "female" else "black",
+            "haircut": "long wavy hair" if gender == "female" else "short messy hair",
+            "eye_color": "blue" if gender == "female" else "gray",
+            "default_outfit": (
+                "bunny cosplay, waitress outfit, white cuffs, black bodice, red bow tie, long stockings"
+                if gender == "female"
+                else "black shirt, casual jacket, dark jeans, silver chain"
+            ),
+            "style_tags": "high quality, detailed face, cinematic lighting, ultra detailed",
+        },
+    }
+    scene = {
+        "pose": "leaning over counter, hands on table, looking at viewer, seductive posture",
+        "expression": "seductive smile, blushing cheeks, half-lidded eyes",
+        "setting": (
+            "cafe, wooden counter, coffee cups, menu board"
+            if gender == "female"
+            else "street, shop signs, narrow alley, afternoon light"
+        ),
+        "scene_notes": "upper body, warm sunlight, dynamic angle, detailed props",
+    }
+
+    bundle = asyncio.run(service.build_prompt_bundle(character, scene))
+
+    assert photo._estimate_prompt_tokens(bundle.prompt) <= photo.PROMPT_BUDGETS["anime"]
+    assert photo._estimate_prompt_tokens(bundle.negative_prompt or "") <= photo.ANIME_NEGATIVE_BUDGET
+    assert subject_tag in bundle.prompt
+    assert "adult" in bundle.prompt
+    assert identity_tag in bundle.prompt
+    assert body_tag in bundle.prompt
+    assert clothing_tag in bundle.prompt
+    assert setting_tag in bundle.prompt
+    assert "leaning over counter" in bundle.prompt
+
+    prompt_lower = bundle.prompt.lower()
+    for banned in ("anime illustration", "detailed face", "high quality", "masterpiece"):
+        assert banned not in prompt_lower
 
 
 def test_images_generated_subscription_limits_are_registered():

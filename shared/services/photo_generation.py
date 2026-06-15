@@ -31,9 +31,31 @@ ANIME_MODEL_VERSION = (
 
 PROMPT_BUDGETS = {
     "real": 450,
-    "anime": 220,
+    "anime": 58,
 }
-ANIME_NEGATIVE_BUDGET = 180
+ANIME_NEGATIVE_BUDGET = 50
+
+ANIME_FILLER_TAGS = {
+    "anime illustration",
+    "detailed background",
+    "detailed face",
+    "high quality",
+    "best quality",
+    "masterpiece",
+}
+ANIME_TAG_LIMITS = {
+    "identity": (4, 5, 36),
+    "appearance": (3, 3, 28),
+    "body": (2, 3, 24),
+    "face": (2, 3, 24),
+    "clothing": (9, 5, 40),
+    "pose": (2, 4, 28),
+    "expression": (1, 3, 24),
+    "emotion": (1, 2, 18),
+    "setting": (2, 3, 22),
+    "scene_notes": (2, 3, 24),
+    "style_tags": (2, 3, 24),
+}
 
 
 class PhotoGenerationError(Exception):
@@ -78,7 +100,7 @@ STRUCTURAL_APPEARANCE_TAGS = {
     "anime style",
 }
 MALE_MATURE_HINT_PATTERN = re.compile(
-    r"\b(adult|man|male|mature|muscular|beard|mustache|facial hair|stubble|[2-9][0-9]\s*(?:years?\s*old|yo|y/o))\b",
+    r"\b(man|male|mature|muscular|beard|mustache|facial hair|stubble|[2-9][0-9]\s*(?:years?\s*old|yo|y/o))\b",
     flags=re.IGNORECASE,
 )
 
@@ -165,6 +187,60 @@ def _dedupe_csv(text: Any, max_items: int = 60) -> str:
     return ", ".join(items)
 
 
+def _normalize_anime_tag(item: str) -> str:
+    item = _clean_text(item).strip(" ,")
+    if not item:
+        return ""
+    lowered = item.lower()
+    if lowered in ANIME_FILLER_TAGS:
+        return ""
+    return item
+
+
+def _truncate_tag(item: str, max_words: int, max_chars: int) -> str:
+    item = _normalize_anime_tag(item)
+    if not item:
+        return ""
+
+    words = item.split()
+    if len(words) > max_words:
+        item = " ".join(words[:max_words])
+    if len(item) > max_chars:
+        item = item[:max_chars].rsplit(" ", 1)[0] or item[:max_chars]
+    return item.strip(" ,")
+
+
+def _compact_csv_tags(
+    value: Any,
+    max_items: int,
+    max_words: int,
+    max_chars: int,
+) -> str:
+    items = (
+        _truncate_tag(item, max_words=max_words, max_chars=max_chars)
+        for item in _split_csv_items(value)
+    )
+    return ", ".join(_dedupe_items(items, max_items=max_items))
+
+
+def _compact_anime_context(context: Mapping[str, Any]) -> dict[str, Any]:
+    compact = dict(context)
+    for field, (max_items, max_words, max_chars) in ANIME_TAG_LIMITS.items():
+        compact[field] = _compact_csv_tags(
+            compact.get(field),
+            max_items=max_items,
+            max_words=max_words,
+            max_chars=max_chars,
+        )
+    return compact
+
+
+def _strip_anime_filler_tags(text: str) -> str:
+    return ", ".join(
+        _dedupe_items((_normalize_anime_tag(item) for item in _split_csv_items(text)), max_items=200)
+    )
+
+
 def _estimate_prompt_tokens(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]", text or ""))
 
@@ -189,6 +265,7 @@ def _fit_prompt_budget(
     budget: int,
     removable_fields: Sequence[str],
     label: str,
+    log_meta: Mapping[str, Any] | None = None,
 ) -> str:
     active_context = dict(context)
     prompt = _render_template(template, active_context)
@@ -196,14 +273,28 @@ def _fit_prompt_budget(
         return prompt
 
     fields = _template_fields(template)
+    removed_fields: list[str] = []
     for field in removable_fields:
         if field not in fields:
             continue
         active_context[field] = ""
+        removed_fields.append(field)
         prompt = _render_template(template, active_context)
         if _estimate_prompt_tokens(prompt) <= budget:
             return prompt
 
+    logger.warning(
+        "Photo prompt budget exceeded: label=%s budget=%s tokens=%s removed_fields=%s meta=%s\n"
+        "TEMPLATE:\n%s\nCONTEXT:\n%s\nPROMPT:\n%s",
+        label,
+        budget,
+        _estimate_prompt_tokens(prompt),
+        removed_fields,
+        json.dumps(dict(log_meta or {}), ensure_ascii=False, default=str),
+        template,
+        json.dumps(active_context, ensure_ascii=False, default=str),
+        prompt,
+    )
     raise PhotoPromptBudgetError(f"{label} prompt is too long after removing optional blocks")
 
 
@@ -413,13 +504,23 @@ def _stored_photo_outfit(chat_state: Mapping[str, Any] | None) -> dict[str, str]
 
     source = _clean_text(outfit.get("source"))
     clothing = _clean_text(outfit.get("clothing"))
-    if source not in {"wardrobe", "custom"} or not clothing:
+    if source not in {"default", "wardrobe", "custom"} or not clothing:
         return {}
 
     return {
         "source": source,
         "wardrobe_key": _clean_text(outfit.get("wardrobe_key")),
         "clothing": clothing,
+    }
+
+
+def _photo_outfit_update(source: str, clothing: str, wardrobe_key: str = "") -> dict[str, Any]:
+    return {
+        "photo_outfit": {
+            "source": source,
+            "wardrobe_key": wardrobe_key,
+            "clothing": clothing,
+        }
     }
 
 
@@ -496,7 +597,7 @@ def _resolve_photo_outfit(
     wardrobe: Mapping[str, str],
     scene: Mapping[str, Any],
     chat_state: Mapping[str, Any] | None,
-) -> tuple[str, dict[str, Any] | None]:
+) -> tuple[str, dict[str, Any] | None, dict[str, Any]]:
     if model_type == "real":
         default_outfit = _real_default_photo_outfit(visual["default_outfit"], wardrobe)
     else:
@@ -517,24 +618,42 @@ def _resolve_photo_outfit(
         wardrobe_key = _forced_exposure_wardrobe_key(wardrobe)
         if wardrobe_key:
             clothing = _dedupe_csv(wardrobe[wardrobe_key], 40)
-            logger.info(
-                "Photo outfit exposure override: outfit_action=%s wardrobe_key=%s",
-                action,
-                wardrobe_key,
-            )
-            return clothing, {
-                "photo_outfit": {
-                    "source": "wardrobe",
-                    "wardrobe_key": wardrobe_key,
-                    "clothing": clothing,
-                }
+            update = _photo_outfit_update("wardrobe", clothing, wardrobe_key)
+            return clothing, update, {
+                "requested_action": action,
+                "resolved_action": "wardrobe",
+                "reason": "exposure_override",
+                "stored_outfit": stored_outfit,
+                "default_outfit": default_outfit,
+                "resolved_clothing": clothing,
+                "state_meta_update": update,
             }
 
     if action == "none":
-        return fallback_clothing, None
+        update = None
+        if not stored_outfit and default_outfit:
+            update = _photo_outfit_update("default", default_outfit)
+        return fallback_clothing, update, {
+            "requested_action": action,
+            "resolved_action": stored_outfit.get("source") or "default",
+            "reason": "locked_or_initial_default",
+            "stored_outfit": stored_outfit,
+            "default_outfit": default_outfit,
+            "resolved_clothing": fallback_clothing,
+            "state_meta_update": update,
+        }
 
     if action == "default":
-        return default_outfit, {"photo_outfit": None}
+        update = _photo_outfit_update("default", default_outfit) if default_outfit else {"photo_outfit": None}
+        return default_outfit, update, {
+            "requested_action": action,
+            "resolved_action": "default",
+            "reason": "explicit_default",
+            "stored_outfit": stored_outfit,
+            "default_outfit": default_outfit,
+            "resolved_clothing": default_outfit,
+            "state_meta_update": update,
+        }
 
     if action == "wardrobe":
         wardrobe_key = _find_wardrobe_key(_clean_text(scene.get("wardrobe_key")), wardrobe)
@@ -543,28 +662,50 @@ def _resolve_photo_outfit(
                 "Photo outfit wardrobe action ignored: invalid wardrobe_key=%r",
                 scene.get("wardrobe_key"),
             )
-            return fallback_clothing, None
+            return fallback_clothing, None, {
+                "requested_action": action,
+                "resolved_action": stored_outfit.get("source") or "default",
+                "reason": "invalid_wardrobe_key",
+                "stored_outfit": stored_outfit,
+                "default_outfit": default_outfit,
+                "resolved_clothing": fallback_clothing,
+                "state_meta_update": None,
+            }
 
         clothing = _dedupe_csv(wardrobe[wardrobe_key], 40)
-        return clothing, {
-            "photo_outfit": {
-                "source": "wardrobe",
-                "wardrobe_key": wardrobe_key,
-                "clothing": clothing,
-            }
+        update = _photo_outfit_update("wardrobe", clothing, wardrobe_key)
+        return clothing, update, {
+            "requested_action": action,
+            "resolved_action": "wardrobe",
+            "reason": "explicit_wardrobe",
+            "stored_outfit": stored_outfit,
+            "default_outfit": default_outfit,
+            "resolved_clothing": clothing,
+            "state_meta_update": update,
         }
 
     custom_clothing = _dedupe_csv(scene.get("custom_clothing"), 40)
     if not custom_clothing:
         logger.warning("Photo outfit custom action ignored: empty custom_clothing")
-        return fallback_clothing, None
-
-    return custom_clothing, {
-        "photo_outfit": {
-            "source": "custom",
-            "wardrobe_key": "",
-            "clothing": custom_clothing,
+        return fallback_clothing, None, {
+            "requested_action": action,
+            "resolved_action": stored_outfit.get("source") or "default",
+            "reason": "empty_custom_clothing",
+            "stored_outfit": stored_outfit,
+            "default_outfit": default_outfit,
+            "resolved_clothing": fallback_clothing,
+            "state_meta_update": None,
         }
+
+    update = _photo_outfit_update("custom", custom_clothing)
+    return custom_clothing, update, {
+        "requested_action": action,
+        "resolved_action": "custom",
+        "reason": "explicit_custom",
+        "stored_outfit": stored_outfit,
+        "default_outfit": default_outfit,
+        "resolved_clothing": custom_clothing,
+        "state_meta_update": update,
     }
 
 
@@ -785,18 +926,25 @@ class PhotoGenerationService:
         character: Mapping[str, Any],
         scene: Mapping[str, Any],
         chat_state: Mapping[str, Any] | None = None,
+        log_meta: Mapping[str, Any] | None = None,
     ) -> PhotoPromptBundle:
         model_type = _normalize_model_type(character)
         gender = _normalize_gender(character)
         visual = _visual_parts(character)
         wardrobe = _wardrobe(character)
 
-        clothing, state_meta_update = _resolve_photo_outfit(
+        clothing, state_meta_update, outfit_decision = _resolve_photo_outfit(
             model_type,
             visual,
             wardrobe,
             scene,
             chat_state,
+        )
+        logger.warning(
+            "Photo scene/outfit decision: meta=%s scene=%s outfit_decision=%s",
+            json.dumps(dict(log_meta or {}), ensure_ascii=False, default=str),
+            json.dumps(dict(scene), ensure_ascii=False, default=str),
+            json.dumps(outfit_decision, ensure_ascii=False, default=str),
         )
         clothing_prompt = (
             _real_clothing_prompt(clothing)
@@ -820,11 +968,13 @@ class PhotoGenerationService:
             "scene_notes": scene.get("scene_notes", ""),
             "style_tags": visual["style_tags"],
         }
+        if model_type == "anime":
+            context = _compact_anime_context(context)
 
         template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
         removable_fields = (
-            ("style_tags", "emotion")
-            if model_type == "anime" and gender == "male"
+            ("style_tags", "scene_notes", "setting", "expression", "emotion", "body", "face", "appearance")
+            if model_type == "anime"
             else ("scene_notes", "style_tags", "setting", "emotion")
         )
         prompt = _fit_prompt_budget(
@@ -833,7 +983,10 @@ class PhotoGenerationService:
             PROMPT_BUDGETS[model_type],
             removable_fields=removable_fields,
             label=f"{model_type}/{gender}",
+            log_meta=log_meta,
         )
+        if model_type == "anime":
+            prompt = _strip_anime_filler_tags(prompt)
 
         negative_prompt = None
         if model_type == "anime":
@@ -844,6 +997,7 @@ class PhotoGenerationService:
                 ANIME_NEGATIVE_BUDGET,
                 removable_fields=("scene_notes", "setting", "emotion", "style_tags"),
                 label=f"anime/{gender} negative",
+                log_meta=log_meta,
             )
 
         replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
@@ -899,8 +1053,18 @@ class PhotoGenerationService:
             chat_state = dict(chat.state_meta or {}) if chat else {}
 
         scene = await self.build_scene(character, recent_messages, chat_state=chat_state)
-        bundle = await self.build_prompt_bundle(character, scene, chat_state=chat_state)
-        logger.info(
+        log_meta = {
+            "chat_id": chat_id,
+            "user_id": user.telegram_id,
+            "character_id": character.get("id"),
+        }
+        bundle = await self.build_prompt_bundle(
+            character,
+            scene,
+            chat_state=chat_state,
+            log_meta=log_meta,
+        )
+        logger.warning(
             "Photo final prompt: chat_id=%s user_id=%s model_type=%s gender=%s "
             "positive_tokens=%s negative_tokens=%s\nPROMPT:\n%s\nNEGATIVE_PROMPT:\n%s",
             chat_id,
