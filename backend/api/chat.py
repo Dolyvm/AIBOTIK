@@ -32,6 +32,13 @@ from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
 from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
+from shared.services.photo_generation import (
+    PhotoGenerationError,
+    PhotoGenerationService,
+    PhotoPromptBudgetError,
+    PhotoProviderError,
+    UnsupportedPhotoModelError,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -49,6 +56,7 @@ llm_client = LLMClient(
     reasoning={"enabled": False},
 )
 context_manager = ContextManager(llm_client)
+photo_generation_service = PhotoGenerationService()
 
 
 class MessageRequest(BaseModel):
@@ -225,6 +233,90 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
     except Exception as e:
         logging.error(f"Error in send_message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{chat_id}/generate-image")
+async def generate_image(chat_id: int, user: User = Depends(get_current_user)):
+    rate_limiter = get_rate_limiter()
+    if rate_limiter:
+        allowed = await rate_limiter.check_api_rate_limit(
+            endpoint="chat_image_generation",
+            telegram_id=user.telegram_id,
+        )
+        if not allowed:
+            limits = RATE_LIMITS["chat_image_generation"]
+            raise RateLimitExceeded(
+                limit=limits["limit"],
+                window=limits["window"],
+                retry_after=limits["retry_after"],
+            )
+
+    chat = await verify_chat_ownership(chat_id, user)
+    if chat.chat_type != "character":
+        raise HTTPException(status_code=400, detail="Фото можно генерировать только в чате с персонажем")
+
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(
+            user.telegram_id,
+            "images_generated",
+            session,
+        )
+        if not allowed:
+            raise UsageLimitExceeded("images_generated", limit)
+
+    character = await get_character(chat.target_id)
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    async with get_session() as session:
+        message_repo = MessageRepository(session)
+        recent_messages = await message_repo.get_history(chat.id, limit=5)
+
+    try:
+        async with get_session() as session:
+            image = await photo_generation_service.generate_for_chat(
+                session=session,
+                user=user,
+                chat_id=chat.id,
+                character=character,
+                recent_messages=recent_messages,
+                chat_state=chat.state_meta,
+            )
+
+        async with get_session() as session:
+            await sub_service.increment_usage(user.telegram_id, "images_generated", session)
+
+        async with get_session() as session:
+            await AnalyticsService.track(
+                session,
+                user_id=user.telegram_id,
+                event_type="image_generated",
+                entity_type="chats",
+                entity_id=str(chat.id),
+                meta={
+                    "character_id": character.get("id"),
+                    "image_id": image.id,
+                    "model_type": character.get("model_type"),
+                },
+            )
+
+        return {
+            "role": "assistant",
+            "image_id": image.id,
+            "avatar": image.public_url,
+            "timestamp": image.created_at.isoformat(),
+        }
+    except UnsupportedPhotoModelError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PhotoPromptBudgetError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except PhotoProviderError as e:
+        logging.exception("Photo provider failed: chat_id=%s error=%s", chat.id, e)
+        raise HTTPException(status_code=502, detail="Ошибка генерации фото")
+    except PhotoGenerationError as e:
+        logging.exception("Photo generation failed: chat_id=%s error=%s", chat.id, e)
+        raise HTTPException(status_code=500, detail="Ошибка подготовки фото")
 
 
 @router.get("/by-character/{target_id}")

@@ -43,6 +43,7 @@ PROMPT_CATEGORIES = {
     "summary": "Summary Prompts",
     "creation": "Character Creation",
     "modifiers": "Character Modifiers",
+    "photo": "Photo Generation",
 }
 
 HIDDEN_PROMPT_KEYS = {"llm_active_model"}

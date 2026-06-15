@@ -48,6 +48,11 @@ MAX_HISTORY_LENGTH = 10
 
 IMAGES_STORAGE_PATH = os.getenv("IMAGES_STORAGE_PATH", "/app/generated_images")
 IMAGES_BASE_URL = os.getenv("IMAGES_BASE_URL", "http://localhost/images")  
+
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+REPLICATE_POLL_TIMEOUT_SECONDS = int(os.getenv("REPLICATE_POLL_TIMEOUT_SECONDS", "900"))
+REPLICATE_POLL_INTERVAL_SECONDS = float(os.getenv("REPLICATE_POLL_INTERVAL_SECONDS", "3"))
+
 ADMIN_TELEGRAM_IDS = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip()]
 
 PLATEGA_MERCHANT_ID = os.getenv("PLATEGA_MERCHANT_ID")

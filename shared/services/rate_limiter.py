@@ -97,6 +97,7 @@ RATE_LIMITS = {
     "llm": {"limit": 20, "window": 60, "retry_after": 60},
     "chat_send": {"limit": 30, "window": 60, "retry_after": 30},
     "chat_auto_continue": {"limit": 10, "window": 60, "retry_after": 60},
+    "chat_image_generation": {"limit": 5, "window": 60, "retry_after": 60},
     "characters": {"limit": 60, "window": 60, "retry_after": 30},
     "character_creation": {"limit": 5, "window": 3600, "retry_after": 300},                      
 }

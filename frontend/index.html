@@ -861,11 +861,7 @@
                         <div v-if="msg.avatar" class="photo-container">
                             <img class="message-photo"
                                  :src="msg.avatar"
-                                 :class="{'nsfw-blur': shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)}"
-                                 @click="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar) ? reveal(msg.avatar) : expandImage(msg.avatar)">
-                            <span v-if="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)" class="click-hint">
-                                Нажмите для просмотра
-                            </span>
+                                 @click="expandImage(msg.avatar)">
                         </div>
                     </div>
                     <div v-if="index === undoTargetIndex" class="turn-actions">
@@ -903,7 +899,13 @@
                     rows="1"
                     ref="inputField"
                 ></textarea>
-                <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
+                <button class="btn-generate-image"
+                        @click="generateImage"
+                        :disabled="!currentChatId || currentChatType !== 'character' || isWaitingResponse || isStreaming || isGeneratingImage"
+                        title="Сгенерировать фото">
+                    <i :class="isGeneratingImage ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
+                </button>
+                <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming || isGeneratingImage">
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
@@ -1496,6 +1498,7 @@
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
                 const isUndoing = ref(false);
+                const isGeneratingImage = ref(false);
                 const messagesContainer = ref(null);
 
                 // Create Character
@@ -1622,6 +1625,7 @@
                 });
                 const usageLabels = {
                     messages: 'Сообщения',
+                    images_generated: 'Фото',
                     characters_created: 'Создание персонажей',
                     worlds_created: 'Создание вселенных',
                     content_edits: 'Редактирование',
@@ -1728,10 +1732,6 @@
 
                 // NSFW Blur state
                 const revealedImages = ref(new Set());
-
-                const shouldBlurImage = (nsfwLevel) => {
-                    return profileSettings.value.nsfw_blur && nsfwLevel >= 3;
-                };
 
                 const shouldBlurCard = (item) => {
                     return profileSettings.value.nsfw_blur && item.is_nsfw;
@@ -1840,6 +1840,7 @@
                             if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
                                 const labels = {
                                     messages: 'сообщений',
+                                    images_generated: 'фото',
                                     characters_created: 'создания персонажей', worlds_created: 'создания вселенных',
                                     content_edits: 'редактирования',
                                 };
@@ -2510,6 +2511,7 @@
                         if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
                             const labels = {
                                 messages: 'сообщений',
+                                images_generated: 'фото',
                                 characters_created: 'создания персонажей',
                                 worlds_created: 'создания вселенных',
                                 content_edits: 'редактирования',
@@ -2683,6 +2685,40 @@
                         if (isActiveChat(sourceChatId, sourceSessionId)) {
                             isWaitingResponse.value = false;
                             isStreaming.value = false;
+                        }
+                    }
+                };
+
+                const generateImage = async () => {
+                    const sourceChatId = currentChatId.value;
+                    const sourceSessionId = currentChatSessionId.value;
+                    if (!sourceChatId || isWaitingResponse.value || isStreaming.value || isGeneratingImage.value) return;
+                    if (currentChatType.value !== 'character') {
+                        showToast('Фото можно генерировать только в чате с персонажем', 'error');
+                        return;
+                    }
+
+                    isGeneratingImage.value = true;
+                    isWaitingResponse.value = true;
+                    scrollToBottom();
+
+                    try {
+                        const response = await axios.post(`/api/chat/${sourceChatId}/generate-image`);
+                        if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+
+                        chatHistory.value.push(response.data);
+                        await nextTick();
+                        scrollToBottom();
+                        loadSubscription();
+                    } catch (error) {
+                        console.error('Image generation failed:', error);
+                        if (isActiveChat(sourceChatId, sourceSessionId) && error.response?.status !== 429) {
+                            showToast(error.response?.data?.detail || 'Ошибка генерации фото', 'error');
+                        }
+                    } finally {
+                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            isGeneratingImage.value = false;
+                            isWaitingResponse.value = false;
                         }
                     }
                 };
@@ -3399,7 +3435,8 @@
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
-                    isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
+                    isWaitingResponse, isStreaming, isUndoing, isGeneratingImage, messagesContainer, inputField,
+                    generateImage,
                     undoTargetIndex, undoLastTurn, editLastMessage,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
@@ -3439,7 +3476,7 @@
                     // Age confirmation
                     showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur
-                    revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
+                    revealedImages, shouldBlurCard, isRevealed, reveal, revealCard,
                     generateAutoReply,
                     // Swipe to delete chat
                     chatSwipeStyles, handleChatRowClick,

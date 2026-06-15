@@ -498,6 +498,10 @@ body.desktop .grid {
     color: var(--tg-theme-hint-color);
 }
 
+.input-area .btn-generate-image {
+    font-size: 22px;
+}
+
 
 /* === Markdown Styles === */
 .markdown-content {

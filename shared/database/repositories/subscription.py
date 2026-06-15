@@ -20,20 +20,20 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         return result.scalar_one_or_none()
 
     ALLOWED_FIELDS = frozenset({
-        "messages_sent", "characters_created",
+        "messages_sent", "images_generated", "characters_created",
         "worlds_created", "content_edits",
     })
 
     ALLOWED_BONUS_FIELDS = frozenset({
-        "bonus_messages_sent", "bonus_characters_created",
+        "bonus_messages_sent", "bonus_images_generated", "bonus_characters_created",
         "bonus_worlds_created", "bonus_content_edits",
     })
 
     _RETURNING = """
         RETURNING id, user_id, period,
-                  messages_sent, characters_created,
+                  messages_sent, images_generated, characters_created,
                   worlds_created, content_edits,
-                  bonus_messages_sent, bonus_characters_created,
+                  bonus_messages_sent, bonus_images_generated, bonus_characters_created,
                   bonus_worlds_created, bonus_content_edits
     """
 
@@ -41,10 +41,12 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
         return MonthlyUsage(
             id=row.id, user_id=row.user_id, period=row.period,
             messages_sent=row.messages_sent,
+            images_generated=row.images_generated,
             characters_created=row.characters_created,
             worlds_created=row.worlds_created,
             content_edits=row.content_edits,
             bonus_messages_sent=row.bonus_messages_sent,
+            bonus_images_generated=row.bonus_images_generated,
             bonus_characters_created=row.bonus_characters_created,
             bonus_worlds_created=row.bonus_worlds_created,
             bonus_content_edits=row.bonus_content_edits,

@@ -57,6 +57,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - REPLICATE_POLL_TIMEOUT_SECONDS=${REPLICATE_POLL_TIMEOUT_SECONDS:-900}
+      - REPLICATE_POLL_INTERVAL_SECONDS=${REPLICATE_POLL_INTERVAL_SECONDS:-3}
       - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
       - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
       - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
@@ -105,6 +108,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - BOT_TOKEN=${BOT_TOKEN}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - REPLICATE_POLL_TIMEOUT_SECONDS=${REPLICATE_POLL_TIMEOUT_SECONDS:-900}
+      - REPLICATE_POLL_INTERVAL_SECONDS=${REPLICATE_POLL_INTERVAL_SECONDS:-3}
       - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
       - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
       - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
@@ -174,7 +180,7 @@ services:
         echo 'Waiting for migrations to complete...' &&
         sleep 10 &&
         echo 'Initializing prompts...' &&
-        python /app/scripts/init_prompts.py --sync-compact --sync-image-safety &&
+        python /app/scripts/init_prompts.py --sync-compact &&
         echo 'Seeding content...' &&
         python /app/scripts/seed_content.py
       "

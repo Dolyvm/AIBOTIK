@@ -1,7 +1,7 @@
 """remove photo generation prompts
 
-Revision ID: 0008_remove_photo_generation_prompts
-Revises: 0007_platega_payments_no_auto_renew
+Revision ID: 0008_remove_photo_prompts
+Revises: 0007_platega_payments
 Create Date: 2026-06-14
 """
 
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 
 
-revision: str = "0008_remove_photo_generation_prompts"
-down_revision: Union[str, None] = "0007_platega_payments_no_auto_renew"
+revision: str = "0008_remove_photo_prompts"
+down_revision: Union[str, None] = "0007_platega_payments"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

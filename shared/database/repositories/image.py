@@ -22,9 +22,9 @@ class GeneratedImageRepository(BaseRepository[GeneratedImage]):
         return [
             {
                 "role": "assistant",
+                "image_id": img.id,
                 "avatar": img.public_url,
                 "timestamp": img.created_at.isoformat(),
-                "nsfw_level": img.nsfw_level or 0
             }
             for img in images
         ]
