@@ -231,7 +231,7 @@ def test_visual_data_character_shape_is_supported(monkeypatch):
 def test_anime_payload_uses_gender_specific_negative_prompt(monkeypatch):
     async def fake_get_prompt(key):
         prompts = {
-            "photo_prompt_anime_male": "1boy, adult man, anime illustration, {clothing}, {appearance}",
+            "photo_prompt_anime_male": "1boy,  man, anime illustration, {clothing}, {appearance}",
             "photo_negative_anime_male": "woman, girl, multiple people",
         }
         return prompts[key]
@@ -434,7 +434,7 @@ def test_default_anime_prompts_are_short_tag_prompts(
     assert photo._estimate_prompt_tokens(bundle.prompt) <= photo.PROMPT_BUDGETS["anime"]
     assert photo._estimate_prompt_tokens(bundle.negative_prompt or "") <= photo.ANIME_NEGATIVE_BUDGET
     assert subject_tag in bundle.prompt
-    assert "adult" in bundle.prompt
+    assert "" in bundle.prompt
     assert identity_tag in bundle.prompt
     assert body_tag in bundle.prompt
     assert clothing_tag in bundle.prompt

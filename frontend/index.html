@@ -2900,7 +2900,7 @@
 
                 const isNsfw = (tags) => {
                     if (!tags) return false;
-                    return tags.some(t => ['NSFW', 'Erotic', 'Taboo', 'Adult'].includes(t));
+                    return tags.some(t => ['NSFW', 'Erotic', 'Taboo', ''].includes(t));
                 };
 
                 const expandImage = (url) => {

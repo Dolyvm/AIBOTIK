@@ -31,7 +31,7 @@ ANIME_MODEL_VERSION = (
 
 PROMPT_BUDGETS = {
     "real": 450,
-    "anime": 58,
+    "anime": 100,
 }
 ANIME_NEGATIVE_BUDGET = 50
 
@@ -267,10 +267,26 @@ def _fit_prompt_budget(
     label: str,
     log_meta: Mapping[str, Any] | None = None,
 ) -> str:
-    active_context = dict(context)
-    prompt = _render_template(template, active_context)
-    if _estimate_prompt_tokens(prompt) <= budget:
-        return prompt
+    original_context = dict(context)
+    active_context = dict(original_context)
+    original_prompt = _render_template(template, active_context)
+    original_tokens = _estimate_prompt_tokens(original_prompt)
+    if original_tokens <= budget:
+        return original_prompt
+
+    logger.warning(
+        "Photo prompt before trimming: label=%s budget=%s tokens=%s meta=%s\n"
+        "TEMPLATE:\n%s\nORIGINAL_CONTEXT:\n%s\nORIGINAL_PROMPT:\n%s",
+        label,
+        budget,
+        original_tokens,
+        json.dumps(dict(log_meta or {}), ensure_ascii=False, default=str),
+        template,
+        json.dumps(original_context, ensure_ascii=False, default=str),
+        original_prompt,
+    )
+
+    prompt = original_prompt
 
     fields = _template_fields(template)
     removed_fields: list[str] = []
@@ -285,7 +301,7 @@ def _fit_prompt_budget(
 
     logger.warning(
         "Photo prompt budget exceeded: label=%s budget=%s tokens=%s removed_fields=%s meta=%s\n"
-        "TEMPLATE:\n%s\nCONTEXT:\n%s\nPROMPT:\n%s",
+        "TEMPLATE:\n%s\nTRIMMED_CONTEXT:\n%s\nTRIMMED_PROMPT:\n%s",
         label,
         budget,
         _estimate_prompt_tokens(prompt),

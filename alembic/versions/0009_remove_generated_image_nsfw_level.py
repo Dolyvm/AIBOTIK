@@ -51,9 +51,9 @@ PHOTO_PROMPTS = {
   "setting": "place plus 2 visible background object tags, max 18 words",
   "scene_notes": "composition tag plus lighting/props, max 20 words"
 }""",
-    "photo_prompt_real_female": "single adult woman, photorealistic image, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags}, natural skin texture, realistic anatomy, detailed face",
-    "photo_prompt_real_male": "single adult man, photorealistic image, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags}, natural skin texture, realistic anatomy, detailed face",
-    "photo_prompt_anime_female": "1girl, adult woman, {identity}, anime illustration, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {style_tags}, detailed face, high quality",
+    "photo_prompt_real_female": "single  woman, photorealistic image, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags}, natural skin texture, realistic anatomy, detailed face",
+    "photo_prompt_real_male": "single  man, photorealistic image, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags}, natural skin texture, realistic anatomy, detailed face",
+    "photo_prompt_anime_female": "1girl,  woman, {identity}, anime illustration, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {style_tags}, detailed face, high quality",
     "photo_prompt_anime_male": "best quality, masterpiece, {subject_tags}, {identity}, {pose}, {expression}, {setting}, detailed background, {scene_notes}, {clothing}, {style_tags}, detailed face",
     "photo_negative_anime_female": "multiple people, extra person, man, boy, player, user, crowd, duplicate body, bad anatomy, bad hands, missing fingers, extra fingers, extra limbs, deformed body, low quality, lowres, blurry, text, watermark, logo, speech bubble, censor bar, plain gray background, empty background, character sheet, official character card, reference sheet, game logo, title logo",
     "photo_negative_anime_male": "1girl, girl, woman, female, breasts, multiple people, extra person, crowd, character sheet, reference sheet, simple background, blank background, text, logo, watermark, bad anatomy, bad hands, low quality",
