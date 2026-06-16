@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="card">
-    <h2>Все промпты</h2>
+    <h2>{{ page_title or 'Все промпты' }}</h2>
 
     {% if not admin %}
     <div style="text-align: center; padding: 40px; color: #95a5a6;">
@@ -15,7 +15,7 @@
     </div>
     {% else %}
     <p style="margin-bottom: 20px; color: #7f8c8d;">
-        Управляйте всеми системными промптами, используемыми в боте.
+        {{ page_description or 'Управляйте всеми системными промптами, используемыми в боте.' }}
     </p>
 
     {% for category, prompts in prompts_by_category.items() %}
@@ -41,7 +41,14 @@
                             {{ prompt.key }}
                         </code>
                     </td>
-                    <td>{{ prompt.name }}</td>
+                    <td>
+                        <div>{{ prompt.name }}</div>
+                        {% if prompt_descriptions and prompt_descriptions.get(prompt.key) %}
+                        <div style="font-size: 12px; color: #7f8c8d; line-height: 1.4; margin-top: 4px;">
+                            {{ prompt_descriptions.get(prompt.key) }}
+                        </div>
+                        {% endif %}
+                    </td>
                     <td>
                         <a href="/admin/prompts/{{ prompt.key }}" class="btn btn-small">Edit</a>
                     </td>

@@ -15,6 +15,15 @@ from shared.config import ADMIN_TELEGRAM_IDS, BOT_TOKEN
 from shared.services.prompt_service import reload_cache, DEFAULT_PROMPTS, create_or_update_character_modifiers, \
     get_character_modifiers_from_db
 from shared.constants import invalidate_character_modifiers_cache
+from shared.services.photo_generation import (
+    apply_default_wardrobe,
+    default_style_tags_for_model,
+    PhotoGenerationError,
+    PhotoGenerationService,
+    PhotoPromptBudgetError,
+    PhotoProviderError,
+    UnsupportedPhotoModelError,
+)
 from shared.services.cache import get_cache
 from shared.services.image_storage import (
     get_public_url,
@@ -35,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory="admin/templates")
+photo_generation_service = PhotoGenerationService()
 
 PROMPT_CATEGORIES = {
     "settings": "Settings",
@@ -44,9 +54,48 @@ PROMPT_CATEGORIES = {
     "creation": "Character Creation",
     "modifiers": "Character Modifiers",
     "photo": "Photo Generation",
+    "photo_policy": "Photo Generation Policy",
 }
 
 HIDDEN_PROMPT_KEYS = {"llm_active_model"}
+PHOTO_PROMPT_CATEGORIES = {"photo", "photo_policy"}
+
+PHOTO_PROMPT_DESCRIPTIONS = {
+    "photo_scene_extractor": "LLM-инструкция: превращает последние сообщения чата и photo_state в короткое JSON-ТЗ сцены перед генерацией фото.",
+    "photo_prompt_real_female": "Positive prompt-шаблон для реалистичной модели женского персонажа; используется при обычном фото и аватарке real/female.",
+    "photo_prompt_real_male": "Positive prompt-шаблон для реалистичной модели мужского персонажа; используется при обычном фото и аватарке real/male.",
+    "photo_prompt_anime_female": "Positive prompt-шаблон для anime-модели женского персонажа; собирает subject, внешность, одежду, сцену и quality tags.",
+    "photo_prompt_anime_male": "Positive prompt-шаблон для anime-модели мужского персонажа; собирает subject, внешность, одежду, сцену и quality tags.",
+    "photo_negative_anime_female": "Базовый negative prompt для anime/female; всегда добавляется к anime-генерации женского персонажа.",
+    "photo_negative_anime_male": "Базовый negative prompt для anime/male; всегда добавляется к anime-генерации мужского персонажа.",
+    "photo_policy_anime_filler_tags": "Anime-теги, которые считаются мусорными/дублирующими и удаляются из компонентов prompt перед сборкой.",
+    "photo_policy_anime_user_quality_tags": "Quality-теги пользователя, которые вычищаются из avatar prompt, чтобы аватарка не тратила бюджет на лишнее качество.",
+    "photo_policy_anime_rating_safe": "Rating-тег для безопасной anime-сцены; подставляется при exposure_intent=safe.",
+    "photo_policy_anime_rating_nsfw": "Rating-тег для nude anime-сцены; подставляется при exposure_intent=nude.",
+    "photo_policy_anime_rating_explicit": "Rating-теги для explicit anime-сцены; подставляются при explicit_focus.",
+    "photo_policy_anime_nudity_tags": "Дополнительные positive tags для nude/explicit anime-сцены.",
+    "photo_policy_anime_focus_tags": "Дополнительные positive tags для explicit_focus anime-сцены.",
+    "photo_policy_anime_quality_tags": "Quality tags для обычных anime-фото в чате.",
+    "photo_policy_anime_avatar_quality_tags": "Quality tags для anime-аватарок; используется вместо обычных quality tags при purpose=avatar.",
+    "photo_policy_anime_subject_female": "Subject tags для женского anime-персонажа, например 1girl/solo; добавляются если их нет во внешности.",
+    "photo_policy_anime_subject_male": "Subject tags для мужского anime-персонажа, например 1boy/solo; добавляются если их нет во внешности.",
+    "photo_policy_anime_negative_explicit": "Дополнительные negative tags для nude/explicit anime-сцены, обычно против цензуры и мозаики.",
+    "photo_policy_avatar_scene": "JSON фиксированной сцены аватарки: pose, expression, composition, setting, exposure_intent и related fields.",
+    "photo_policy_avatar_default_outfit": "Fallback outfit для аватарки, если у anime-персонажа не задан default_outfit.",
+    "photo_policy_real_default_outfit": "Fallback outfit для real-модели, если нет безопасного default_outfit или подходящего wardrobe.",
+    "photo_policy_real_clothed_prefix": "Префикс для real-одежды, если outfit не выглядит откровенным и не содержит явного clothed-признака.",
+    "photo_policy_real_default_outfit_priority": "Порядок ключей wardrobe, по которому real-модель выбирает безопасный outfit при пустом default_outfit.",
+    "photo_policy_default_style_tags_real": "Default style_tags для real-персонажей при создании/обновлении через API, если поле стиля пустое.",
+    "photo_policy_default_style_tags_anime": "Default style_tags для anime-персонажей при создании/обновлении через API, если поле стиля пустое.",
+    "photo_policy_default_style_tags_manhwa": "Default style_tags для manhwa-персонажей при создании/обновлении через API, если поле стиля пустое.",
+    "photo_policy_manhwa_style_tags": "Style tags, которые добавляются при генерации manhwa через anime fallback.",
+    "photo_policy_default_wardrobe_female": "JSON default wardrobe для новых женских персонажей; используется при создании, не при админском редактировании.",
+    "photo_policy_default_wardrobe_male": "JSON default wardrobe для новых мужских персонажей; используется при создании, не при админском редактировании.",
+}
+
+
+def _prompt_redirect_url(prompt: Prompt) -> str:
+    return "/admin/photo-prompts" if prompt.category in PHOTO_PROMPT_CATEGORIES else "/admin/"
 
 
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -141,7 +190,10 @@ async def admin_index(
                 "request": request,
                 "prompts_by_category": {},
                 "category_names": PROMPT_CATEGORIES,
-                "admin": None
+                "admin": None,
+                "page_title": "Все промпты",
+                "page_description": "Управляйте системными промптами, используемыми в боте.",
+                "prompt_descriptions": {},
             }
         )
 
@@ -153,7 +205,7 @@ async def admin_index(
 
     prompts_by_category = {}
     for prompt in prompts:
-        if prompt.key in HIDDEN_PROMPT_KEYS:
+        if prompt.key in HIDDEN_PROMPT_KEYS or prompt.category in PHOTO_PROMPT_CATEGORIES:
             continue
         category = prompt.category
         if category not in prompts_by_category:
@@ -166,7 +218,61 @@ async def admin_index(
             "request": request,
             "prompts_by_category": prompts_by_category,
             "category_names": PROMPT_CATEGORIES,
-            "admin": admin
+            "admin": admin,
+            "page_title": "Все промпты",
+            "page_description": "Управляйте системными промптами, используемыми в боте.",
+            "prompt_descriptions": {},
+        }
+    )
+
+
+@router.get("/photo-prompts", response_class=HTMLResponse)
+async def admin_photo_prompts(
+        request: Request,
+        db: AsyncSession = Depends(get_async_session)
+):
+    admin = await get_current_user(request)
+
+    if not admin:
+        return templates.TemplateResponse(
+            "prompts.html",
+            {
+                "request": request,
+                "prompts_by_category": {},
+                "category_names": PROMPT_CATEGORIES,
+                "admin": None,
+                "page_title": "Фото-промты",
+                "page_description": "Управляйте шаблонами и техническими тегами генерации фото.",
+                "prompt_descriptions": PHOTO_PROMPT_DESCRIPTIONS,
+            }
+        )
+
+    if admin.get("telegram_id") not in ADMIN_TELEGRAM_IDS:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    result = await db.execute(
+        select(Prompt)
+        .where(Prompt.category.in_(PHOTO_PROMPT_CATEGORIES))
+        .order_by(Prompt.category, Prompt.key)
+    )
+    prompts = result.scalars().all()
+
+    prompts_by_category = {}
+    for prompt in prompts:
+        if prompt.key in HIDDEN_PROMPT_KEYS:
+            continue
+        prompts_by_category.setdefault(prompt.category, []).append(prompt)
+
+    return templates.TemplateResponse(
+        "prompts.html",
+        {
+            "request": request,
+            "prompts_by_category": prompts_by_category,
+            "category_names": PROMPT_CATEGORIES,
+            "admin": admin,
+            "page_title": "Фото-промты",
+            "page_description": "Управляйте шаблонами и техническими тегами генерации фото.",
+            "prompt_descriptions": PHOTO_PROMPT_DESCRIPTIONS,
         }
     )
 
@@ -192,6 +298,9 @@ async def edit_prompt_form(
         {
             "request": request,
             "prompt": prompt,
+            "back_url": _prompt_redirect_url(prompt),
+            "cancel_url": _prompt_redirect_url(prompt),
+            "prompt_description": PHOTO_PROMPT_DESCRIPTIONS.get(prompt.key, ""),
             "admin": admin
         }
     )
@@ -226,7 +335,7 @@ async def update_prompt(
 
     logger.info(f"Admin {admin.get('telegram_id')} updated prompt '{key}'")
 
-    return RedirectResponse(url="/admin/", status_code=303)
+    return RedirectResponse(url=_prompt_redirect_url(prompt), status_code=303)
 
 
 @router.post("/prompts/{key}/reset")
@@ -262,7 +371,7 @@ async def reset_prompt(
 
     logger.info(f"Admin {admin.get('telegram_id')} reset prompt '{key}' to default")
 
-    return RedirectResponse(url=f"/admin/prompts/{key}", status_code=303)
+    return RedirectResponse(url=_prompt_redirect_url(prompt), status_code=303)
 
 
 @router.get("/characters", response_class=HTMLResponse)
@@ -358,6 +467,88 @@ async def check_world_id(
     return {"exists": world is not None}
 
 
+def _split_tags(value: str) -> list[str]:
+    return [tag.strip() for tag in (value or "").split(",") if tag.strip()]
+
+
+def _parse_visual_json(raw: str, fallback: dict) -> dict:
+    if not raw.strip():
+        return dict(fallback or {})
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="visual_data must be a JSON object")
+    return parsed
+
+
+async def _visual_data_from_form(
+        form_data,
+        existing_visual: dict | None = None,
+        *,
+        apply_wardrobe_defaults: bool = True,
+) -> dict:
+    visual_data = _parse_visual_json(form_data.get("visual_data", ""), existing_visual or {})
+    model_type = form_data.get("model_type", visual_data.get("model_type", "anime"))
+    gender = form_data.get("gender", visual_data.get("gender", "female"))
+
+    try:
+        validate_model_gender(model_type, gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    wardrobe_keys = form_data.getlist("wardrobe_key")
+    wardrobe_values = form_data.getlist("wardrobe_value")
+    wardrobe = {
+        key.strip(): value.strip()
+        for key, value in zip(wardrobe_keys, wardrobe_values)
+        if key.strip()
+    }
+    wardrobe_submitted = form_data.get("wardrobe_submitted") == "1"
+    if not wardrobe_submitted and not wardrobe and isinstance(visual_data.get("wardrobe"), dict):
+        wardrobe = dict(visual_data["wardrobe"])
+    if apply_wardrobe_defaults:
+        wardrobe = await apply_default_wardrobe(wardrobe, gender)
+
+    tag_overrides = {
+        "positive_add": _split_tags(form_data.get("tag_overrides_positive_add", "")),
+        "positive_remove": _split_tags(form_data.get("tag_overrides_positive_remove", "")),
+        "negative_add": _split_tags(form_data.get("tag_overrides_negative_add", "")),
+        "negative_remove": _split_tags(form_data.get("tag_overrides_negative_remove", "")),
+    }
+
+    visual_data.update(
+        {
+            "model_type": model_type,
+            "gender": gender,
+            "appearance": form_data.get("appearance", visual_data.get("appearance", "")).strip(),
+            "body": form_data.get("visual_body", visual_data.get("body", "")).strip(),
+            "face": form_data.get("visual_face", visual_data.get("face", "")).strip(),
+            "default_outfit": form_data.get(
+                "visual_default_outfit",
+                visual_data.get("default_outfit", ""),
+            ).strip(),
+            "style_tags": await default_style_tags_for_model(
+                model_type,
+                form_data.get("visual_style_tags", visual_data.get("style_tags", "")).strip(),
+            ),
+            "wardrobe": wardrobe,
+        }
+    )
+
+    if any(tag_overrides.values()):
+        visual_data["tag_overrides"] = tag_overrides
+    else:
+        visual_data.pop("tag_overrides", None)
+
+    avatar = form_data.get("avatar", visual_data.get("avatar", "")).strip()
+    if avatar:
+        visual_data["avatar"] = avatar
+
+    return visual_data
+
+
 @router.get("/characters/new", response_class=HTMLResponse)
 async def add_character_form(
         request: Request,
@@ -410,31 +601,7 @@ async def create_character(
     if existing:
         raise HTTPException(status_code=400, detail=f"Character with ID '{character_id}' already exists")
 
-    wardrobe_keys = form_data.getlist("wardrobe_key")
-    wardrobe_values = form_data.getlist("wardrobe_value")
-    wardrobe = {
-        k.strip(): v.strip()
-        for k, v in zip(wardrobe_keys, wardrobe_values)
-        if k.strip()
-    }
-    # Auto-add required wardrobe keys if missing
-    if gender == "male":
-        wardrobe.setdefault("nude", "nothing, showing his naked body")
-        wardrobe.setdefault("underwear", "black boxer briefs")
-    else:
-        wardrobe.setdefault("nude", "nothing, showing her naked body")
-        wardrobe.setdefault("underwear", "white bra, white panties")
-
-    visual_data = {
-        "model_type": model_type,
-        "gender": gender,
-        "appearance": form_data.get("appearance", "").strip(),
-        "body": form_data.get("visual_body", "").strip(),
-        "face": form_data.get("visual_face", "").strip(),
-        "default_outfit": form_data.get("visual_default_outfit", "").strip(),
-        "style_tags": form_data.get("visual_style_tags", "").strip(),
-        "wardrobe": wardrobe,
-    }
+    visual_data = await _visual_data_from_form(form_data, apply_wardrobe_defaults=True)
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -547,7 +714,10 @@ async def edit_character_form(
         for i in range(1, len(character.scenarios)):
             alternate_greetings.append(character.scenarios[i].get("intro", ""))
 
-    visual_data_json = json.dumps(character.visual_data, indent=2, ensure_ascii=False)
+    visual_data = character.visual_data or {}
+    visual_data_json = json.dumps(visual_data, indent=2, ensure_ascii=False)
+    wardrobe = visual_data.get("wardrobe") if isinstance(visual_data.get("wardrobe"), dict) else {}
+    tag_overrides = visual_data.get("tag_overrides") if isinstance(visual_data.get("tag_overrides"), dict) else {}
 
     modifiers = await get_character_modifiers_from_db(character_id, db)
 
@@ -561,6 +731,9 @@ async def edit_character_form(
             "alternate_greetings": alternate_greetings,
             "heat_level": heat_level,
             "visual_data_json": visual_data_json,
+            "visual_data": visual_data,
+            "wardrobe": wardrobe,
+            "tag_overrides": tag_overrides,
             "modifiers": modifiers,
             "admin": admin
         }
@@ -588,7 +761,6 @@ async def update_character(
     personality = form_data.get("personality", "").strip()
     scenario = form_data.get("scenario", "").strip()
     first_message = form_data.get("first_message", "").strip()
-    visual_data_str = form_data.get("visual_data", "").strip()
     tags_str = form_data.get("tags", "").strip()
     is_nsfw = form_data.get("is_nsfw") == "on"
     is_verified = form_data.get("is_verified") == "on"
@@ -606,15 +778,11 @@ async def update_character(
     if not name or not description or not personality or not scenario or not first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
 
-    try:
-        visual_data = json.loads(visual_data_str)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in visual_data: {str(e)}")
-
-    try:
-        validate_model_gender(visual_data.get("model_type", "anime"), visual_data.get("gender", "female"))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    visual_data = await _visual_data_from_form(
+        form_data,
+        character.visual_data or {},
+        apply_wardrobe_defaults=False,
+    )
 
     tags = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
 
@@ -708,6 +876,66 @@ async def update_character(
     logger.info(f"Admin {admin.get('telegram_id')} updated character '{character_id}'")
 
     return RedirectResponse(url="/admin/characters", status_code=303)
+
+
+@router.post("/characters/{character_id}/regenerate-avatar")
+async def regenerate_character_avatar(
+        character_id: str,
+        request: Request,
+        db: AsyncSession = Depends(get_async_session),
+        admin: dict = Depends(get_admin_user)
+):
+    result = await db.execute(select(Character).where(Character.id == character_id))
+    character = result.scalar_one_or_none()
+
+    if not character:
+        raise HTTPException(status_code=404, detail=f"Character '{character_id}' not found")
+
+    form_data = await request.form()
+    visual_data = await _visual_data_from_form(
+        form_data,
+        character.visual_data or {},
+        apply_wardrobe_defaults=False,
+    )
+    character_name = form_data.get("name", character.name).strip() or character.name
+
+    try:
+        avatar_url = await photo_generation_service.generate_avatar(
+            {
+                "id": character.id,
+                "name": character_name,
+                "model_type": visual_data.get("model_type", "anime"),
+                "is_nsfw": character.is_nsfw,
+                "visual_data": visual_data,
+            }
+        )
+    except UnsupportedPhotoModelError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PhotoPromptBudgetError:
+        raise HTTPException(status_code=400, detail="Слишком длинное описание внешности для аватарки")
+    except PhotoProviderError:
+        raise HTTPException(status_code=503, detail="Провайдер генерации фото временно недоступен")
+    except PhotoGenerationError as e:
+        raise HTTPException(status_code=500, detail=str(e) or "Ошибка генерации аватарки")
+
+    visual_data["avatar"] = avatar_url
+    await db.execute(
+        update(Character)
+        .where(Character.id == character_id)
+        .values(visual_data=visual_data)
+    )
+    await db.commit()
+
+    cache = get_cache()
+    if cache:
+        await cache.invalidate_character(character_id)
+
+    logger.info(
+        "Admin %s regenerated avatar for character '%s'",
+        admin.get("telegram_id"),
+        character_id,
+    )
+    return {"success": True, "avatar_url": avatar_url}
 
 
 @router.get("/worlds", response_class=HTMLResponse)

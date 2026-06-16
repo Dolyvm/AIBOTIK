@@ -12,6 +12,8 @@ from shared.services.analytics import AnalyticsService
 from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
 from shared.services.photo_generation import (
+    apply_default_wardrobe,
+    default_style_tags_for_model,
     PhotoGenerationError,
     PhotoGenerationService,
     PhotoPromptBudgetError,
@@ -54,26 +56,9 @@ def _avatar_draft_lock(user_id: int) -> str:
     return f"character_create_avatar:{user_id}"
 
 
-def _default_style_tags(model_type: str, raw_style_tags: str | None = None) -> str:
-    style_tags = raw_style_tags or ""
-    if style_tags.strip():
-        return style_tags
-    if model_type == "anime":
-        return ""
-    if model_type == "real":
-        return "soft natural lighting, film photography, warm tones"
-    return ""
-
-
-def _build_visual_data(data: CreateCharacterRequest | CreateCharacterAvatarRequest) -> dict[str, Any]:
+async def _build_visual_data(data: CreateCharacterRequest | CreateCharacterAvatarRequest) -> dict[str, Any]:
     model_type = data.model_type
-    wardrobe = dict(data.wardrobe or {})
-    if data.gender == "male":
-        wardrobe.setdefault("nude", "nothing, showing his naked body")
-        wardrobe.setdefault("underwear", "black boxer briefs")
-    else:
-        wardrobe.setdefault("nude", "nothing, showing her naked body")
-        wardrobe.setdefault("underwear", "white bra, white panties")
+    wardrobe = await apply_default_wardrobe(data.wardrobe or {}, data.gender)
 
     visual_data = {
         "model_type": model_type,
@@ -82,7 +67,7 @@ def _build_visual_data(data: CreateCharacterRequest | CreateCharacterAvatarReque
         "body": _clean_visual_field(data.visual_body or ""),
         "face": _clean_visual_field(data.visual_face or ""),
         "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
-        "style_tags": _default_style_tags(model_type, data.visual_style_tags),
+        "style_tags": await default_style_tags_for_model(model_type, data.visual_style_tags),
         "wardrobe": wardrobe,
     }
     if getattr(data, "tag_overrides", None):
@@ -187,7 +172,7 @@ async def generate_character_avatar(
             if not allowed:
                 raise UsageLimitExceeded("characters_created", limit)
 
-        visual_data = _build_visual_data(data)
+        visual_data = await _build_visual_data(data)
         current_hash = _appearance_hash(data.name, visual_data)
 
         try:
@@ -364,7 +349,7 @@ async def create_character(
     if not data.avatar_draft_id or not data.selected_avatar_url:
         raise HTTPException(status_code=400, detail="Сгенерируйте аватарку перед созданием персонажа")
 
-    visual_data = _build_visual_data(data)
+    visual_data = await _build_visual_data(data)
     avatar_url = data.selected_avatar_url.strip()
     current_hash = _appearance_hash(data.name, visual_data)
     cache = _require_avatar_cache()
@@ -505,28 +490,8 @@ async def update_character(
         if not allowed:
             raise UsageLimitExceeded("content_edits", limit)
 
-        style_tags = data.visual_style_tags or ""
-        if not style_tags.strip():
-            if model_type == "anime":
-                style_tags = ""
-            elif model_type == "real":
-                style_tags = "soft natural lighting, film photography, warm tones"
-            else:
-                style_tags = ""
-
         existing_avatar = (character.visual_data or {}).get("avatar", "")
-        visual_data = {
-            "model_type": model_type,
-            "gender": data.gender,
-            "appearance": _clean_visual_field(data.appearance or ""),
-            "body": _clean_visual_field(data.visual_body or ""),
-            "face": _clean_visual_field(data.visual_face or ""),
-            "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
-            "style_tags": style_tags,
-            "wardrobe": data.wardrobe,
-        }
-        if data.tag_overrides:
-            visual_data["tag_overrides"] = dict(data.tag_overrides or {})
+        visual_data = await _build_visual_data(data)
         if existing_avatar:
             visual_data["avatar"] = existing_avatar
 

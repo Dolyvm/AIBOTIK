@@ -99,6 +99,98 @@ PROMPT_METADATA = {
         "category": "photo",
         "name": "Photo Negative Prompt: Anime Male"
     },
+    "photo_policy_anime_filler_tags": {
+        "category": "photo_policy",
+        "name": "Anime Filler Tags"
+    },
+    "photo_policy_anime_user_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime User Quality Tags"
+    },
+    "photo_policy_anime_rating_safe": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: Safe"
+    },
+    "photo_policy_anime_rating_nsfw": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: NSFW"
+    },
+    "photo_policy_anime_rating_explicit": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: Explicit"
+    },
+    "photo_policy_anime_nudity_tags": {
+        "category": "photo_policy",
+        "name": "Anime Nudity Tags"
+    },
+    "photo_policy_anime_focus_tags": {
+        "category": "photo_policy",
+        "name": "Anime Focus Tags"
+    },
+    "photo_policy_anime_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime Quality Tags"
+    },
+    "photo_policy_anime_avatar_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime Avatar Quality Tags"
+    },
+    "photo_policy_anime_subject_female": {
+        "category": "photo_policy",
+        "name": "Anime Subject Tags: Female"
+    },
+    "photo_policy_anime_subject_male": {
+        "category": "photo_policy",
+        "name": "Anime Subject Tags: Male"
+    },
+    "photo_policy_anime_negative_explicit": {
+        "category": "photo_policy",
+        "name": "Anime Negative Tags: Explicit"
+    },
+    "photo_policy_avatar_scene": {
+        "category": "photo_policy",
+        "name": "Avatar Scene JSON"
+    },
+    "photo_policy_avatar_default_outfit": {
+        "category": "photo_policy",
+        "name": "Avatar Default Outfit"
+    },
+    "photo_policy_real_default_outfit": {
+        "category": "photo_policy",
+        "name": "Real Default Outfit"
+    },
+    "photo_policy_real_clothed_prefix": {
+        "category": "photo_policy",
+        "name": "Real Clothed Prefix"
+    },
+    "photo_policy_real_default_outfit_priority": {
+        "category": "photo_policy",
+        "name": "Real Outfit Wardrobe Priority"
+    },
+    "photo_policy_default_style_tags_real": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Real"
+    },
+    "photo_policy_default_style_tags_anime": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Anime"
+    },
+    "photo_policy_default_style_tags_manhwa": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Manhwa"
+    },
+    "photo_policy_manhwa_style_tags": {
+        "category": "photo_policy",
+        "name": "Manhwa Fallback Style Tags"
+    },
+    "photo_policy_default_wardrobe_female": {
+        "category": "photo_policy",
+        "name": "Default Wardrobe JSON: Female"
+    },
+    "photo_policy_default_wardrobe_male": {
+        "category": "photo_policy",
+        "name": "Default Wardrobe JSON: Male"
+    },
 
     "character_modifiers_emily_stage_1": {
         "category": "modifiers",

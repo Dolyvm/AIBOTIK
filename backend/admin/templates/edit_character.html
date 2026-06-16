@@ -124,17 +124,124 @@
             <button type="button" class="btn btn-secondary btn-small" onclick="addAlternateПриветствие()">+ Добавить альтернативный сценарий</button>
         </div>
 
-        <div class="form-group">
-            <label for="visual_data">Визуальные данные (JSON):</label>
-            <textarea
-                id="visual_data"
-                name="visual_data"
-                rows="10"
-                required
-                style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
-            >{{ visual_data_json }}</textarea>
-            <small style="color: #7f8c8d; font-size: 12px;">Для Manhwa укажите <code>"model_type": "manhwa"</code> и <code>"gender": "male"</code>.</small>
-            <div id="jsonError" style="color: #e74c3c; font-size: 13px; margin-top: 5px; display: none;"></div>
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 16px; color: #2c3e50; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                Промты генерации фото
+            </h3>
+
+            <div class="form-group">
+                <label>Текущая аватарка:</label>
+                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                    <img
+                        id="avatarPreview"
+                        src="{{ visual_data.get('avatar', '') }}"
+                        alt="Аватарка"
+                        style="width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; {% if not visual_data.get('avatar') %}display: none;{% endif %}"
+                    >
+                    <input
+                        type="text"
+                        id="avatarInput"
+                        name="avatar"
+                        value="{{ visual_data.get('avatar', '') }}"
+                        placeholder="URL аватарки"
+                        style="flex: 1; min-width: 240px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+                    />
+                    <button type="button" id="regenerateAvatarButton" class="btn btn-secondary" onclick="regenerateAvatar()">
+                        Перегенерировать
+                    </button>
+                </div>
+                <div id="avatarStatus" style="font-size: 13px; margin-top: 8px; color: #7f8c8d;"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="gender">Пол персонажа:</label>
+                <select id="gender" name="gender" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="female" {% if visual_data.get('gender', 'female') == 'female' %}selected{% endif %}>Женский</option>
+                    <option value="male" {% if visual_data.get('gender') == 'male' %}selected{% endif %}>Мужской</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="model_type">Тип модели:</label>
+                <select id="model_type" name="model_type" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="anime" {% if visual_data.get('model_type', 'anime') == 'anime' %}selected{% endif %}>Аниме</option>
+                    <option value="real" {% if visual_data.get('model_type') == 'real' %}selected{% endif %}>Реалистичный/Фотореалистичный</option>
+                    <option value="manhwa" {% if visual_data.get('model_type') == 'manhwa' %}selected{% endif %}>Manhwa / Niji male</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="appearance">Внешность:</label>
+                <textarea id="appearance" name="appearance" rows="3" class="auto-resize">{{ visual_data.get('appearance', '') }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_body">Тело:</label>
+                <textarea id="visual_body" name="visual_body" rows="2" class="auto-resize">{{ visual_data.get('body', '') }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_face">Лицо:</label>
+                <textarea id="visual_face" name="visual_face" rows="2" class="auto-resize">{{ visual_data.get('face', '') }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_default_outfit">Стандартный наряд:</label>
+                <textarea id="visual_default_outfit" name="visual_default_outfit" rows="2" class="auto-resize">{{ visual_data.get('default_outfit', '') }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="visual_style_tags">Теги стиля:</label>
+                <textarea id="visual_style_tags" name="visual_style_tags" rows="2" class="auto-resize">{{ visual_data.get('style_tags', '') }}</textarea>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Гардероб</h4>
+                <input type="hidden" name="wardrobe_submitted" value="1">
+                <div id="wardrobeContainer">
+                    {% for key, value in wardrobe.items() %}
+                    <div class="wardrobe-item" style="display: grid; grid-template-columns: 180px 1fr auto; gap: 8px; margin-bottom: 8px; align-items: start;">
+                        <input type="text" name="wardrobe_key" value="{{ key }}" placeholder="key" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <textarea name="wardrobe_value" rows="2" class="auto-resize" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">{{ value }}</textarea>
+                        <button type="button" class="btn btn-danger btn-small" onclick="removeWardrobeItem(this)">Удалить</button>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="button" class="btn btn-secondary btn-small" onclick="addWardrobeItem()">+ Добавить наряд</button>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <h4 style="font-size: 14px; color: #2c3e50; margin-bottom: 15px;">Tag overrides</h4>
+                <div class="form-group">
+                    <label for="tag_overrides_positive_add">Positive add:</label>
+                    <textarea id="tag_overrides_positive_add" name="tag_overrides_positive_add" rows="2" class="auto-resize">{{ tag_overrides.get('positive_add', [])|join(', ') }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="tag_overrides_positive_remove">Positive remove:</label>
+                    <textarea id="tag_overrides_positive_remove" name="tag_overrides_positive_remove" rows="2" class="auto-resize">{{ tag_overrides.get('positive_remove', [])|join(', ') }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="tag_overrides_negative_add">Negative add:</label>
+                    <textarea id="tag_overrides_negative_add" name="tag_overrides_negative_add" rows="2" class="auto-resize">{{ tag_overrides.get('negative_add', [])|join(', ') }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label for="tag_overrides_negative_remove">Negative remove:</label>
+                    <textarea id="tag_overrides_negative_remove" name="tag_overrides_negative_remove" rows="2" class="auto-resize">{{ tag_overrides.get('negative_remove', [])|join(', ') }}</textarea>
+                </div>
+            </div>
+
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; color: #2c3e50; font-weight: 600;">Advanced: raw visual_data JSON</summary>
+                <div class="form-group" style="margin-top: 12px;">
+                    <textarea
+                        id="visual_data"
+                        name="visual_data"
+                        rows="10"
+                        style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px;"
+                    >{{ visual_data_json }}</textarea>
+                    <div id="jsonError" style="color: #e74c3c; font-size: 13px; margin-top: 5px; display: none;"></div>
+                </div>
+            </details>
         </div>
 
         <div class="form-group">
@@ -305,6 +412,7 @@
             <a href="/admin/characters" class="btn btn-secondary">Отмена</a>
         </div>
     </form>
+
 </div>
 
 <script>
@@ -332,6 +440,74 @@
             autoResize(this);
         });
     });
+
+    function addWardrobeItem() {
+        const container = document.getElementById('wardrobeContainer');
+        const div = document.createElement('div');
+        div.className = 'wardrobe-item';
+        div.style.display = 'grid';
+        div.style.gridTemplateColumns = '180px 1fr auto';
+        div.style.gap = '8px';
+        div.style.marginBottom = '8px';
+        div.style.alignItems = 'start';
+        div.innerHTML = `
+            <input type="text" name="wardrobe_key" placeholder="key" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <textarea name="wardrobe_value" rows="2" class="auto-resize" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+            <button type="button" class="btn btn-danger btn-small" onclick="removeWardrobeItem(this)">Удалить</button>
+        `;
+        container.appendChild(div);
+        const textarea = div.querySelector('textarea');
+        autoResize(textarea);
+        textarea.addEventListener('input', function() {
+            autoResize(this);
+        });
+    }
+
+    function removeWardrobeItem(button) {
+        button.closest('.wardrobe-item').remove();
+    }
+
+    async function regenerateAvatar() {
+        const form = document.getElementById('characterForm');
+        const button = document.getElementById('regenerateAvatarButton');
+        const status = document.getElementById('avatarStatus');
+        const preview = document.getElementById('avatarPreview');
+        const input = document.getElementById('avatarInput');
+
+        if (!form || !button || !status || !preview || !input) return;
+        if (!confirm('Перегенерировать аватарку для {{ character.name }}? Будут использованы текущие поля формы.')) return;
+
+        button.disabled = true;
+        status.style.color = '#7f8c8d';
+        status.textContent = 'Генерация аватарки...';
+
+        try {
+            const response = await fetch('/admin/characters/{{ character.id }}/regenerate-avatar', {
+                method: 'POST',
+                body: new FormData(form)
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || !data.avatar_url) {
+                const detail = data.detail;
+                const message = typeof detail === 'string'
+                    ? detail
+                    : (detail && (detail.message || detail.code)) || 'Не удалось перегенерировать аватарку';
+                throw new Error(message);
+            }
+
+            input.value = data.avatar_url;
+            preview.src = data.avatar_url;
+            preview.style.display = 'block';
+            status.style.color = '#27ae60';
+            status.textContent = 'Аватарка обновлена и сохранена.';
+        } catch (error) {
+            status.style.color = '#e74c3c';
+            status.textContent = error.message || 'Ошибка генерации аватарки';
+        } finally {
+            button.disabled = false;
+        }
+    }
 
     // Add alternate greeting
     function addAlternateПриветствие() {
