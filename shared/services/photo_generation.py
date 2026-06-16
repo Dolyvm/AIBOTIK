@@ -1,12 +1,15 @@
 import json
 import logging
 import re
+import ssl
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from string import Formatter
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
+from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +31,7 @@ ANIME_MODEL_VERSION = (
     "aisha-ai-official/animagine-xl-v4-opt:"
     "cfd0f86fbcd03df45fca7ce83af9bb9c07850a3317303fe8dcf677038541db8a"
 )
+REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS = 3
 
 PROMPT_BUDGETS = {
     "real": 450,
@@ -41,20 +45,29 @@ ANIME_FILLER_TAGS = {
     "detailed face",
     "high quality",
     "best quality",
-    "masterpiece",
 }
+ANIME_EXPLICIT_RATING_TAGS = "explicit, nsfw"
+ANIME_SAFE_RATING_TAGS = "safe"
+ANIME_EXPLICIT_DETAIL_TAGS_BY_GENDER = {
+    "female": "uncensored, visible pussy, detailed vulva, visible labia",
+    "male": "uncensored, visible penis, detailed penis, visible testicles",
+}
+ANIME_QUALITY_TAGS = "masterpiece, high score, great score, absurdres"
 ANIME_TAG_LIMITS = {
     "identity": (4, 5, 36),
     "appearance": (3, 3, 28),
     "body": (2, 3, 24),
     "face": (2, 3, 24),
     "clothing": (9, 5, 40),
-    "pose": (2, 4, 28),
+    "pose": (1, 6, 36),
     "expression": (1, 3, 24),
     "emotion": (1, 2, 18),
     "setting": (2, 3, 22),
     "scene_notes": (2, 3, 24),
     "style_tags": (2, 3, 24),
+    "rating_tags": (2, 2, 18),
+    "explicit_detail_tags": (4, 3, 24),
+    "quality_tags": (4, 2, 18),
 }
 
 
@@ -71,6 +84,10 @@ class PhotoPromptBudgetError(PhotoGenerationError):
 
 
 class PhotoProviderError(PhotoGenerationError):
+    pass
+
+
+class PhotoGenerationCanceled(PhotoGenerationError):
     pass
 
 
@@ -511,6 +528,45 @@ def _wardrobe(character: Mapping[str, Any]) -> dict[str, str]:
     return {str(key): _clean_text(value) for key, value in wardrobe.items() if _clean_text(value)}
 
 
+def _avatar_generation_character(character: Mapping[str, Any]) -> dict[str, Any]:
+    avatar_character = dict(character)
+    visual = dict(_character_visual(character))
+    raw_model_type = _clean_text(
+        character.get("model_type") or visual.get("model_type") or "anime"
+    ).lower()
+    if raw_model_type == "manhva":
+        raw_model_type = "manhwa"
+
+    if raw_model_type == "manhwa":
+        raw_model_type = "anime"
+        visual["style_tags"] = _dedupe_csv(
+            [visual.get("style_tags"), "manhwa style, webtoon style, clean line art"],
+            30,
+        )
+
+    visual["model_type"] = raw_model_type
+    avatar_character["model_type"] = raw_model_type
+    avatar_character["visual_data"] = visual
+    avatar_character["visual"] = {
+        **(character.get("visual") if isinstance(character.get("visual"), Mapping) else {}),
+        **visual,
+    }
+    return avatar_character
+
+
+def _avatar_clothing_prompt(
+    model_type: str,
+    gender: str,
+    visual: Mapping[str, str],
+    wardrobe: Mapping[str, str],
+) -> str:
+    if model_type == "real":
+        return _real_clothing_prompt(
+            _real_default_photo_outfit(visual["default_outfit"], wardrobe)
+        )
+    return _dedupe_csv(visual["default_outfit"], 40) or "casual outfit"
+
+
 def _stored_photo_outfit(chat_state: Mapping[str, Any] | None) -> dict[str, str]:
     if not isinstance(chat_state, Mapping):
         return {}
@@ -568,7 +624,59 @@ def _scene_implies_exposure(scene: Mapping[str, Any]) -> bool:
         _clean_text(scene.get(key))
         for key in ("pose", "setting", "scene_notes", "expression", "emotion", "clothing")
     )
-    return bool(EXPOSURE_PATTERN.search(scene_text))
+    clothing_items = {item.lower() for item in _split_csv_items(scene.get("clothing"))}
+    return bool(
+        EXPOSURE_PATTERN.search(scene_text)
+        or clothing_items.intersection({"nothing", "nude", "naked", "no clothes"})
+    )
+
+
+def _anime_exposure_rating_tags(scene: Mapping[str, Any], clothing: str) -> str:
+    return (
+        ANIME_EXPLICIT_RATING_TAGS
+        if _scene_implies_exposure({**dict(scene), "clothing": clothing})
+        else ANIME_SAFE_RATING_TAGS
+    )
+
+
+def _anime_scene_notes_for_rating(scene_notes: Any, rating_tags: str) -> str:
+    scene_notes = _clean_text(scene_notes)
+    if rating_tags != ANIME_EXPLICIT_RATING_TAGS:
+        return scene_notes
+
+    adjusted_items: list[str] = []
+    has_visible_body_framing = False
+    for item in _split_csv_items(scene_notes):
+        lowered = item.lower()
+        if lowered in {"full body", "cowboy shot"}:
+            has_visible_body_framing = True
+            adjusted_items.append(item)
+            continue
+        if re.search(r"\b(?:upper body|close[- ]?up|portrait|headshot|cropped)\b", lowered):
+            continue
+        adjusted_items.append(item)
+
+    if not has_visible_body_framing:
+        adjusted_items.insert(0, "cowboy shot")
+    return ", ".join(_dedupe_items(adjusted_items, max_items=6))
+
+
+SPREAD_LEGS_PATTERN = re.compile(
+    r"\b(?:legs?\s+spread|spread(?:ing)?\s+legs?|open\s+legs?|legs?\s+apart)\b",
+    re.IGNORECASE,
+)
+
+
+def _anime_pose_for_rating(pose: Any, rating_tags: str) -> str:
+    pose_items = _split_csv_items(pose)
+    if rating_tags != ANIME_EXPLICIT_RATING_TAGS or len(pose_items) <= 1:
+        return _clean_text(pose)
+
+    primary_pose = pose_items[0]
+    has_spread_legs = any(SPREAD_LEGS_PATTERN.search(item) for item in pose_items)
+    if has_spread_legs and not SPREAD_LEGS_PATTERN.search(primary_pose):
+        primary_pose = f"{primary_pose} with legs spread"
+    return primary_pose
 
 
 def _is_real_revealing_outfit(text: str) -> bool:
@@ -867,12 +975,61 @@ class ReplicateImageClient:
 
     async def download_output(self, output: Any) -> tuple[bytes, str, str]:
         url = self._first_output_url(output)
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.get(url, headers={"Authorization": f"Bearer {self.api_token}"})
-            if response.status_code >= 400:
-                raise PhotoProviderError(f"Replicate output download failed: HTTP {response.status_code}")
-            content_type = response.headers.get("Content-Type", "image/png").split(";", 1)[0].strip()
-            return response.content, content_type, url
+        safe_url = self._safe_output_url(url)
+        last_error: Exception | None = None
+
+        for attempt in range(1, REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS + 1):
+            try:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    response = await client.get(
+                        url,
+                        headers={"Authorization": f"Bearer {self.api_token}"},
+                    )
+                if response.status_code >= 400:
+                    raise PhotoProviderError(
+                        f"Replicate output download failed: HTTP {response.status_code}"
+                    )
+                content_type = (
+                    response.headers.get("Content-Type", "image/png")
+                    .split(";", 1)[0]
+                    .strip()
+                )
+                return response.content, content_type, url
+            except PhotoProviderError:
+                raise
+            except (
+                httpx.HTTPError,
+                httpcore.NetworkError,
+                httpcore.ProtocolError,
+                httpcore.ProxyError,
+                httpcore.TimeoutException,
+                ssl.SSLError,
+                OSError,
+            ) as e:
+                last_error = e
+                if attempt >= REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS:
+                    break
+                logger.warning(
+                    "Replicate output download failed; retrying: attempt=%s/%s url=%s error_type=%s",
+                    attempt,
+                    REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS,
+                    safe_url,
+                    type(e).__name__,
+                )
+                await _sleep(min(attempt, 2))
+
+        error_type = type(last_error).__name__ if last_error else "unknown"
+        raise PhotoProviderError(
+            "Replicate output download failed after "
+            f"{REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS} attempts: {error_type}"
+        )
+
+    @staticmethod
+    def _safe_output_url(url: str) -> str:
+        parts = urlsplit(url)
+        if not parts.scheme or not parts.netloc:
+            return "<invalid-url>"
+        return f"{parts.scheme}://{parts.netloc}{parts.path}"
 
     @staticmethod
     def _first_output_url(output: Any) -> str:
@@ -967,6 +1124,21 @@ class PhotoGenerationService:
             if model_type == "real"
             else _dedupe_csv(clothing, 40)
         )
+        rating_tags = ""
+        explicit_detail_tags = ""
+        quality_tags = ""
+        pose = scene.get("pose", "")
+        scene_notes = scene.get("scene_notes", "")
+        if model_type == "anime":
+            rating_tags = _anime_exposure_rating_tags(scene, clothing_prompt)
+            explicit_detail_tags = (
+                ANIME_EXPLICIT_DETAIL_TAGS_BY_GENDER.get(gender, "")
+                if rating_tags == ANIME_EXPLICIT_RATING_TAGS
+                else ""
+            )
+            quality_tags = ANIME_QUALITY_TAGS
+            pose = _anime_pose_for_rating(pose, rating_tags)
+            scene_notes = _anime_scene_notes_for_rating(scene_notes, rating_tags)
 
         context = {
             "character_name": character.get("name", ""),
@@ -977,12 +1149,15 @@ class PhotoGenerationService:
             "body": visual["body"],
             "face": visual["face"],
             "clothing": clothing_prompt,
-            "pose": scene.get("pose", ""),
+            "pose": pose,
             "expression": scene.get("expression", ""),
             "emotion": scene.get("emotion", ""),
             "setting": scene.get("setting", ""),
-            "scene_notes": scene.get("scene_notes", ""),
+            "scene_notes": scene_notes,
             "style_tags": visual["style_tags"],
+            "rating_tags": rating_tags,
+            "explicit_detail_tags": explicit_detail_tags,
+            "quality_tags": quality_tags,
         }
         if model_type == "anime":
             context = _compact_anime_context(context)
@@ -1029,6 +1204,86 @@ class PhotoGenerationService:
             state_meta_update=state_meta_update,
         )
 
+    async def build_avatar_prompt_bundle(
+        self,
+        character: Mapping[str, Any],
+        log_meta: Mapping[str, Any] | None = None,
+    ) -> PhotoPromptBundle:
+        avatar_character = _avatar_generation_character(character)
+        model_type = _normalize_model_type(avatar_character)
+        gender = _normalize_gender(avatar_character)
+        visual = _visual_parts(avatar_character)
+        wardrobe = _wardrobe(avatar_character)
+        clothing_prompt = _avatar_clothing_prompt(model_type, gender, visual, wardrobe)
+
+        context = {
+            "character_name": avatar_character.get("name", ""),
+            "gender": gender,
+            "subject_tags": visual["subject_tags"],
+            "identity": visual["identity"],
+            "appearance": visual["appearance"],
+            "body": visual["body"],
+            "face": visual["face"],
+            "clothing": clothing_prompt,
+            "pose": "upper body portrait, looking at viewer",
+            "expression": "soft smile",
+            "emotion": "calm",
+            "setting": "simple clean background",
+            "scene_notes": "profile avatar, centered composition, face clearly visible",
+            "style_tags": visual["style_tags"],
+            "rating_tags": ANIME_SAFE_RATING_TAGS if model_type == "anime" else "",
+            "explicit_detail_tags": "",
+            "quality_tags": ANIME_QUALITY_TAGS if model_type == "anime" else "",
+        }
+        if model_type == "anime":
+            context = _compact_anime_context(context)
+
+        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
+        removable_fields = (
+            ("style_tags", "scene_notes", "setting", "emotion", "body", "appearance")
+            if model_type == "anime"
+            else ("scene_notes", "style_tags", "setting", "emotion")
+        )
+        prompt = _fit_prompt_budget(
+            template,
+            context,
+            PROMPT_BUDGETS[model_type],
+            removable_fields=removable_fields,
+            label=f"avatar/{model_type}/{gender}",
+            log_meta=log_meta,
+        )
+        if model_type == "anime":
+            prompt = _strip_anime_filler_tags(prompt)
+
+        negative_prompt = None
+        if model_type == "anime":
+            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            negative_prompt = _fit_prompt_budget(
+                negative_template,
+                context,
+                ANIME_NEGATIVE_BUDGET,
+                removable_fields=("scene_notes", "setting", "emotion", "style_tags"),
+                label=f"avatar/anime/{gender} negative",
+                log_meta=log_meta,
+            )
+
+        replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
+        replicate_model = ANIME_MODEL_VERSION if model_type == "anime" else REAL_MODEL
+        return PhotoPromptBundle(
+            model_type=model_type,
+            gender=gender,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            scene={
+                "pose": context.get("pose", ""),
+                "expression": context.get("expression", ""),
+                "setting": context.get("setting", ""),
+                "scene_notes": context.get("scene_notes", ""),
+            },
+            replicate_input=replicate_input,
+            replicate_model=replicate_model,
+        )
+
     @staticmethod
     def _replicate_input(
         model_type: str,
@@ -1063,6 +1318,7 @@ class PhotoGenerationService:
         character: Mapping[str, Any],
         recent_messages: Sequence[Message | Mapping[str, Any]],
         chat_state: Mapping[str, Any] | None = None,
+        before_save: Callable[[], Awaitable[None]] | None = None,
     ) -> GeneratedImage:
         if chat_state is None:
             chat = await session.get(Chat, chat_id)
@@ -1097,7 +1353,15 @@ class PhotoGenerationService:
         image_bytes, content_type, provider_url = await self.replicate_client.download_output(
             prediction.get("output")
         )
+        if before_save:
+            await before_save()
         local_path = await self._save_image_bytes(image_bytes, content_type, user.telegram_id)
+        if before_save:
+            try:
+                await before_save()
+            except Exception:
+                self._delete_saved_image(local_path)
+                raise
 
         image = GeneratedImage(
             user_id=user.telegram_id,
@@ -1120,6 +1384,47 @@ class PhotoGenerationService:
             prediction.get("id"),
         )
         return image
+
+    @staticmethod
+    def _delete_saved_image(local_path: str) -> None:
+        try:
+            (Path(IMAGES_STORAGE_PATH) / local_path).unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to delete canceled generated image file: %s", local_path)
+
+    async def generate_avatar(self, character: Mapping[str, Any]) -> str:
+        from shared.services.image_storage import save_avatar_image
+
+        character_id = _clean_text(character.get("id")) or "character"
+        log_meta = {
+            "character_id": character_id,
+            "purpose": "character_avatar",
+        }
+        bundle = await self.build_avatar_prompt_bundle(character, log_meta=log_meta)
+        logger.warning(
+            "Avatar final prompt: character_id=%s model_type=%s gender=%s "
+            "positive_tokens=%s negative_tokens=%s\nPROMPT:\n%s\nNEGATIVE_PROMPT:\n%s",
+            character_id,
+            bundle.model_type,
+            bundle.gender,
+            _estimate_prompt_tokens(bundle.prompt),
+            _estimate_prompt_tokens(bundle.negative_prompt or ""),
+            bundle.prompt,
+            bundle.negative_prompt or "",
+        )
+
+        prediction = await self.replicate_client.run(bundle.replicate_model, bundle.replicate_input)
+        image_bytes, content_type, _provider_url = await self.replicate_client.download_output(
+            prediction.get("output")
+        )
+        public_url = await save_avatar_image(image_bytes, content_type, character_id)
+        logger.info(
+            "Generated character avatar: character_id=%s model=%s provider_prediction=%s",
+            character_id,
+            bundle.replicate_model,
+            prediction.get("id"),
+        )
+        return public_url
 
     @staticmethod
     async def _apply_state_meta_update(

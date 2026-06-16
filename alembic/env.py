@@ -15,7 +15,7 @@ sys.path.append("/app")
 from shared.models import Base
 from shared.models import (
     User, UserSettings, Character, World, Chat,
-    Message, GeneratedImage, Transaction,
+    Message, GeneratedImage, ImageGenerationJob, Transaction,
     MessageRole, TransactionSource, SubscriptionPlan, Prompt,
     MonthlyUsage, SubscriptionPayment, Event
 )

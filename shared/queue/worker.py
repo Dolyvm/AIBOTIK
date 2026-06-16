@@ -6,7 +6,7 @@ from shared.database import get_session
 from shared.services.redis_client import get_redis
 from shared.services.cache import CacheService, set_cache
 from shared.services.prompt_service import init_prompt_cache
-from shared.queue.tasks import expire_subscriptions_task
+from shared.queue.tasks import expire_subscriptions_task, generate_chat_image_task
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = []
+    functions = [generate_chat_image_task]
 
     cron_jobs = [
         cron(expire_subscriptions_task, minute=0),  # каждый час

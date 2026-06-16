@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select
 from shared.models import Prompt
 from shared.database import get_session
-from shared.services.cache import get_cache
+from shared.services.cache import CacheService, get_cache, set_cache
+from shared.services.redis_client import get_redis
 from shared.services.prompt_service import (
     COMPACT_RUNTIME_PROMPT_KEYS,
     DEFAULT_PROMPTS,
@@ -147,7 +148,17 @@ PROMPT_METADATA = {
 }
 
 
+async def ensure_cache_service():
+    if get_cache():
+        return
+    try:
+        set_cache(CacheService(await get_redis()))
+    except Exception as e:
+        print(f"Redis cache unavailable; prompts will only be synced to DB: {e}")
+
+
 async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
+    await ensure_cache_service()
     await clear_cache()
 
     cache = get_cache()

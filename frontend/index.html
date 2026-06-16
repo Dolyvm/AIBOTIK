@@ -1498,7 +1498,12 @@
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
                 const isUndoing = ref(false);
-                const isGeneratingImage = ref(false);
+                const activeImageJob = ref(null);
+                let imageJobPollTimer = null;
+                const isActiveImageJobStatus = (status) => status === 'queued' || status === 'running';
+                const isGeneratingImage = computed(() =>
+                    !!activeImageJob.value && isActiveImageJobStatus(activeImageJob.value.status)
+                );
                 const messagesContainer = ref(null);
 
                 // Create Character
@@ -1570,6 +1575,71 @@
                     const index = chatHistory.value.findIndex(msg => msg.clientMessageId === clientMessageId);
                     if (index === -1) return false;
                     return patchChatMessage(index, patch);
+                };
+
+                const clearImageJobPolling = () => {
+                    if (imageJobPollTimer) {
+                        clearTimeout(imageJobPollTimer);
+                        imageJobPollTimer = null;
+                    }
+                };
+
+                const setActiveImageJob = (job) => {
+                    activeImageJob.value = job && isActiveImageJobStatus(job.status)
+                        ? { job_id: job.job_id, status: job.status }
+                        : null;
+                };
+
+                const appendImageEventIfMissing = (image) => {
+                    if (!image || !image.image_id) return false;
+                    const exists = chatHistory.value.some(msg => msg.image_id === image.image_id);
+                    if (exists) return false;
+                    chatHistory.value.push(image);
+                    return true;
+                };
+
+                const startImageJobPolling = (job, sourceChatId, sourceSessionId) => {
+                    if (!job || !job.job_id || !sourceChatId) return;
+                    clearImageJobPolling();
+                    setActiveImageJob(job);
+
+                    const poll = async () => {
+                        try {
+                            const response = await axios.get(`/api/chat/${sourceChatId}/image-jobs/${job.job_id}`);
+                            if (!isCurrentChatSession(sourceChatId, sourceSessionId)) return;
+
+                            const data = response.data;
+                            if (isActiveImageJobStatus(data.status)) {
+                                setActiveImageJob(data);
+                                imageJobPollTimer = setTimeout(poll, 2500);
+                                return;
+                            }
+
+                            clearImageJobPolling();
+                            setActiveImageJob(null);
+
+                            if (data.status === 'succeeded' && data.image) {
+                                const appended = appendImageEventIfMissing(data.image);
+                                if (appended) {
+                                    await nextTick();
+                                    scrollToBottom();
+                                }
+                                loadSubscription();
+                            } else if (data.status === 'failed') {
+                                showToast(data.message || 'Ошибка генерации фото', 'error');
+                            }
+                        } catch (error) {
+                            if (!isCurrentChatSession(sourceChatId, sourceSessionId)) return;
+                            if (error.response?.status === 404) {
+                                clearImageJobPolling();
+                                setActiveImageJob(null);
+                                return;
+                            }
+                            imageJobPollTimer = setTimeout(poll, 4000);
+                        }
+                    };
+
+                    imageJobPollTimer = setTimeout(poll, 1200);
                 };
 
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
@@ -2365,6 +2435,10 @@
                     setTimeout(async () => {
                         try {
                             await axios.delete(`/api/chat/${chatId}`);
+                            if (currentChatId.value === chatId) {
+                                clearImageJobPolling();
+                                setActiveImageJob(null);
+                            }
                             await loadChats();
                             showToast('Чат удалён');
                         } catch {
@@ -2397,6 +2471,8 @@
                 };
 
                 const startChatSession = (chatId = null) => {
+                    clearImageJobPolling();
+                    setActiveImageJob(null);
                     currentChatSessionId.value += 1;
                     currentChatId.value = chatId;
                     isUndoing.value = false;
@@ -2436,6 +2512,9 @@
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
                         currentView.value = 'chat';
+                        if (res.data.active_image_job) {
+                            startImageJobPolling(res.data.active_image_job, chatId, sessionId);
+                        }
                         await nextTick();
                         scrollToBottom();
                     } catch (e) {
@@ -2698,7 +2777,6 @@
                         return;
                     }
 
-                    isGeneratingImage.value = true;
                     isWaitingResponse.value = true;
                     scrollToBottom();
 
@@ -2706,18 +2784,14 @@
                         const response = await axios.post(`/api/chat/${sourceChatId}/generate-image`);
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
-                        chatHistory.value.push(response.data);
-                        await nextTick();
-                        scrollToBottom();
-                        loadSubscription();
+                        startImageJobPolling(response.data, sourceChatId, sourceSessionId);
                     } catch (error) {
                         console.error('Image generation failed:', error);
                         if (isActiveChat(sourceChatId, sourceSessionId) && error.response?.status !== 429) {
                             showToast(error.response?.data?.detail || 'Ошибка генерации фото', 'error');
                         }
                     } finally {
-                        if (isActiveChat(sourceChatId, sourceSessionId)) {
-                            isGeneratingImage.value = false;
+                        if (isCurrentChatSession(sourceChatId, sourceSessionId)) {
                             isWaitingResponse.value = false;
                         }
                     }
@@ -2734,6 +2808,8 @@
                         chatHistory.value = response.data.first_message
                             ? [{ role: 'assistant', content: response.data.first_message }]
                             : [];
+                        clearImageJobPolling();
+                        setActiveImageJob(null);
                         await nextTick();
                         scrollToBottom();
                         showToast('Сценарий сброшен', 'success');
@@ -2764,6 +2840,8 @@
                     try {
                         await axios.delete(`/api/chat/${sourceChatId}/undo`);
                         if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            clearImageJobPolling();
+                            setActiveImageJob(null);
                             showToast('Сообщения удалены', 'success');
                         }
                     } catch (e) {
@@ -2799,6 +2877,8 @@
                     try {
                         await axios.delete(`/api/chat/${sourceChatId}/undo`);
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                        clearImageJobPolling();
+                        setActiveImageJob(null);
                         inputMessage.value = oldText;
                         await nextTick();
                         if (inputField.value) {
@@ -3220,7 +3300,7 @@
 
                             const chatMeta = {
                                 name: d.name,
-                                avatar: null
+                                avatar: createRes.data.avatar || null
                             };
 
                             const chatRes = await axios.post('/api/chat/create', {

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from shared.services.analytics import AnalyticsService
 from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
+from shared.services.photo_generation import PhotoGenerationService
 from shared.services.prompt_service import create_or_update_character_modifiers
 from shared.services.model_types import validate_model_gender
 from shared.constants import invalidate_character_modifiers_cache
@@ -20,6 +21,7 @@ from .cc_schemas import CreateCharacterRequest
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+photo_generation_service = PhotoGenerationService()
 
 
 def _clean_visual_field(value: str) -> str:
@@ -51,6 +53,7 @@ async def create_character(
             raise UsageLimitExceeded("characters_created", limit)
 
     character_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
+    avatar_url = None
 
     async with get_session() as db:
         result = await db.execute(select(Character).where(Character.id == character_id))
@@ -146,13 +149,38 @@ async def create_character(
             entity_id=str(character_id),
         )
 
+        try:
+            avatar_url = await photo_generation_service.generate_avatar(
+                {
+                    "id": character_id,
+                    "name": data.name,
+                    "model_type": model_type,
+                    "is_nsfw": True,
+                    "visual_data": visual_data,
+                }
+            )
+            if avatar_url:
+                new_character.visual_data = {
+                    **(new_character.visual_data or {}),
+                    "avatar": avatar_url,
+                }
+                await db.commit()
+        except Exception as e:
+            await db.rollback()
+            logger.exception(
+                "Character avatar generation failed: character_id=%s user_id=%s error=%s",
+                character_id,
+                user.telegram_id,
+                e,
+            )
+
     cache = get_cache()
     if cache:
         await cache.invalidate_character(character_id)
 
     logger.info(f"User {user.telegram_id} created character '{character_id}'")
 
-    return {"character_id": character_id}
+    return {"character_id": character_id, "avatar": avatar_url}
 
 
 @router.put("/api/characters/{character_id}")
@@ -195,6 +223,7 @@ async def update_character(
             else:
                 style_tags = ""
 
+        existing_avatar = (character.visual_data or {}).get("avatar", "")
         visual_data = {
             "model_type": model_type,
             "gender": data.gender,
@@ -205,6 +234,8 @@ async def update_character(
             "style_tags": style_tags,
             "wardrobe": data.wardrobe,
         }
+        if existing_avatar:
+            visual_data["avatar"] = existing_avatar
 
         scenarios = [
             {

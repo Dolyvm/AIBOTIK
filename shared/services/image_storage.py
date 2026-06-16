@@ -2,6 +2,7 @@
 import logging
 import base64
 import re
+import uuid
 from pathlib import Path
 
 import aiohttp
@@ -42,6 +43,32 @@ def _decode_data_url(data_url: str) -> tuple[bytes, str] | None:
 
 def get_public_url(local_path: str) -> str:
     return f"{IMAGES_BASE_URL}/{local_path}"
+
+
+async def save_avatar_image(image_bytes: bytes, content_type: str, character_id: str) -> str:
+    """Save generated avatar bytes and return the public /images URL."""
+    try:
+        extension = ALLOWED_CONTENT_TYPES.get(content_type, ".png")
+        safe_character_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", character_id).strip("._")
+        if not safe_character_id:
+            safe_character_id = "character"
+
+        avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
+        avatars_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f"{safe_character_id}_{uuid.uuid4().hex[:12]}{extension}"
+        full_path = avatars_dir / filename
+
+        async with aiofiles.open(full_path, "wb") as f:
+            await f.write(image_bytes)
+
+        local_path = f"avatars/{filename}"
+        logger.info("Avatar image saved: %s", local_path)
+        return f"/images/{local_path}"
+
+    except IOError as e:
+        logger.error("IO error saving avatar image: %s", e)
+        raise ImageStorageError(f"Storage error: {e}") from e
 
 
 async def save_world_cover(provider_url: str, world_id: str) -> str:

@@ -2,8 +2,8 @@ import datetime
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Body, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Body, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import sys
 from pathlib import Path
@@ -17,9 +17,11 @@ from shared.database import get_session
 from shared.database.repositories import (
     ChatRepository,
     MessageRepository,
-    GeneratedImageRepository
+    GeneratedImageRepository,
+    ImageGenerationJobRepository,
 )
 from sqlalchemy import delete as sa_delete
+from sqlalchemy.exc import IntegrityError
 from shared.models import Chat, User, GeneratedImage
 from auth.telegram_auth import get_current_user
 from auth.authorization import verify_chat_ownership
@@ -32,13 +34,6 @@ from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
 from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
-from shared.services.photo_generation import (
-    PhotoGenerationError,
-    PhotoGenerationService,
-    PhotoPromptBudgetError,
-    PhotoProviderError,
-    UnsupportedPhotoModelError,
-)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -56,7 +51,6 @@ llm_client = LLMClient(
     reasoning={"enabled": False},
 )
 context_manager = ContextManager(llm_client)
-photo_generation_service = PhotoGenerationService()
 
 
 class MessageRequest(BaseModel):
@@ -116,6 +110,39 @@ def _stream_event(event_type: str, **payload) -> str:
     return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
 
 
+def _image_event(image: GeneratedImage) -> dict:
+    return {
+        "role": "assistant",
+        "image_id": image.id,
+        "avatar": image.public_url,
+        "timestamp": image.created_at.isoformat(),
+    }
+
+
+def _job_status_payload(job, image: GeneratedImage | None = None) -> dict:
+    payload = {
+        "job_id": job.id,
+        "status": job.status,
+    }
+    if image:
+        payload["image"] = _image_event(image)
+    if job.status in {"failed", "canceled"}:
+        payload["message"] = job.error_message or (
+            "Генерация отменена" if job.status == "canceled" else "Ошибка генерации фото"
+        )
+    return payload
+
+
+def _message_snapshot(messages) -> list[dict]:
+    return [
+        {
+            "role": getattr(msg.role, "value", msg.role),
+            "content": msg.content,
+        }
+        for msg in messages
+    ]
+
+
 @router.get("/{chat_id}/history")
 async def get_history(chat_id: int, user: User = Depends(get_current_user)):
     chat = await verify_chat_ownership(chat_id, user)
@@ -123,9 +150,11 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
     async with get_session() as session:
         message_repo = MessageRepository(session)
         image_repo = GeneratedImageRepository(session)
+        job_repo = ImageGenerationJobRepository(session)
 
         messages = await message_repo.get_history(chat_id)
         images = await image_repo.get_by_chat_formatted(chat_id)
+        active_image_job = await job_repo.get_active_for_chat(chat_id)
 
         msg_dicts = [
             {
@@ -148,6 +177,9 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "arousal": chat.arousal,
             "mood": chat.current_mood,
             "location": chat.current_location,
+            "active_image_job": (
+                _job_status_payload(active_image_job) if active_image_job else None
+            ),
         }
 
 
@@ -236,7 +268,11 @@ async def send_message(chat_id: int, payload: MessageRequest = Body(...), user: 
 
 
 @router.post("/{chat_id}/generate-image")
-async def generate_image(chat_id: int, user: User = Depends(get_current_user)):
+async def generate_image(
+    chat_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     rate_limiter = get_rate_limiter()
     if rate_limiter:
         allowed = await rate_limiter.check_api_rate_limit(
@@ -254,6 +290,19 @@ async def generate_image(chat_id: int, user: User = Depends(get_current_user)):
     chat = await verify_chat_ownership(chat_id, user)
     if chat.chat_type != "character":
         raise HTTPException(status_code=400, detail="Фото можно генерировать только в чате с персонажем")
+
+    async with get_session() as session:
+        job_repo = ImageGenerationJobRepository(session)
+        active_job = await job_repo.get_active_for_chat(chat.id)
+        if active_job:
+            return JSONResponse(
+                status_code=202,
+                content=_job_status_payload(active_job),
+            )
+
+    arq_pool = getattr(request.app.state, "arq_pool", None)
+    if not arq_pool:
+        raise HTTPException(status_code=503, detail="Генерация фото временно недоступна")
 
     sub_service = get_subscription_service()
     async with get_session() as session:
@@ -273,57 +322,69 @@ async def generate_image(chat_id: int, user: User = Depends(get_current_user)):
         message_repo = MessageRepository(session)
         recent_messages = await message_repo.get_history(chat.id, limit=5)
 
-    try:
-        async with get_session() as session:
-            image = await photo_generation_service.generate_for_chat(
-                session=session,
-                user=user,
-                chat_id=chat.id,
-                character=character,
-                recent_messages=recent_messages,
-                chat_state=chat.state_meta,
-            )
+    request_payload = {
+        "character": character,
+        "recent_messages": _message_snapshot(recent_messages),
+        "chat_state": dict(chat.state_meta or {}),
+    }
 
-        async with get_session() as session:
-            await sub_service.increment_usage(user.telegram_id, "images_generated", session)
-
-        async with get_session() as session:
-            await AnalyticsService.track(
-                session,
+    async with get_session() as session:
+        job_repo = ImageGenerationJobRepository(session)
+        try:
+            job = await job_repo.create_job(
                 user_id=user.telegram_id,
-                event_type="image_generated",
-                entity_type="chats",
-                entity_id=str(chat.id),
-                meta={
-                    "character_id": character.get("id"),
-                    "image_id": image.id,
-                    "model_type": character.get("model_type"),
-                },
+                chat_id=chat.id,
+                request_payload=request_payload,
             )
+        except IntegrityError:
+            await session.rollback()
+            active_job = await job_repo.get_active_for_chat(chat.id)
+            if active_job:
+                return JSONResponse(
+                    status_code=202,
+                    content=_job_status_payload(active_job),
+                )
+            raise
 
-        return {
-            "role": "assistant",
-            "image_id": image.id,
-            "avatar": image.public_url,
-            "timestamp": image.created_at.isoformat(),
-        }
-    except UnsupportedPhotoModelError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except PhotoPromptBudgetError as e:
-        logging.warning(
-            "Photo prompt budget failed: chat_id=%s user_id=%s character_id=%s error=%s",
-            chat.id,
-            user.telegram_id,
-            character.get("id"),
-            e,
+        arq_job_id = f"chat-image-generation:{job.id}"
+        try:
+            enqueued_job = await arq_pool.enqueue_job(
+                "generate_chat_image_task",
+                job.id,
+                _job_id=arq_job_id,
+            )
+        except Exception as e:
+            logging.exception("Failed to enqueue image generation job: job_id=%s error=%s", job.id, e)
+            await job_repo.mark_failed(
+                job.id,
+                "queue_unavailable",
+                "Генерация фото временно недоступна",
+            )
+            raise HTTPException(status_code=503, detail="Генерация фото временно недоступна")
+
+        await job_repo.set_arq_job_id(job.id, getattr(enqueued_job, "job_id", arq_job_id))
+        return JSONResponse(
+            status_code=202,
+            content=_job_status_payload(job),
         )
-        raise HTTPException(status_code=422, detail=str(e))
-    except PhotoProviderError as e:
-        logging.exception("Photo provider failed: chat_id=%s error=%s", chat.id, e)
-        raise HTTPException(status_code=502, detail="Ошибка генерации фото")
-    except PhotoGenerationError as e:
-        logging.exception("Photo generation failed: chat_id=%s error=%s", chat.id, e)
-        raise HTTPException(status_code=500, detail="Ошибка подготовки фото")
+
+
+@router.get("/{chat_id}/image-jobs/{job_id}")
+async def get_image_generation_job(
+    chat_id: int,
+    job_id: int,
+    user: User = Depends(get_current_user),
+):
+    await verify_chat_ownership(chat_id, user)
+
+    async with get_session() as session:
+        job_repo = ImageGenerationJobRepository(session)
+        job = await job_repo.get_by_chat_and_id(chat_id, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Image generation job not found")
+
+        image = await session.get(GeneratedImage, job.image_id) if job.image_id else None
+        return _job_status_payload(job, image)
 
 
 @router.get("/by-character/{target_id}")
@@ -420,6 +481,7 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
 
             chat_repo = ChatRepository(session)
             message_repo = MessageRepository(session)
+            job_repo = ImageGenerationJobRepository(session)
 
             paths = await collect_chat_image_paths(session, chat_id)
             scenario_heat = 0
@@ -427,6 +489,7 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
                 content = await get_character(verified_chat.target_id)
                 scenario_heat = _scenario_heat_level(content, verified_chat.scenario_index or 0)
 
+            await job_repo.cancel_active_for_chat(chat_id)
             await chat_repo.reset_history(chat_id, heat_level=scenario_heat)
 
             delete_files(paths)
@@ -574,11 +637,14 @@ async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
 
     async with get_session() as session:
         message_repo = MessageRepository(session)
+        job_repo = ImageGenerationJobRepository(session)
+
         try:
             deleted, user_msg_created_at = await message_repo.delete_last_pair(chat_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+        await job_repo.cancel_active_for_chat(chat_id)
         paths = await collect_images_since(session, chat_id, user_msg_created_at)
 
         # Удалить GeneratedImages, созданные после отправки user-сообщения
@@ -608,6 +674,9 @@ async def delete_chat(
 
     async with get_session() as session:
         paths = await collect_chat_image_paths(session, chat_id)
+
+        job_repo = ImageGenerationJobRepository(session)
+        await job_repo.cancel_active_for_chat(chat_id)
 
         chat_repo = ChatRepository(session)
         await chat_repo.delete(chat_id)
