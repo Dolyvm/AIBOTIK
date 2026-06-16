@@ -1,3 +1,25 @@
+x-app-env: &app-env
+  DATABASE_URL: postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
+  REDIS_URL: redis://redis:6379/0
+  BOT_TOKEN: ${BOT_TOKEN}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+  CHAT_MODEL: ${CHAT_MODEL:-deepseek/deepseek-v4-flash}
+  SUMMARY_MODEL: ${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
+  PLAYER_MODEL: ${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
+  STRUCTURED_MODEL: ${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
+  LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-deepseek_v4_flash}
+  LLM_MODEL: ${LLM_MODEL:-deepseek/deepseek-v4-flash}
+  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.35}
+  LLM_TOP_P: ${LLM_TOP_P:-0.9}
+  LLM_REPETITION_PENALTY: ${LLM_REPETITION_PENALTY:-1.15}
+  REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN}
+  REPLICATE_POLL_TIMEOUT_SECONDS: ${REPLICATE_POLL_TIMEOUT_SECONDS:-900}
+  REPLICATE_POLL_INTERVAL_SECONDS: ${REPLICATE_POLL_INTERVAL_SECONDS:-3}
+  IMAGES_BASE_URL: ${IMAGES_BASE_URL:-http://localhost/images}
+  IMAGES_STORAGE_PATH: /app/generated_images
+  ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
 services:
   nginx:
     image: nginx:alpine
@@ -26,8 +48,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rpbot"]
       interval: 5s
@@ -37,8 +57,6 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -48,49 +66,44 @@ services:
       retries: 5
     restart: unless-stopped
 
-  backend:
-    build: ./backend
-    expose:
-      - "8080"
+  migrate:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        python /app/scripts/init_prompts.py --sync-compact --sync-photo
+      "
     environment:
-      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
-      - REDIS_URL=redis://redis:6379/0
-      - BOT_TOKEN=${BOT_TOKEN}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
-      - REPLICATE_POLL_TIMEOUT_SECONDS=${REPLICATE_POLL_TIMEOUT_SECONDS:-900}
-      - REPLICATE_POLL_INTERVAL_SECONDS=${REPLICATE_POLL_INTERVAL_SECONDS:-3}
-      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
-      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
-      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
-      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
-      - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
-      - IMAGES_STORAGE_PATH=/app/generated_images
-      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
-      - SECRET_KEY=${SECRET_KEY}
-      - WEBAPP_URL=${WEBAPP_URL}
-      - PLATEGA_MERCHANT_ID=${PLATEGA_MERCHANT_ID}
-      - PLATEGA_SECRET=${PLATEGA_SECRET}
-      - PLATEGA_BASE_URL=${PLATEGA_BASE_URL:-https://app.platega.io/}
-      - DEV_MODE=${DEV_MODE:-true}
-      - FRONTEND_URL=http://frontend:5173  # dev
-    volumes:
-      - ./backend/api:/app/api
-      - ./backend/admin:/app/admin
-      - ./backend/auth:/app/auth
-      - ./backend/services:/app/services
-      - ./backend/static:/app/static
-      - ./backend/main.py:/app/main.py
-      - ./backend/config.py:/app/config.py
-      - ./content:/app/content:ro
-      - ./shared:/app/shared:ro
-      - ./bot:/app/bot:ro
-      - generated_images:/app/generated_images
+      <<: *app-env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      <<: *app-env
+      SECRET_KEY: ${SECRET_KEY}
+      WEBAPP_URL: ${WEBAPP_URL}
+      PLATEGA_MERCHANT_ID: ${PLATEGA_MERCHANT_ID}
+      PLATEGA_SECRET: ${PLATEGA_SECRET}
+      PLATEGA_BASE_URL: ${PLATEGA_BASE_URL:-https://app.platega.io/}
+      DEV_MODE: ${DEV_MODE:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://frontend}
+    volumes:
+      - generated_images:/app/generated_images
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -101,69 +114,37 @@ services:
     restart: "unless-stopped"
 
   worker:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     command: arq shared.queue.worker.WorkerSettings
     environment:
-      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
-      - REDIS_URL=redis://redis:6379/0
-      - BOT_TOKEN=${BOT_TOKEN}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
-      - REPLICATE_POLL_TIMEOUT_SECONDS=${REPLICATE_POLL_TIMEOUT_SECONDS:-900}
-      - REPLICATE_POLL_INTERVAL_SECONDS=${REPLICATE_POLL_INTERVAL_SECONDS:-3}
-      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
-      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
-      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
-      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
-      - IMAGES_BASE_URL=${IMAGES_BASE_URL:-http://localhost/images}
-      - IMAGES_STORAGE_PATH=/app/generated_images
+      <<: *app-env
+      WORKER_JOB_TIMEOUT: ${WORKER_JOB_TIMEOUT:-900}
     volumes:
-      - ./backend/api:/app/api
-      - ./backend/services:/app/services
-      - ./shared:/app/shared:ro
-      - ./content:/app/content:ro
       - generated_images:/app/generated_images
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   bot:
-    build: ./bot
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
     ports:
-      - "${WEBHOOK_PORT:-8443}:${WEBHOOK_PORT}"
+      - "${WEBHOOK_PORT:-8443}:${WEBHOOK_PORT:-8443}"
     environment:
-      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
-      - REDIS_URL=redis://redis:6379/0
-      - BOT_TOKEN=${BOT_TOKEN}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - CHAT_MODEL=${CHAT_MODEL:-deepseek/deepseek-v4-flash}
-      - SUMMARY_MODEL=${SUMMARY_MODEL:-deepseek/deepseek-v4-flash}
-      - PLAYER_MODEL=${PLAYER_MODEL:-deepseek/deepseek-v4-flash}
-      - STRUCTURED_MODEL=${STRUCTURED_MODEL:-qwen/qwen3.6-flash}
-      - WEBAPP_URL=${WEBAPP_URL}
-      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
-      - WEBHOOK_URL=${WEBHOOK_URL}
-      - WEBHOOK_PATH=${WEBHOOK_PATH}
-      - WEBHOOK_HOST=${WEBHOOK_HOST}
-      - WEBHOOK_PORT=${WEBHOOK_PORT}
-      - IS_PROD=${IS_PROD:-false}
-    volumes:
-      - ./bot/handlers:/app/handlers
-      - ./bot/main.py:/app/main.py
-      - ./bot/config.py:/app/config.py
-      - ./content:/app/content:ro
-      - ./shared:/app/shared:ro
-      - ./scripts:/app/scripts:ro
-      - ./alembic:/app/alembic
-      - ./alembic.ini:/app/alembic.ini
+      <<: *app-env
+      WEBAPP_URL: ${WEBAPP_URL}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      WEBHOOK_PATH: ${WEBHOOK_PATH:-/webhook}
+      WEBHOOK_HOST: ${WEBHOOK_HOST:-0.0.0.0}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8443}
+      IS_PROD: ${IS_PROD:-false}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       backend:
         condition: service_started
     healthcheck:
@@ -174,27 +155,19 @@ services:
       start_period: 30s
 
   seed:
-    build: ./bot
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
     command: >
       sh -c "
-        echo 'Waiting for migrations to complete...' &&
-        sleep 10 &&
-        echo 'Initializing prompts...' &&
-        python /app/scripts/init_prompts.py --sync-compact &&
         echo 'Seeding content...' &&
         python /app/scripts/seed_content.py
       "
     environment:
-      - DATABASE_URL=postgresql://rpbot:${DB_PASSWORD}@postgres:5432/rpbot
-    volumes:
-      - ./scripts:/app/scripts:ro
-      - ./content:/app/content:ro
-      - ./shared:/app/shared:ro
+      <<: *app-env
     depends_on:
-      postgres:
-        condition: service_healthy
-      bot:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: "no"
 
 volumes:

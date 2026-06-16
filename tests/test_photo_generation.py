@@ -31,15 +31,14 @@ from shared.services.prompt_service import (
 from shared.subscription_plans import PLAN_LIMITS, USAGE_TYPE_MAP
 
 
-PHOTO_PROMPT_KEYS = {
-    "photo_scene_extractor",
-    "photo_prompt_real_female",
-    "photo_prompt_real_male",
-    "photo_prompt_anime_female",
-    "photo_prompt_anime_male",
-    "photo_negative_anime_female",
-    "photo_negative_anime_male",
-}
+PHOTO_PROMPT_KEYS = DEFAULT_PHOTO_PROMPT_KEYS
+
+
+def _fake_prompt_lookup(overrides: dict[str, str]):
+    async def fake_get_prompt(key):
+        return overrides.get(key, DEFAULT_PROMPTS[key])
+
+    return fake_get_prompt
 
 
 class FakeLLM:
@@ -99,11 +98,17 @@ def test_photo_scene_extractor_uses_only_last_five_messages(monkeypatch):
 
 
 def test_real_payload_has_no_negative_prompt(monkeypatch):
-    async def fake_get_prompt(key):
-        assert key == "photo_prompt_real_female"
-        return "{appearance}, {body}, {face}, {clothing}, {pose}, {expression}, {setting}"
-
-    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    monkeypatch.setattr(
+        photo,
+        "get_prompt",
+        _fake_prompt_lookup(
+            {
+                "photo_prompt_real_female": (
+                    "{appearance}, {body}, {face}, {clothing}, {pose}, {expression}, {setting}"
+                )
+            }
+        ),
+    )
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
     bundle = asyncio.run(
@@ -133,11 +138,11 @@ def test_real_payload_has_no_negative_prompt(monkeypatch):
 
 
 def test_real_missing_default_outfit_uses_safe_wardrobe_fallback(monkeypatch):
-    async def fake_get_prompt(key):
-        assert key == "photo_prompt_real_female"
-        return "{clothing}, {pose}, {body}"
-
-    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    monkeypatch.setattr(
+        photo,
+        "get_prompt",
+        _fake_prompt_lookup({"photo_prompt_real_female": "{clothing}, {pose}, {body}"}),
+    )
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
     bundle = asyncio.run(
@@ -160,18 +165,26 @@ def test_real_missing_default_outfit_uses_safe_wardrobe_fallback(monkeypatch):
 
     assert "fully clothed, designer jeans, fitted white sweater" in bundle.prompt
     assert "naked body" not in bundle.prompt
-    assert bundle.state_meta_update is None
+    assert bundle.state_meta_update == {
+        "photo_outfit": {
+            "source": "default",
+            "wardrobe_key": "",
+            "clothing": "designer jeans, fitted white sweater",
+        }
+    }
 
 
 def test_anime_missing_default_outfit_does_not_use_real_fallback(monkeypatch):
-    async def fake_get_prompt(key):
-        prompts = {
-            "photo_prompt_anime_female": "{clothing}, {pose}",
-            "photo_negative_anime_female": "bad anatomy",
-        }
-        return prompts[key]
-
-    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    monkeypatch.setattr(
+        photo,
+        "get_prompt",
+        _fake_prompt_lookup(
+            {
+                "photo_prompt_anime_female": "{clothing}, {pose}",
+                "photo_negative_anime_female": "bad anatomy",
+            }
+        ),
+    )
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
     bundle = asyncio.run(
@@ -198,11 +211,11 @@ def test_anime_missing_default_outfit_does_not_use_real_fallback(monkeypatch):
 
 
 def test_visual_data_character_shape_is_supported(monkeypatch):
-    async def fake_get_prompt(key):
-        assert key == "photo_prompt_real_male"
-        return "{appearance}, {body}, {face}, {clothing}"
-
-    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    monkeypatch.setattr(
+        photo,
+        "get_prompt",
+        _fake_prompt_lookup({"photo_prompt_real_male": "{appearance}, {body}, {face}, {clothing}"}),
+    )
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
     bundle = asyncio.run(
@@ -229,14 +242,16 @@ def test_visual_data_character_shape_is_supported(monkeypatch):
 
 
 def test_anime_payload_uses_gender_specific_negative_prompt(monkeypatch):
-    async def fake_get_prompt(key):
-        prompts = {
-            "photo_prompt_anime_male": "1boy,  man, anime illustration, {clothing}, {appearance}",
-            "photo_negative_anime_male": "woman, girl, multiple people",
-        }
-        return prompts[key]
-
-    monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
+    monkeypatch.setattr(
+        photo,
+        "get_prompt",
+        _fake_prompt_lookup(
+            {
+                "photo_prompt_anime_male": "1boy,  man, anime illustration, {clothing}, {appearance}",
+                "photo_negative_anime_male": "woman, girl, multiple people",
+            }
+        ),
+    )
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
     bundle = asyncio.run(
@@ -265,7 +280,10 @@ def test_anime_payload_uses_gender_specific_negative_prompt(monkeypatch):
     assert "boxing shorts" in bundle.prompt
 
 
-def test_visual_parts_remove_structural_tags_and_dedupe_across_groups():
+def test_visual_parts_preserve_subject_tags_and_dedupe_across_groups(monkeypatch):
+    monkeypatch.setattr(photo, "get_prompt", _fake_prompt_lookup({}))
+    policy = asyncio.run(photo.get_photo_prompt_policy())
+
     parts = photo._visual_parts(
         {
             "appearance": "solo, 1girl, anime girl, bob haircut, brown hair, small breasts",
@@ -279,13 +297,14 @@ def test_visual_parts_remove_structural_tags_and_dedupe_across_groups():
                 "skin": "clear",
                 "style_tags": "small breasts, cinematic, green eyes",
             },
-        }
+        },
+        policy,
     )
 
-    assert parts["appearance"] == "bob haircut, brown hair, small breasts"
-    assert parts["body"] == "petite figure"
-    assert parts["face"] == "green eyes, clear skin"
-    assert parts["style_tags"] == "cinematic"
+    assert parts["appearance"] == "solo, 1girl, anime girl, bob haircut, brown hair, small breasts"
+    assert parts["body"] == "petite figure, small breasts"
+    assert parts["face"] == "brown hair, bob haircut, green eyes, clear skin"
+    assert parts["style_tags"] == "small breasts, cinematic, green eyes"
 
 
 def test_template_rendering_cleans_empty_and_duplicate_comma_tags():
@@ -369,7 +388,10 @@ def test_photo_prompts_are_registered_for_admin_and_defaults():
     assert PHOTO_PROMPT_KEYS == DEFAULT_PHOTO_PROMPT_KEYS
     assert PHOTO_PROMPT_KEYS <= set(DEFAULT_PROMPTS)
     assert PHOTO_PROMPT_KEYS <= set(PROMPT_METADATA)
-    assert {PROMPT_METADATA[key]["category"] for key in PHOTO_PROMPT_KEYS} == {"photo"}
+    assert {PROMPT_METADATA[key]["category"] for key in PHOTO_PROMPT_KEYS} == {
+        "photo",
+        "photo_policy",
+    }
     assert all("nsfw_level" not in DEFAULT_PROMPTS[key] for key in PHOTO_PROMPT_KEYS)
 
 
