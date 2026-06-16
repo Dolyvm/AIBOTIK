@@ -179,7 +179,6 @@ async def get_author_profile(
         like_repo = LikeRepository(session)
         chat_repo = ChatRepository(session)
 
-        message_counts_chars = await chat_repo.get_message_counts_batch("character", char_ids)
         message_counts_worlds = await chat_repo.get_message_counts_batch("world", world_ids)
         chat_session_counts_chars = await chat_repo.get_chat_counts_batch("character", char_ids)
         chat_session_counts_worlds = await chat_repo.get_chat_counts_batch("world", world_ids)
@@ -206,7 +205,7 @@ async def get_author_profile(
     characters_payload = []
     for c in characters:
         visual = c.visual_data or {}
-        message_count = message_counts_chars.get(c.id, 0)
+        message_count = c.total_message_count or 0
         characters_payload.append({
             "id": c.id,
             "name": c.name,

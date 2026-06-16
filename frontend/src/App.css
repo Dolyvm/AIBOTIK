@@ -3421,12 +3421,12 @@ body.desktop .grid {
 
 .cc-detail-overlay {
     align-items: flex-start;
-    padding: clamp(150px, calc(20px + var(--tg-safe-area-inset-top) + var(--tg-content-safe-area-inset-top)), 220px) 10px calc(18px + var(--tg-safe-area-inset-bottom) + var(--tg-content-safe-area-inset-bottom));
+    padding: calc(70px + var(--tg-safe-area-inset-top) + var(--tg-content-safe-area-inset-top)) 10px calc(10px + var(--tg-safe-area-inset-bottom) + var(--tg-content-safe-area-inset-bottom));
 }
 
 .cc-detail-modal {
     width: min(600px, calc(100vw - 20px));
-    max-height: calc(var(--tg-viewport-stable-height) - 238px - var(--tg-safe-area-inset-bottom) - var(--tg-content-safe-area-inset-bottom));
+    max-height: calc(var(--tg-viewport-stable-height) - 90px - var(--tg-safe-area-inset-top) - var(--tg-content-safe-area-inset-top) - var(--tg-safe-area-inset-bottom) - var(--tg-content-safe-area-inset-bottom));
     border-radius: 8px;
     background: var(--cc-bg);
     border: 1px solid var(--cc-border);

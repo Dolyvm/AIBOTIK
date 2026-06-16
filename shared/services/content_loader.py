@@ -48,6 +48,7 @@ def character_to_dict(char: Character) -> dict:
         "is_verified": char.is_verified,
         "description": char.description,
         "personality": char.personality,
+        "total_message_count": char.total_message_count or 0,
         "model_type": visual_data.get("model_type", "anime"),
         "appearance": visual_data.get("appearance", ""),
         "visual": {

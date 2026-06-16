@@ -95,6 +95,7 @@ class Character(Base):
     description = Column(Text, nullable=False)
     short_description = Column(String(30), nullable=True, default="")
     personality = Column(Text, nullable=False)
+    total_message_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     visual_data = Column(JSONB, nullable=False)
     scenarios = Column(JSONB, default=[])

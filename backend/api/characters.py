@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database import get_session
-from shared.database.repositories import ChatRepository, LikeRepository
+from shared.database.repositories import CharacterRepository, ChatRepository, LikeRepository
 from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
 from shared.services.content_loader import get_all_characters, get_character
@@ -101,8 +101,9 @@ async def list_characters(
     if char_ids:
         async with get_session() as session:
             chat_repo = ChatRepository(session)
+            character_repo = CharacterRepository(session)
             like_repo = LikeRepository(session)
-            message_counts = await chat_repo.get_message_counts_batch("character", char_ids)
+            message_counts = await character_repo.get_total_message_counts_batch(char_ids)
             chat_session_counts = await chat_repo.get_chat_counts_batch("character", char_ids)
             like_counts = await like_repo.get_like_counts_batch(char_ids)
             liked_ids = await like_repo.get_liked_character_ids(user.telegram_id, char_ids)
@@ -211,7 +212,8 @@ async def get_character_detail(
 
     like_repo = LikeRepository(db)
     chat_repo = ChatRepository(db)
-    message_counts = await chat_repo.get_message_counts_batch("character", [character_id])
+    character_repo = CharacterRepository(db)
+    message_counts = await character_repo.get_total_message_counts_batch([character_id])
     chat_session_counts = await chat_repo.get_chat_counts_batch("character", [character_id])
     like_count = await like_repo.get_like_count(character_id)
     liked_ids = await like_repo.get_liked_character_ids(user.telegram_id, [character_id])
