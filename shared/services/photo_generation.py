@@ -35,39 +35,60 @@ REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS = 3
 
 PROMPT_BUDGETS = {
     "real": 450,
-    "anime": 100,
+    "anime": 180,
 }
-ANIME_NEGATIVE_BUDGET = 50
+ANIME_PROMPT_PROFILE_VERSION = "anime_prompt_v2"
+ANIME_AVATAR_PROMPT_BUDGET = 180
+ANIME_NEGATIVE_BUDGET = 60
 
 ANIME_FILLER_TAGS = {
+    "adult",
+    "anime style",
     "anime illustration",
     "detailed background",
     "detailed face",
     "high quality",
     "best quality",
 }
-ANIME_EXPLICIT_RATING_TAGS = "explicit, nsfw"
 ANIME_SAFE_RATING_TAGS = "safe"
-ANIME_EXPLICIT_DETAIL_TAGS_BY_GENDER = {
-    "female": "uncensored, visible pussy, detailed vulva, visible labia",
-    "male": "uncensored, visible penis, detailed penis, visible testicles",
-}
-ANIME_QUALITY_TAGS = "masterpiece, high score, great score, absurdres"
+ANIME_NSFW_RATING_TAGS = "nsfw"
+ANIME_EXPLICIT_RATING_TAGS = "explicit, nsfw"
+ANIME_NUDITY_TAGS = "nude"
+ANIME_FOCUS_TAGS = "uncensored"
+ANIME_QUALITY_TAGS = "high score, great score"
+ANIME_AVATAR_QUALITY_TAGS = "high score"
 ANIME_TAG_LIMITS = {
-    "identity": (4, 5, 36),
-    "appearance": (3, 3, 28),
-    "body": (2, 3, 24),
-    "face": (2, 3, 24),
+    "body": (6, 5, 48),
+    "face": (6, 5, 48),
     "clothing": (9, 5, 40),
-    "pose": (1, 6, 36),
+    "pose": (4, 6, 36),
+    "composition": (2, 3, 24),
     "expression": (1, 3, 24),
     "emotion": (1, 2, 18),
-    "setting": (2, 3, 22),
-    "scene_notes": (2, 3, 24),
-    "style_tags": (2, 3, 24),
+    "setting": (5, 5, 40),
+    "style_tags": (4, 4, 32),
     "rating_tags": (2, 2, 18),
-    "explicit_detail_tags": (4, 3, 24),
+    "nudity_tags": (2, 2, 18),
+    "focus_tags": (2, 2, 18),
     "quality_tags": (4, 2, 18),
+}
+ANIME_AVATAR_TAG_LIMITS = {
+    **ANIME_TAG_LIMITS,
+    "body": (6, 6, 56),
+    "face": (5, 5, 48),
+    "clothing": (8, 5, 48),
+    "setting": (1, 3, 24),
+    "scene_notes": (1, 3, 24),
+    "style_tags": (2, 3, 24),
+}
+ANIME_USER_QUALITY_TAGS = {
+    "masterpiece",
+    "masterpiec",
+    "best quality",
+    "high quality",
+    "great quality",
+    "low quality",
+    "absurdres",
 }
 
 
@@ -101,25 +122,22 @@ class PhotoPromptBundle:
     replicate_input: dict[str, Any]
     replicate_model: str
     state_meta_update: dict[str, Any] | None = None
+    prompt_metadata: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class AnimePromptComponent:
+    field: str
+    source: str
+    tags: list[str]
+    required: bool = False
+    active: bool = True
 
 
 class _SafeFormatDict(dict):
     def __missing__(self, key: str) -> str:
         return ""
 
-
-STRUCTURAL_APPEARANCE_TAGS = {
-    "solo",
-    "1boy",
-    "1girl",
-    "anime boy",
-    "anime girl",
-    "anime style",
-}
-MALE_MATURE_HINT_PATTERN = re.compile(
-    r"\b(man|male|mature|muscular|beard|mustache|facial hair|stubble|[2-9][0-9]\s*(?:years?\s*old|yo|y/o))\b",
-    flags=re.IGNORECASE,
-)
 
 OUTFIT_ACTIONS = {"none", "default", "wardrobe", "custom"}
 REAL_DEFAULT_OUTFIT_WARDROBE_PRIORITY = (
@@ -143,6 +161,31 @@ EXPOSURE_PATTERN = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+NUDITY_PATTERN = re.compile(
+    r"\b(naked|nude|nudity|no\s+clothes|without\s+clothes|undressed|topless|shirtless)\b",
+    re.IGNORECASE,
+)
+EXPLICIT_FOCUS_PATTERN = re.compile(
+    r"\b("
+    r"genital\s+focus|visible\s+genitals?|exposed\s+genitals?|"
+    r"expos(?:e|es|ed|ing)\s+(?:genitals?|pussy|vagina|penis|crotch)|"
+    r"(?:pussy|vagina|penis|genitals?)\s+(?:visible|exposed)|"
+    r"show(?:ing)?\s+(?:her\s+|his\s+)?(?:pussy|vagina|penis|genitals?)"
+    r")\b",
+    re.IGNORECASE,
+)
+COMPOSITION_TAGS = {
+    "full body",
+    "cowboy shot",
+    "upper body",
+    "dynamic angle",
+    "close-up",
+    "close up",
+    "portrait",
+    "headshot",
+}
+GAZE_PATTERN = re.compile(r"\b(?:looking|gazing|staring)\b", re.IGNORECASE)
+HANDS_PATTERN = re.compile(r"\b(?:hand|hands|arms?|fingers?)\b", re.IGNORECASE)
 REAL_REVEALING_OUTFIT_PATTERN = re.compile(
     r"\b("
     r"naked|nude|nothing|topless|shirtless|"
@@ -252,9 +295,38 @@ def _compact_anime_context(context: Mapping[str, Any]) -> dict[str, Any]:
     return compact
 
 
-def _strip_anime_filler_tags(text: str) -> str:
+def _compact_anime_avatar_context(context: Mapping[str, Any]) -> dict[str, Any]:
+    compact = dict(context)
+    for field, (max_items, max_words, max_chars) in ANIME_AVATAR_TAG_LIMITS.items():
+        compact[field] = _compact_csv_tags(
+            compact.get(field),
+            max_items=max_items,
+            max_words=max_words,
+            max_chars=max_chars,
+        )
+    return compact
+
+
+def _strip_user_quality_tags(text: Any) -> str:
+    items = []
+    for item in _split_csv_items(text):
+        normalized = _clean_text(item).lower()
+        if normalized in ANIME_USER_QUALITY_TAGS or normalized in ANIME_FILLER_TAGS:
+            continue
+        items.append(item)
+    return ", ".join(_dedupe_items(items, max_items=80))
+
+
+def _strip_anime_adult_tag(text: str) -> str:
     return ", ".join(
-        _dedupe_items((_normalize_anime_tag(item) for item in _split_csv_items(text)), max_items=200)
+        _dedupe_items(
+            (
+                item
+                for item in _split_csv_items(text)
+                if _clean_text(item).lower() != "adult"
+            ),
+            max_items=200,
+        )
     )
 
 
@@ -329,6 +401,476 @@ def _fit_prompt_budget(
         prompt,
     )
     raise PhotoPromptBudgetError(f"{label} prompt is too long after removing optional blocks")
+
+
+def _trace_tag(
+    trace: list[dict[str, str]],
+    *,
+    source: str,
+    field: str,
+    tag: str,
+    action: str,
+    reason: str,
+) -> None:
+    tag = _clean_text(tag)
+    if not tag:
+        return
+    trace.append(
+        {
+            "source": source,
+            "field": field,
+            "tag": tag,
+            "action": action,
+            "reason": reason,
+        }
+    )
+
+
+def _component(
+    field: str,
+    source: str,
+    value: Any,
+    *,
+    required: bool = False,
+) -> AnimePromptComponent | None:
+    tags = _dedupe_items(_split_csv_items(value), max_items=200)
+    if not tags:
+        return None
+    return AnimePromptComponent(field=field, source=source, tags=tags, required=required)
+
+
+def _tag_override_items(overrides: Mapping[str, Any], key: str) -> list[str]:
+    return _dedupe_items(_split_csv_items(overrides.get(key)), max_items=80)
+
+
+def _visual_tag_overrides(character: Mapping[str, Any]) -> dict[str, list[str]]:
+    visual = _character_visual(character)
+    raw = visual.get("tag_overrides") or character.get("tag_overrides") or {}
+    if not isinstance(raw, Mapping):
+        return {
+            "positive_add": [],
+            "positive_remove": [],
+            "negative_add": [],
+            "negative_remove": [],
+        }
+    return {
+        "positive_add": _tag_override_items(raw, "positive_add"),
+        "positive_remove": _tag_override_items(raw, "positive_remove"),
+        "negative_add": _tag_override_items(raw, "negative_add"),
+        "negative_remove": _tag_override_items(raw, "negative_remove"),
+    }
+
+
+def _strip_component_filler(
+    component: AnimePromptComponent,
+    trace: list[dict[str, str]],
+) -> AnimePromptComponent | None:
+    kept: list[str] = []
+    for tag in component.tags:
+        if component.field == "appearance" and _clean_text(tag).lower() != "adult":
+            kept.append(tag)
+            continue
+        normalized = _normalize_anime_tag(tag)
+        if not normalized:
+            _trace_tag(
+                trace,
+                source=component.source,
+                field=component.field,
+                tag=tag,
+                action="drop",
+                reason="filler",
+            )
+            continue
+        kept.append(normalized)
+    if not kept:
+        return None
+    component.tags = _dedupe_items(kept, max_items=200)
+    return component
+
+
+def _apply_tag_removals(
+    components: list[AnimePromptComponent],
+    remove_tags: Sequence[str],
+    trace: list[dict[str, str]],
+    reason: str,
+) -> None:
+    remove_set = {_clean_text(tag).lower() for tag in remove_tags if _clean_text(tag)}
+    if not remove_set:
+        return
+
+    for component in components:
+        kept: list[str] = []
+        for tag in component.tags:
+            if tag.lower() in remove_set:
+                _trace_tag(
+                    trace,
+                    source=component.source,
+                    field=component.field,
+                    tag=tag,
+                    action="drop",
+                    reason=reason,
+                )
+                continue
+            kept.append(tag)
+        component.tags = kept
+
+
+def _components_to_context(components: Sequence[AnimePromptComponent]) -> dict[str, str]:
+    context: dict[str, str] = {}
+    for component in components:
+        if not component.active or not component.tags:
+            continue
+        context[component.field] = ", ".join(_dedupe_items(component.tags, max_items=200))
+
+    context.setdefault("scene_notes", context.get("composition", ""))
+    context.setdefault("nudity_tags", "")
+    context.setdefault("focus_tags", "")
+    context.setdefault("composition", "")
+    return context
+
+
+def _render_anime_prompt(template: str, components: Sequence[AnimePromptComponent]) -> str:
+    prompt = _render_template(template, _components_to_context(components))
+    return _strip_anime_adult_tag(prompt)
+
+
+def _fit_anime_components_to_budget(
+    template: str,
+    components: list[AnimePromptComponent],
+    budget: int,
+    trace: list[dict[str, str]],
+) -> str:
+    drop_order = (
+        "quality_tags",
+        "style_tags",
+        "setting",
+        "composition",
+        "expression",
+        "face",
+        "body",
+    )
+    prompt = _render_anime_prompt(template, components)
+    if _estimate_prompt_tokens(prompt) <= budget:
+        return prompt
+
+    for field in drop_order:
+        dropped_any = False
+        for component in components:
+            if component.field != field or component.required or not component.active:
+                continue
+            component.active = False
+            dropped_any = True
+            for tag in component.tags:
+                _trace_tag(
+                    trace,
+                    source=component.source,
+                    field=component.field,
+                    tag=tag,
+                    action="drop",
+                    reason="budget_component",
+                )
+        if not dropped_any:
+            continue
+        prompt = _render_anime_prompt(template, components)
+        if _estimate_prompt_tokens(prompt) <= budget:
+            return prompt
+
+    _trace_tag(
+        trace,
+        source="policy",
+        field="prompt",
+        tag=f"{_estimate_prompt_tokens(prompt)}/{budget}",
+        action="keep",
+        reason="budget_overflow_keep_required_tags",
+    )
+    return prompt
+
+
+def _trace_kept_components(
+    components: Sequence[AnimePromptComponent],
+    trace: list[dict[str, str]],
+) -> None:
+    seen: set[str] = set()
+    for component in components:
+        if not component.active:
+            continue
+        for tag in component.tags:
+            key = tag.lower()
+            if key in seen:
+                _trace_tag(
+                    trace,
+                    source=component.source,
+                    field=component.field,
+                    tag=tag,
+                    action="drop",
+                    reason="duplicate",
+                )
+                continue
+            seen.add(key)
+            _trace_tag(
+                trace,
+                source=component.source,
+                field=component.field,
+                tag=tag,
+                action="keep",
+                reason="selected",
+            )
+
+
+def _is_composition_tag(tag: str) -> bool:
+    lowered = _clean_text(tag).lower()
+    return lowered in COMPOSITION_TAGS or bool(
+        re.search(r"\b(?:body|shot|portrait|headshot|close[- ]?up|angle)\b", lowered)
+    )
+
+
+def _is_gaze_tag(tag: str) -> bool:
+    return bool(GAZE_PATTERN.search(_clean_text(tag)))
+
+
+def _is_hands_tag(tag: str) -> bool:
+    return bool(HANDS_PATTERN.search(_clean_text(tag)))
+
+
+def _is_primary_pose_candidate(tag: str) -> bool:
+    if not _clean_text(tag):
+        return False
+    return not (_is_composition_tag(tag) or _is_gaze_tag(tag) or _is_hands_tag(tag))
+
+
+def _anime_scene_components(scene: Mapping[str, Any]) -> dict[str, str]:
+    pose_items = _split_csv_items(
+        [
+            scene.get("primary_pose"),
+            scene.get("pose"),
+        ]
+    )
+    primary_pose = _clean_text(scene.get("primary_pose"))
+    if not _is_primary_pose_candidate(primary_pose):
+        primary_pose = ""
+    if not primary_pose:
+        for item in pose_items:
+            if _is_primary_pose_candidate(item):
+                primary_pose = item
+                break
+
+    modifier_items = _split_csv_items(scene.get("pose_modifiers"))
+    for item in pose_items:
+        if item == primary_pose or _is_composition_tag(item):
+            continue
+        if _is_gaze_tag(item) or _is_hands_tag(item) or not _is_primary_pose_candidate(item):
+            modifier_items.append(item)
+    for key in ("gaze", "hands"):
+        modifier_items.extend(_split_csv_items(scene.get(key)))
+
+    scene_note_items = _split_csv_items(scene.get("scene_notes"))
+    composition_items = _split_csv_items(scene.get("composition"))
+    for item in [*pose_items, *scene_note_items]:
+        if _is_composition_tag(item):
+            composition_items.append(item)
+
+    place = _clean_text(scene.get("place") or scene.get("setting") or scene.get("environment"))
+    setting_items = _split_csv_items(place)
+    setting_items.extend(_split_csv_items(scene.get("background_objects")))
+    setting_items.extend(_split_csv_items(scene.get("lighting")))
+    for item in scene_note_items:
+        if not _is_composition_tag(item):
+            setting_items.append(item)
+
+    return {
+        "pose": ", ".join(_dedupe_items([primary_pose, *modifier_items], max_items=8)),
+        "composition": ", ".join(_dedupe_items(composition_items, max_items=3)),
+        "setting": ", ".join(_dedupe_items(setting_items, max_items=12)),
+    }
+
+
+def _anime_exposure_level(scene: Mapping[str, Any], clothing: str) -> str:
+    intent = _clean_text(scene.get("exposure_intent")).lower().replace("-", "_").replace(" ", "_")
+    if intent in {"explicit_focus", "genital_focus", "visible_genitals", "exposure"}:
+        return "explicit_focus"
+    if intent in {"nude", "naked", "nudity"}:
+        return "nude"
+    if intent in {"safe", "none", "sfw"}:
+        return "safe"
+
+    scene_text = " ".join(
+        _clean_text(scene.get(key))
+        for key in (
+            "pose",
+            "primary_pose",
+            "pose_modifiers",
+            "setting",
+            "scene_notes",
+            "composition",
+            "expression",
+            "emotion",
+            "clothing",
+            "place",
+            "background_objects",
+            "lighting",
+        )
+    )
+    text = f"{scene_text} {clothing}"
+    clothing_items = {item.lower() for item in _split_csv_items(clothing)}
+    if EXPLICIT_FOCUS_PATTERN.search(text):
+        return "explicit_focus"
+    if NUDITY_PATTERN.search(text) or clothing_items.intersection(
+        {"nothing", "nude", "naked", "no clothes"}
+    ):
+        return "nude"
+    return "safe"
+
+
+def _anime_rating_tags_for_level(level: str) -> str:
+    if level == "explicit_focus":
+        return ANIME_EXPLICIT_RATING_TAGS
+    if level == "nude":
+        return ANIME_NSFW_RATING_TAGS
+    return ANIME_SAFE_RATING_TAGS
+
+
+def _build_anime_prompt_result(
+    *,
+    character: Mapping[str, Any],
+    gender: str,
+    visual: Mapping[str, str],
+    scene: Mapping[str, Any],
+    clothing_prompt: str,
+    template: str,
+    negative_template: str,
+    budget: int,
+    negative_budget: int,
+    purpose: str,
+    log_meta: Mapping[str, Any] | None,
+    outfit_decision: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    trace: list[dict[str, str]] = []
+    exposure_level = _anime_exposure_level(scene, clothing_prompt)
+    scene_parts = _anime_scene_components(scene)
+    overrides = _visual_tag_overrides(character)
+
+    raw_components = [
+        _component("subject_tags", "policy", visual.get("subject_tags"), required=True),
+        _component("appearance", "character.appearance", visual.get("appearance"), required=True),
+        _component("body", "character.visual.body", visual.get("body")),
+        _component("face", "character.visual.face", visual.get("face")),
+        _component("clothing", "outfit", clothing_prompt, required=True),
+        _component(
+            "rating_tags",
+            "policy",
+            _anime_rating_tags_for_level(exposure_level),
+            required=True,
+        ),
+        _component(
+            "nudity_tags",
+            "policy",
+            ANIME_NUDITY_TAGS if exposure_level in {"nude", "explicit_focus"} else "",
+            required=exposure_level in {"nude", "explicit_focus"},
+        ),
+        _component(
+            "focus_tags",
+            "policy",
+            ANIME_FOCUS_TAGS if exposure_level == "explicit_focus" else "",
+            required=exposure_level == "explicit_focus",
+        ),
+        _component("expression", "scene.expression", scene.get("expression")),
+        _component("pose", "scene.pose", scene_parts.get("pose"), required=True),
+        _component("composition", "scene.composition", scene_parts.get("composition")),
+        _component("setting", "scene.setting", scene_parts.get("setting")),
+        _component("style_tags", "character.visual.style_tags", visual.get("style_tags")),
+        _component(
+            "quality_tags",
+            "policy",
+            ANIME_AVATAR_QUALITY_TAGS if purpose == "avatar" else ANIME_QUALITY_TAGS,
+        ),
+    ]
+
+    components = [
+        cleaned
+        for component in raw_components
+        if component is not None
+        for cleaned in [_strip_component_filler(component, trace)]
+        if cleaned is not None
+    ]
+    _apply_tag_removals(components, overrides["positive_remove"], trace, "override_remove")
+
+    positive_add = _component("override_tags", "tag_overrides.positive_add", overrides["positive_add"])
+    if positive_add:
+        positive_add = _strip_component_filler(positive_add, trace)
+    if positive_add:
+        components.append(positive_add)
+
+    prompt = _fit_anime_components_to_budget(template, components, budget, trace)
+    _trace_kept_components(components, trace)
+
+    negative_components = [
+        _component("negative_base", "prompt.photo_negative", negative_template, required=True),
+        _component(
+            "negative_explicit",
+            "policy",
+            "censored, censor bar, mosaic censoring"
+            if exposure_level in {"nude", "explicit_focus"}
+            else "",
+        ),
+    ]
+    negative_components = [
+        cleaned
+        for component in negative_components
+        if component is not None
+        for cleaned in [_strip_component_filler(component, trace)]
+        if cleaned is not None
+    ]
+    _apply_tag_removals(
+        negative_components,
+        overrides["negative_remove"],
+        trace,
+        "override_remove",
+    )
+    negative_add = _component(
+        "negative_override",
+        "tag_overrides.negative_add",
+        overrides["negative_add"],
+    )
+    if negative_add:
+        negative_add = _strip_component_filler(negative_add, trace)
+    if negative_add:
+        negative_components.append(negative_add)
+
+    negative_prompt = _fit_anime_components_to_budget(
+        "{negative_base}, {negative_explicit}, {negative_override}",
+        negative_components,
+        negative_budget,
+        trace,
+    )
+    _trace_kept_components(negative_components, trace)
+
+    normalized_scene = {
+        **dict(scene),
+        "exposure_level": exposure_level,
+        "pose": scene_parts.get("pose", ""),
+        "composition": scene_parts.get("composition", ""),
+        "setting": scene_parts.get("setting", ""),
+    }
+    metadata = {
+        "profile_version": ANIME_PROMPT_PROFILE_VERSION,
+        "purpose": purpose,
+        "model_type": "anime",
+        "gender": gender,
+        "normalized_scene": normalized_scene,
+        "outfit_decision": dict(outfit_decision or {}),
+        "positive_prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "positive_tokens": _estimate_prompt_tokens(prompt),
+        "negative_tokens": _estimate_prompt_tokens(negative_prompt),
+        "tag_trace": trace,
+        "log_meta": dict(log_meta or {}),
+    }
+    return {
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "metadata": metadata,
+        "normalized_scene": normalized_scene,
+    }
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -418,11 +960,7 @@ def _visual_parts(character: Mapping[str, Any]) -> dict[str, str]:
         "facial_hair",
     )
 
-    appearance_items = [
-        item
-        for item in _split_csv_items(character.get("appearance") or visual.get("appearance"))
-        if item.lower() not in STRUCTURAL_APPEARANCE_TAGS
-    ]
+    appearance_items = _split_csv_items(character.get("appearance") or visual.get("appearance"))
     body_items = [
         item
         for key in body_keys
@@ -435,15 +973,13 @@ def _visual_parts(character: Mapping[str, Any]) -> dict[str, str]:
     ]
     style_items = _split_csv_items(visual.get("style_tags"))
 
-    seen: set[str] = set()
-    appearance = ", ".join(_dedupe_items(appearance_items, seen, 80))
-    body = ", ".join(_dedupe_items(body_items, seen, 50))
-    face = ", ".join(_dedupe_items(face_items, seen, 50))
-    style_tags = ", ".join(_dedupe_items(style_items, seen, 30))
+    appearance = ", ".join(_dedupe_items(appearance_items, max_items=200))
+    body = ", ".join(_dedupe_items(body_items, max_items=80))
+    face = ", ".join(_dedupe_items(face_items, max_items=80))
+    style_tags = ", ".join(_dedupe_items(style_items, max_items=60))
 
     return {
         "subject_tags": _anime_subject_tags(character),
-        "identity": _visual_identity(character),
         "appearance": appearance,
         "body": body,
         "face": face,
@@ -454,70 +990,19 @@ def _visual_parts(character: Mapping[str, Any]) -> dict[str, str]:
 
 def _anime_subject_tags(character: Mapping[str, Any]) -> str:
     gender = _normalize_gender(character)
-    if gender == "female":
-        return "1girl, solo"
-
     visual = _character_visual(character)
-    tags = ["1boy", "solo", "male focus"]
-    hint_text = " ".join(
-        _clean_text(value)
-        for value in (
-            character.get("appearance"),
-            character.get("body"),
-            visual.get("appearance"),
-            visual.get("body"),
-            visual.get("body_type"),
-            visual.get("build"),
-            visual.get("age"),
-            visual.get("facial_hair"),
-        )
-    )
-    if MALE_MATURE_HINT_PATTERN.search(hint_text):
-        tags.append("mature male")
+    appearance_tags = {
+        item.lower()
+        for item in _split_csv_items([character.get("appearance"), visual.get("appearance")])
+    }
+
+    tags: list[str] = []
+    gender_tag = "1girl" if gender == "female" else "1boy"
+    if gender_tag not in appearance_tags:
+        tags.append(gender_tag)
+    if "solo" not in appearance_tags:
+        tags.append("solo")
     return ", ".join(tags)
-
-
-def _visual_identity(character: Mapping[str, Any]) -> str:
-    visual = _character_visual(character)
-
-    identity_keys = (
-        "hair_color",
-        "haircut",
-        "hair_style",
-        "hair_length",
-        "eye_color",
-        "eyes",
-        "skin",
-    )
-
-    def identity_item(item: str) -> str:
-        item = _clean_text(item)
-        tip_match = re.fullmatch(
-            r"(black|brown|dark brown|blonde|blond|red|orange|blue|dark blue|purple|pink|white|silver|green)\s+tips",
-            item,
-            flags=re.IGNORECASE,
-        )
-        if tip_match:
-            return f"{tip_match.group(1).lower()}-tipped hair ends"
-        return item
-
-    appearance_items = [
-        identity_item(item)
-        for item in _split_csv_items(character.get("appearance") or visual.get("appearance"))
-        if item.lower() not in STRUCTURAL_APPEARANCE_TAGS
-        and re.search(
-            r"\b(hair|eyes?|skin|bald|ponytails?|twin tails?|braids?|bangs|bob|bun|tips)\b",
-            item,
-            flags=re.IGNORECASE,
-        )
-    ]
-    structured_items = [
-        identity_item(item)
-        for key in identity_keys
-        for item in _split_csv_items(_visual_field_tag(key, visual.get(key)))
-    ]
-
-    return ", ".join(_dedupe_items([*appearance_items, *structured_items], max_items=20))
 
 
 def _wardrobe(character: Mapping[str, Any]) -> dict[str, str]:
@@ -622,7 +1107,21 @@ def _find_wardrobe_key(wardrobe_key: str, wardrobe: Mapping[str, str]) -> str:
 def _scene_implies_exposure(scene: Mapping[str, Any]) -> bool:
     scene_text = " ".join(
         _clean_text(scene.get(key))
-        for key in ("pose", "setting", "scene_notes", "expression", "emotion", "clothing")
+        for key in (
+            "pose",
+            "primary_pose",
+            "pose_modifiers",
+            "setting",
+            "scene_notes",
+            "composition",
+            "expression",
+            "emotion",
+            "clothing",
+            "place",
+            "background_objects",
+            "lighting",
+            "exposure_intent",
+        )
     )
     clothing_items = {item.lower() for item in _split_csv_items(scene.get("clothing"))}
     return bool(
@@ -637,46 +1136,6 @@ def _anime_exposure_rating_tags(scene: Mapping[str, Any], clothing: str) -> str:
         if _scene_implies_exposure({**dict(scene), "clothing": clothing})
         else ANIME_SAFE_RATING_TAGS
     )
-
-
-def _anime_scene_notes_for_rating(scene_notes: Any, rating_tags: str) -> str:
-    scene_notes = _clean_text(scene_notes)
-    if rating_tags != ANIME_EXPLICIT_RATING_TAGS:
-        return scene_notes
-
-    adjusted_items: list[str] = []
-    has_visible_body_framing = False
-    for item in _split_csv_items(scene_notes):
-        lowered = item.lower()
-        if lowered in {"full body", "cowboy shot"}:
-            has_visible_body_framing = True
-            adjusted_items.append(item)
-            continue
-        if re.search(r"\b(?:upper body|close[- ]?up|portrait|headshot|cropped)\b", lowered):
-            continue
-        adjusted_items.append(item)
-
-    if not has_visible_body_framing:
-        adjusted_items.insert(0, "cowboy shot")
-    return ", ".join(_dedupe_items(adjusted_items, max_items=6))
-
-
-SPREAD_LEGS_PATTERN = re.compile(
-    r"\b(?:legs?\s+spread|spread(?:ing)?\s+legs?|open\s+legs?|legs?\s+apart)\b",
-    re.IGNORECASE,
-)
-
-
-def _anime_pose_for_rating(pose: Any, rating_tags: str) -> str:
-    pose_items = _split_csv_items(pose)
-    if rating_tags != ANIME_EXPLICIT_RATING_TAGS or len(pose_items) <= 1:
-        return _clean_text(pose)
-
-    primary_pose = pose_items[0]
-    has_spread_legs = any(SPREAD_LEGS_PATTERN.search(item) for item in pose_items)
-    if has_spread_legs and not SPREAD_LEGS_PATTERN.search(primary_pose):
-        primary_pose = f"{primary_pose} with legs spread"
-    return primary_pose
 
 
 def _is_real_revealing_outfit(text: str) -> bool:
@@ -865,6 +1324,15 @@ def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
 
     return {
         "pose": _clean_text(scene.get("pose"))[:180],
+        "primary_pose": _clean_text(scene.get("primary_pose"))[:120],
+        "pose_modifiers": _dedupe_csv(scene.get("pose_modifiers"), 20)[:180],
+        "gaze": _clean_text(scene.get("gaze"))[:80],
+        "hands": _clean_text(scene.get("hands"))[:120],
+        "composition": _clean_text(scene.get("composition"))[:120],
+        "place": _clean_text(scene.get("place"))[:120],
+        "background_objects": _dedupe_csv(scene.get("background_objects"), 20)[:180],
+        "lighting": _clean_text(scene.get("lighting"))[:120],
+        "exposure_intent": _clean_text(scene.get("exposure_intent"))[:80],
         "expression": _clean_text(scene.get("expression") or scene.get("emotion"))[:160],
         "emotion": _clean_text(scene.get("emotion") or scene.get("expression"))[:120],
         "outfit_action": outfit_action[:40],
@@ -1124,27 +1592,49 @@ class PhotoGenerationService:
             if model_type == "real"
             else _dedupe_csv(clothing, 40)
         )
-        rating_tags = ""
-        explicit_detail_tags = ""
-        quality_tags = ""
+        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
+        if model_type == "anime":
+            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            anime_result = _build_anime_prompt_result(
+                character=character,
+                gender=gender,
+                visual=visual,
+                scene=scene,
+                clothing_prompt=clothing_prompt,
+                template=template,
+                negative_template=negative_template,
+                budget=PROMPT_BUDGETS[model_type],
+                negative_budget=ANIME_NEGATIVE_BUDGET,
+                purpose="chat_photo",
+                log_meta=log_meta,
+                outfit_decision=outfit_decision,
+            )
+            prompt = anime_result["prompt"]
+            negative_prompt = anime_result["negative_prompt"]
+            replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
+            replicate_model = ANIME_MODEL_VERSION
+            prompt_metadata = dict(anime_result["metadata"])
+            prompt_metadata["replicate_input"] = dict(replicate_input)
+            prompt_metadata["replicate_model"] = replicate_model
+            return PhotoPromptBundle(
+                model_type=model_type,
+                gender=gender,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                scene=dict(anime_result["normalized_scene"]),
+                replicate_input=replicate_input,
+                replicate_model=replicate_model,
+                state_meta_update=state_meta_update,
+                prompt_metadata=prompt_metadata,
+            )
+
         pose = scene.get("pose", "")
         scene_notes = scene.get("scene_notes", "")
-        if model_type == "anime":
-            rating_tags = _anime_exposure_rating_tags(scene, clothing_prompt)
-            explicit_detail_tags = (
-                ANIME_EXPLICIT_DETAIL_TAGS_BY_GENDER.get(gender, "")
-                if rating_tags == ANIME_EXPLICIT_RATING_TAGS
-                else ""
-            )
-            quality_tags = ANIME_QUALITY_TAGS
-            pose = _anime_pose_for_rating(pose, rating_tags)
-            scene_notes = _anime_scene_notes_for_rating(scene_notes, rating_tags)
 
         context = {
             "character_name": character.get("name", ""),
             "gender": gender,
             "subject_tags": visual["subject_tags"],
-            "identity": visual["identity"],
             "appearance": visual["appearance"],
             "body": visual["body"],
             "face": visual["face"],
@@ -1155,19 +1645,8 @@ class PhotoGenerationService:
             "setting": scene.get("setting", ""),
             "scene_notes": scene_notes,
             "style_tags": visual["style_tags"],
-            "rating_tags": rating_tags,
-            "explicit_detail_tags": explicit_detail_tags,
-            "quality_tags": quality_tags,
         }
-        if model_type == "anime":
-            context = _compact_anime_context(context)
-
-        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
-        removable_fields = (
-            ("style_tags", "scene_notes", "setting", "expression", "emotion", "body", "face", "appearance")
-            if model_type == "anime"
-            else ("scene_notes", "style_tags", "setting", "emotion")
-        )
+        removable_fields = ("scene_notes", "style_tags", "setting", "emotion")
         prompt = _fit_prompt_budget(
             template,
             context,
@@ -1176,21 +1655,8 @@ class PhotoGenerationService:
             label=f"{model_type}/{gender}",
             log_meta=log_meta,
         )
-        if model_type == "anime":
-            prompt = _strip_anime_filler_tags(prompt)
 
         negative_prompt = None
-        if model_type == "anime":
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
-            negative_prompt = _fit_prompt_budget(
-                negative_template,
-                context,
-                ANIME_NEGATIVE_BUDGET,
-                removable_fields=("scene_notes", "setting", "emotion", "style_tags"),
-                label=f"anime/{gender} negative",
-                log_meta=log_meta,
-            )
-
         replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
         replicate_model = ANIME_MODEL_VERSION if model_type == "anime" else REAL_MODEL
         return PhotoPromptBundle(
@@ -1215,35 +1681,64 @@ class PhotoGenerationService:
         visual = _visual_parts(avatar_character)
         wardrobe = _wardrobe(avatar_character)
         clothing_prompt = _avatar_clothing_prompt(model_type, gender, visual, wardrobe)
+        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
+        if model_type == "anime":
+            scene = {
+                "pose": "looking at viewer",
+                "expression": "soft smile",
+                "composition": "upper body",
+                "setting": "simple background",
+                "exposure_intent": "safe",
+            }
+            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            anime_result = _build_anime_prompt_result(
+                character=avatar_character,
+                gender=gender,
+                visual=visual,
+                scene=scene,
+                clothing_prompt=clothing_prompt,
+                template=template,
+                negative_template=negative_template,
+                budget=ANIME_AVATAR_PROMPT_BUDGET,
+                negative_budget=ANIME_NEGATIVE_BUDGET,
+                purpose="avatar",
+                log_meta=log_meta,
+            )
+            prompt = anime_result["prompt"]
+            negative_prompt = anime_result["negative_prompt"]
+            replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
+            replicate_model = ANIME_MODEL_VERSION
+            prompt_metadata = dict(anime_result["metadata"])
+            prompt_metadata["replicate_input"] = dict(replicate_input)
+            prompt_metadata["replicate_model"] = replicate_model
+            return PhotoPromptBundle(
+                model_type=model_type,
+                gender=gender,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                scene=dict(anime_result["normalized_scene"]),
+                replicate_input=replicate_input,
+                replicate_model=replicate_model,
+                prompt_metadata=prompt_metadata,
+            )
 
         context = {
             "character_name": avatar_character.get("name", ""),
             "gender": gender,
             "subject_tags": visual["subject_tags"],
-            "identity": visual["identity"],
-            "appearance": visual["appearance"],
-            "body": visual["body"],
-            "face": visual["face"],
+            "appearance": _strip_user_quality_tags(visual["appearance"]),
+            "body": _strip_user_quality_tags(visual["body"]),
+            "face": _strip_user_quality_tags(visual["face"]),
             "clothing": clothing_prompt,
-            "pose": "upper body portrait, looking at viewer",
+            "pose": "looking at viewer",
             "expression": "soft smile",
             "emotion": "calm",
-            "setting": "simple clean background",
-            "scene_notes": "profile avatar, centered composition, face clearly visible",
+            "setting": "simple background",
+            "scene_notes": "",
             "style_tags": visual["style_tags"],
-            "rating_tags": ANIME_SAFE_RATING_TAGS if model_type == "anime" else "",
-            "explicit_detail_tags": "",
-            "quality_tags": ANIME_QUALITY_TAGS if model_type == "anime" else "",
         }
-        if model_type == "anime":
-            context = _compact_anime_context(context)
 
-        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
-        removable_fields = (
-            ("style_tags", "scene_notes", "setting", "emotion", "body", "appearance")
-            if model_type == "anime"
-            else ("scene_notes", "style_tags", "setting", "emotion")
-        )
+        removable_fields = ("scene_notes", "style_tags", "setting", "emotion")
         prompt = _fit_prompt_budget(
             template,
             context,
@@ -1252,20 +1747,8 @@ class PhotoGenerationService:
             label=f"avatar/{model_type}/{gender}",
             log_meta=log_meta,
         )
-        if model_type == "anime":
-            prompt = _strip_anime_filler_tags(prompt)
 
         negative_prompt = None
-        if model_type == "anime":
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
-            negative_prompt = _fit_prompt_budget(
-                negative_template,
-                context,
-                ANIME_NEGATIVE_BUDGET,
-                removable_fields=("scene_notes", "setting", "emotion", "style_tags"),
-                label=f"avatar/anime/{gender} negative",
-                log_meta=log_meta,
-            )
 
         replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
         replicate_model = ANIME_MODEL_VERSION if model_type == "anime" else REAL_MODEL
@@ -1363,12 +1846,17 @@ class PhotoGenerationService:
                 self._delete_saved_image(local_path)
                 raise
 
+        prompt_metadata = dict(bundle.prompt_metadata or {})
+        if prediction.get("id"):
+            prompt_metadata["provider_prediction_id"] = prediction.get("id")
+
         image = GeneratedImage(
             user_id=user.telegram_id,
             chat_id=chat_id,
             provider_url=provider_url,
             local_path=local_path,
             prompt=bundle.prompt,
+            prompt_metadata=prompt_metadata,
             file_size=len(image_bytes),
             content_type=content_type,
         )

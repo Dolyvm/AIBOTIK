@@ -204,6 +204,7 @@ class GeneratedImage(Base):
     local_path = Column(String(500), nullable=True)
 
     prompt = Column(Text, nullable=False)
+    prompt_metadata = Column(JSONB, default=dict, nullable=False)
 
     file_size = Column(Integer, nullable=True)  
     content_type = Column(String(50), nullable=True)  

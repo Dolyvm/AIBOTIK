@@ -1106,6 +1106,45 @@
                                 </button>
                             </div>
 
+                            <div v-if="!editingCharacterId" class="cc-field">
+                                <label>Аватарка <span class="cc-required">*</span></label>
+                                <div class="cc-preview-section cc-avatar-generator">
+                                    <div v-if="isGeneratingCharacterAvatar" class="cc-preview-loading">
+                                        <div class="cc-spinner"></div>
+                                        <span>Генерация...</span>
+                                    </div>
+                                    <img v-else-if="selectedCharacterAvatarUrl"
+                                         :src="selectedCharacterAvatarUrl"
+                                         class="cc-preview-image"
+                                         alt="Avatar">
+                                    <div v-else class="cc-preview-placeholder">
+                                        <i class="fas fa-user"></i>
+                                        <span>{{ characterAvatarIsStale ? 'Аватарка устарела' : 'Аватарка не создана' }}</span>
+                                    </div>
+
+                                    <button class="cc-btn cc-btn--generate"
+                                            @click="generateCharacterAvatar"
+                                            :disabled="isGeneratingCharacterAvatar"
+                                            type="button">
+                                        <i :class="isGeneratingCharacterAvatar ? 'fas fa-spinner fa-spin' : 'fas fa-wand-magic-sparkles'"></i>
+                                        {{ createCharacterAvatar.avatar_urls.length ? 'Перегенерировать' : 'Сгенерировать аватарку' }}
+                                    </button>
+
+                                    <div v-if="createCharacterAvatar.avatar_urls.length && !characterAvatarIsStale" class="avatar-gallery">
+                                        <button v-for="url in createCharacterAvatar.avatar_urls"
+                                                :key="url"
+                                                class="avatar-thumb"
+                                                :class="{ selected: createCharacterAvatar.selected_avatar_url === url }"
+                                                @click="selectCharacterAvatar(url)"
+                                                type="button"
+                                                aria-label="Выбрать аватарку">
+                                            <img :src="url" alt="">
+                                        </button>
+                                    </div>
+                                    <div class="cc-helper">{{ characterAvatarHint }}</div>
+                                </div>
+                            </div>
+
                     </section>
                 </div>
 
@@ -1113,6 +1152,13 @@
                 <div v-if="ccStep === 3">
                     <section class="cc-form-panel">
                         <div class="cc-final-preview">
+                            <img v-if="!editingCharacterId && selectedCharacterAvatarUrl"
+                                 :src="selectedCharacterAvatarUrl"
+                                 class="cc-final-preview__image"
+                                 alt="Avatar">
+                            <div v-else-if="!editingCharacterId" class="cc-final-preview__placeholder">
+                                <i class="fas fa-user"></i>
+                            </div>
                             <div class="cc-final-preview__meta">
                                 <div class="cc-final-preview__name">{{ createCharacterData.name || 'Новый персонаж' }}</div>
                                 <div class="cc-final-preview__text">{{ createCharacterData.short_description || modelTypeLabel(createCharacterData.model_type) }}</div>
@@ -1140,7 +1186,7 @@
                 <button v-else
                         class="cc-btn cc-btn--final"
                         @click="createCharacterFinal"
-                        :disabled="isCreatingCharacter"
+                        :disabled="isCreatingCharacter || (!editingCharacterId && !selectedCharacterAvatarUrl)"
                         type="button">
                     <i class="fas fa-check"></i>
                     {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
@@ -1515,6 +1561,15 @@
                     tags_str: '',
                     is_public: true,
                 });
+                const defaultCreateCharacterAvatar = () => ({
+                    draft_id: null,
+                    avatar_urls: [],
+                    selected_avatar_url: '',
+                    free_generations_used: 0,
+                    paid_generations_used: 0,
+                    free_generations_remaining: 2,
+                    appearance_signature: '',
+                });
                 const characterCreatorSteps = [
                     { title: 'Имя и стиль' },
                     { title: 'Описание и сценарий' },
@@ -1528,6 +1583,8 @@
                     { v: 3, l: 'Сразу', text: 'Максимальный темп', icon: 'fas fa-fire' },
                 ];
                 const createCharacterData = ref(defaultCreateCharacterData());
+                const createCharacterAvatar = ref(defaultCreateCharacterAvatar());
+                const isGeneratingCharacterAvatar = ref(false);
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
 
@@ -1705,6 +1762,37 @@
                     real: 'Real',
                     manhwa: 'Manhwa',
                 }[type] || type);
+                const normalizedWardrobeForSignature = (wardrobe) => Object.fromEntries(
+                    Object.entries(wardrobe || {})
+                        .filter(([key, value]) => key && String(value || '').trim())
+                        .sort(([a], [b]) => a.localeCompare(b))
+                );
+                const characterAvatarSignature = computed(() => {
+                    const d = createCharacterData.value;
+                    return JSON.stringify({
+                        name: (d.name || '').trim(),
+                        gender: d.gender,
+                        model_type: d.model_type,
+                        appearance: (d.appearance || '').trim(),
+                        visual_body: (d.visual_body || '').trim(),
+                        visual_face: (d.visual_face || '').trim(),
+                        visual_default_outfit: (d.visual_default_outfit || '').trim(),
+                        wardrobe: normalizedWardrobeForSignature(d.wardrobe),
+                    });
+                });
+                const characterAvatarIsStale = computed(() =>
+                    !!createCharacterAvatar.value.selected_avatar_url
+                    && createCharacterAvatar.value.appearance_signature !== characterAvatarSignature.value
+                );
+                const selectedCharacterAvatarUrl = computed(() =>
+                    characterAvatarIsStale.value ? '' : createCharacterAvatar.value.selected_avatar_url
+                );
+                const characterAvatarHint = computed(() => {
+                    if (characterAvatarIsStale.value) return 'Внешность изменилась, сгенерируйте новую аватарку';
+                    const remaining = createCharacterAvatar.value.free_generations_remaining;
+                    if (remaining > 0) return `Бесплатных попыток: ${remaining}`;
+                    return 'Следующая генерация спишет лимит фото';
+                });
 
                 const loadSubscription = async () => {
                     try {
@@ -3130,6 +3218,115 @@
                 };
 
                 // --- CREATE CHARACTER ---
+                const buildCharacterPayload = () => {
+                    const d = createCharacterData.value;
+                    const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
+                    return {
+                        name: d.name,
+                        short_description: d.short_description,
+                        description: d.description,
+                        personality: d.personality,
+                        scenario: d.scenario,
+                        first_message: d.first_message,
+                        heat_level: d.heat_level || 0,
+                        alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
+                        gender: d.gender,
+                        model_type: d.model_type,
+                        appearance: d.appearance,
+                        visual_body: d.visual_body,
+                        visual_face: d.visual_face,
+                        visual_default_outfit: d.visual_default_outfit,
+                        wardrobe: d.wardrobe,
+                        tags: tags,
+                        is_public: d.is_public,
+                    };
+                };
+
+                const resetCreateCharacterAvatar = () => {
+                    createCharacterAvatar.value = defaultCreateCharacterAvatar();
+                };
+
+                const validateCharacterVisualFields = () => {
+                    const d = createCharacterData.value;
+                    if (!d.appearance || !d.appearance.trim()) {
+                        showToast('Заполните поле внешности');
+                        return false;
+                    }
+                    const cyrillicRe = /[а-яёА-ЯЁ]/;
+                    const visualFields = [
+                        d.appearance,
+                        d.visual_body,
+                        d.visual_face,
+                        d.visual_default_outfit,
+                        ...Object.values(d.wardrobe || {}),
+                    ];
+                    if (visualFields.some(f => f && cyrillicRe.test(f))) {
+                        showToast('Поля внешности должны быть на английском');
+                        return false;
+                    }
+                    return true;
+                };
+
+                const selectCharacterAvatar = (url) => {
+                    if (characterAvatarIsStale.value) return;
+                    createCharacterAvatar.value.selected_avatar_url = url;
+                };
+
+                const generateCharacterAvatar = async () => {
+                    if (editingCharacterId.value || isGeneratingCharacterAvatar.value) return;
+                    const d = createCharacterData.value;
+                    if (!d.name.trim()) {
+                        showToast('Введите имя персонажа');
+                        return;
+                    }
+                    if (d.model_type === 'manhwa' && d.gender !== 'male') {
+                        showToast('Manhwa доступен только для мужских персонажей');
+                        return;
+                    }
+                    if (!validateCharacterVisualFields()) return;
+
+                    isGeneratingCharacterAvatar.value = true;
+                    try {
+                        const payload = buildCharacterPayload();
+                        const res = await axios.post('/api/create_character/avatar', {
+                            name: payload.name,
+                            gender: payload.gender,
+                            model_type: payload.model_type,
+                            appearance: payload.appearance,
+                            visual_body: payload.visual_body,
+                            visual_face: payload.visual_face,
+                            visual_default_outfit: payload.visual_default_outfit,
+                            wardrobe: payload.wardrobe,
+                        });
+                        createCharacterAvatar.value = {
+                            draft_id: res.data.draft_id,
+                            avatar_urls: res.data.avatar_urls || [],
+                            selected_avatar_url: res.data.selected_avatar_url || res.data.avatar_url,
+                            free_generations_used: res.data.free_generations_used || 0,
+                            paid_generations_used: res.data.paid_generations_used || 0,
+                            free_generations_remaining: res.data.free_generations_remaining || 0,
+                            appearance_signature: characterAvatarSignature.value,
+                        };
+                        showToast(res.data.charged ? 'Аватарка сгенерирована, лимит фото списан' : 'Аватарка сгенерирована', 'success');
+                        if (res.data.charged) loadSubscription();
+                    } catch (e) {
+                        console.error(e);
+                        console.error('Avatar generation response:', e.response?.data);
+                        if (e.response?.status !== 429) {
+                            const detail = e.response?.data?.detail;
+                            const message = typeof detail === 'string'
+                                ? detail
+                                : detail?.message
+                                    || (Array.isArray(detail) ? detail[0]?.msg : null)
+                                    || e.response?.data?.message
+                                    || 'Ошибка генерации аватарки';
+                            showToast(message);
+                        }
+                    } finally {
+                        isGeneratingCharacterAvatar.value = false;
+                    }
+                };
+
                 const setCreateCharacterGender = (gender) => {
                     createCharacterData.value.gender = gender;
                     if (gender !== 'male' && createCharacterData.value.model_type === 'manhwa') {
@@ -3141,6 +3338,7 @@
                     if (blockIfLimitReached('characters_created')) return;
                     currentView.value = "create-character";
                     createCharacterData.value = defaultCreateCharacterData();
+                    resetCreateCharacterAvatar();
                     editingCharacterId.value = null;
                     ccStep.value = 0;
                 }
@@ -3169,6 +3367,7 @@
                             tags_str: (c.tags || []).join(', '),
                             is_public: c.is_public !== false,
                         };
+                        resetCreateCharacterAvatar();
                         editingCharacterId.value = characterId;
                         ccStep.value = 0;
                         closeModal();
@@ -3195,16 +3394,7 @@
                             return;
                         }
                     } else if (ccStep.value === 2) {
-                        if (!d.appearance || !d.appearance.trim()) {
-                            showToast('Заполните поле внешности');
-                            return;
-                        }
-                        const cyrillicRe = /[а-яёА-ЯЁ]/;
-                        const visualFields = [d.appearance, d.visual_body, d.visual_face, d.visual_default_outfit];
-                        if (visualFields.some(f => f && cyrillicRe.test(f))) {
-                            showToast('Поля внешности должны быть на английском');
-                            return;
-                        }
+                        if (!validateCharacterVisualFields()) return;
                     }
                     if (ccStep.value < 3) ccStep.value++;
                 };
@@ -3261,38 +3451,32 @@
                         showToast('Manhwa доступен только для мужских персонажей');
                         return;
                     }
+                    if (!editingCharacterId.value) {
+                        if (characterAvatarIsStale.value) {
+                            showToast('Аватарка устарела, сгенерируйте новую');
+                            return;
+                        }
+                        if (!selectedCharacterAvatarUrl.value || !createCharacterAvatar.value.draft_id) {
+                            showToast('Сгенерируйте аватарку перед созданием персонажа');
+                            return;
+                        }
+                    }
 
                     isCreatingCharacter.value = true;
                     try {
-                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
-                        const payload = {
-                            name: d.name,
-                            short_description: d.short_description,
-                            description: d.description,
-                            personality: d.personality,
-                            scenario: d.scenario,
-                            first_message: d.first_message,
-                            heat_level: d.heat_level || 0,
-                            alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
-                            gender: d.gender,
-                            model_type: d.model_type,
-                            appearance: d.appearance,
-                            visual_body: d.visual_body,
-                            visual_face: d.visual_face,
-                            visual_default_outfit: d.visual_default_outfit,
-                            wardrobe: d.wardrobe,
-                            tags: tags,
-                            is_public: d.is_public,
-                        };
+                        const payload = buildCharacterPayload();
 
                         if (editingCharacterId.value) {
                             await axios.put(`/api/characters/${editingCharacterId.value}`, payload);
                             showToast('Персонаж обновлён!');
                             createCharacterData.value = defaultCreateCharacterData();
+                            resetCreateCharacterAvatar();
                             editingCharacterId.value = null;
                             currentView.value = 'selection';
                             loadCharacters();
                         } else {
+                            payload.avatar_draft_id = createCharacterAvatar.value.draft_id;
+                            payload.selected_avatar_url = selectedCharacterAvatarUrl.value;
                             const createRes = await axios.post('/api/create_character', payload);
                             const characterId = createRes.data.character_id;
 
@@ -3300,7 +3484,7 @@
 
                             const chatMeta = {
                                 name: d.name,
-                                avatar: createRes.data.avatar || null
+                                avatar: createRes.data.avatar || selectedCharacterAvatarUrl.value || null
                             };
 
                             const chatRes = await axios.post('/api/chat/create', {
@@ -3310,6 +3494,7 @@
                             });
 
                             createCharacterData.value = defaultCreateCharacterData();
+                            resetCreateCharacterAvatar();
                             editingCharacterId.value = null;
 
                             await openChat(chatRes.data.chat_id, chatMeta);
@@ -3531,6 +3716,9 @@
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds, debouncedLoadCharacters, debouncedLoadWorlds,
                     toast, autoContinue, hideKeyboard,
                     createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData,
+                    createCharacterAvatar, isGeneratingCharacterAvatar,
+                    selectedCharacterAvatarUrl, characterAvatarIsStale, characterAvatarHint,
+                    generateCharacterAvatar, selectCharacterAvatar,
                     modelTypeLabel, setCreateCharacterGender,
                     characterCreatorSteps, heatLevelOptions,
                     ccStep, ccNextStep, ccPrevStep, goToStep,

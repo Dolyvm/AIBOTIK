@@ -2520,12 +2520,32 @@ body.desktop .grid {
     height: 56px;
     border-radius: 8px;
     border: 2px solid transparent;
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
     opacity: 0.72;
+}
+
+.avatar-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
 }
 
 .avatar-thumb.selected {
     border-color: var(--cc-primary);
     opacity: 1;
+}
+
+.cc-avatar-generator {
+    align-items: center;
+}
+
+.cc-avatar-generator .cc-helper {
+    text-align: center;
 }
 
 .cc-final-preview {

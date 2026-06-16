@@ -1,4 +1,4 @@
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 from pydantic import BaseModel
 
 
@@ -19,5 +19,21 @@ class CreateCharacterRequest(BaseModel):
     visual_default_outfit: Optional[str] = None
     visual_style_tags: Optional[str] = None
     wardrobe: dict[str, str] = {}
+    tag_overrides: dict[str, Any] = {}
     tags: list[str] = []
     is_public: bool = True
+    avatar_draft_id: Optional[str] = None
+    selected_avatar_url: Optional[str] = None
+
+
+class CreateCharacterAvatarRequest(BaseModel):
+    name: str
+    gender: Literal["female", "male"] = "female"
+    model_type: Literal["anime", "real", "manhwa"] = "anime"
+    appearance: str
+    visual_body: Optional[str] = None
+    visual_face: Optional[str] = None
+    visual_default_outfit: Optional[str] = None
+    visual_style_tags: Optional[str] = None
+    wardrobe: dict[str, str] = {}
+    tag_overrides: dict[str, Any] = {}
