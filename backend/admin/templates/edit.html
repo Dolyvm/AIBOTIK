@@ -3,7 +3,7 @@
 {% block title %}Редактировать промпт: {{ prompt.name }} - Админ Панель{% endblock %}
 
 {% block content %}
-<a href="/admin/" class="back-link">← Назад ко всем промптам</a>
+<a href="{{ back_url or '/admin/' }}" class="back-link">← Назад к списку промптов</a>
 
 <div class="card">
     <h2>Редактировать промпт</h2>
@@ -19,6 +19,11 @@
                 {{ prompt.key }}
             </code>
         </div>
+        {% if prompt_description %}
+        <div style="font-size: 13px; color: #7f8c8d; line-height: 1.5; margin-top: 10px;">
+            {{ prompt_description }}
+        </div>
+        {% endif %}
     </div>
 
     <form method="POST" action="/admin/prompts/{{ prompt.key }}">
@@ -39,7 +44,7 @@
 
         <div class="actions">
             <button type="submit" class="btn">Сохранить изменения</button>
-            <a href="/admin/" class="btn btn-secondary">Отмена</a>
+            <a href="{{ cancel_url or '/admin/' }}" class="btn btn-secondary">Отмена</a>
         </div>
     </form>
 

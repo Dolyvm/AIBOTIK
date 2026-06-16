@@ -1,38 +1,44 @@
 import json
 import logging
+import hashlib
+import re
 import uuid
-from datetime import datetime
-from uuid import uuid4
+from typing import Any, Mapping
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import select
 
 from shared.services.analytics import AnalyticsService
-from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.services.cache import get_cache
-from shared.services.prompt_service import create_or_update_character_modifiers
-from shared.services.image_storage import (
-    ALLOWED_CONTENT_TYPES,
-    local_image_to_data_url,
-    persist_avatar_reference,
-    save_avatar,
+from shared.services.photo_generation import (
+    apply_default_wardrobe,
+    default_style_tags_for_model,
+    PhotoGenerationError,
+    PhotoGenerationService,
+    PhotoPromptBudgetError,
+    PhotoProviderError,
+    UnsupportedPhotoModelError,
 )
-from shared.services.identity_reference import IdentityReferenceError, analyze as analyze_identity_reference
-from shared.config import IMAGES_STORAGE_PATH
-from shared.services.redis_client import get_redis
+from shared.services.prompt_service import create_or_update_character_modifiers
 from shared.services.model_types import validate_model_gender
 from shared.constants import invalidate_character_modifiers_cache
 from shared.models import User, Character
 from shared.database import get_session
+from shared.database.exceptions import UsageLimitExceeded
 from auth.telegram_auth import get_current_user
-from api.image_gen.schemas.generate import Prompt as ImagePrompt
 
-from .cc_schemas import BodyProfile, CreateCharacterRequest
+from .cc_schemas import CreateCharacterAvatarRequest, CreateCharacterRequest
 
 logger = logging.getLogger(__name__)
+root_logger = logging.getLogger()
 
 router = APIRouter()
+photo_generation_service = PhotoGenerationService()
+
+AVATAR_DRAFT_TTL_SECONDS = 24 * 60 * 60
+FREE_AVATAR_GENERATIONS_PER_DRAFT = 2
+CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
 
 
 def _clean_visual_field(value: str) -> str:
@@ -42,61 +48,288 @@ def _clean_visual_field(value: str) -> str:
     return value.strip().rstrip('",').rstrip('"').strip()
 
 
-def _default_body_profile(gender: str) -> dict:
-    if gender == "male":
-        return {
-            "schema_version": 1,
-            "body_type": "athletic",
-            "height": "average",
-            "outfit_preset": "casual",
+def _avatar_draft_key(user_id: int) -> str:
+    return f"character_create_avatar:{user_id}"
+
+
+def _avatar_draft_lock(user_id: int) -> str:
+    return f"character_create_avatar:{user_id}"
+
+
+async def _build_visual_data(data: CreateCharacterRequest | CreateCharacterAvatarRequest) -> dict[str, Any]:
+    model_type = data.model_type
+    wardrobe = await apply_default_wardrobe(data.wardrobe or {}, data.gender)
+
+    visual_data = {
+        "model_type": model_type,
+        "gender": data.gender,
+        "appearance": _clean_visual_field(data.appearance or ""),
+        "body": _clean_visual_field(data.visual_body or ""),
+        "face": _clean_visual_field(data.visual_face or ""),
+        "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
+        "style_tags": await default_style_tags_for_model(model_type, data.visual_style_tags),
+        "wardrobe": wardrobe,
+    }
+    if getattr(data, "tag_overrides", None):
+        visual_data["tag_overrides"] = dict(data.tag_overrides or {})
+    return visual_data
+
+
+def _appearance_hash(name: str, visual_data: Mapping[str, Any]) -> str:
+    payload = {
+        "name": (name or "").strip(),
+        "visual_data": visual_data,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _require_avatar_cache():
+    cache = get_cache()
+    if not cache or not getattr(cache, "redis", None):
+        raise HTTPException(status_code=503, detail="Генерация аватарки временно недоступна")
+    return cache
+
+
+async def _load_avatar_draft(cache, user_id: int) -> dict[str, Any] | None:
+    raw = await cache.redis.get(_avatar_draft_key(user_id))
+    if not raw:
+        return None
+    try:
+        draft = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        logger.warning("Invalid avatar draft JSON: user_id=%s", user_id)
+        return None
+    if not isinstance(draft, dict):
+        return None
+    return draft
+
+
+async def _save_avatar_draft(cache, user_id: int, draft: Mapping[str, Any]) -> None:
+    await cache.redis.setex(
+        _avatar_draft_key(user_id),
+        AVATAR_DRAFT_TTL_SECONDS,
+        json.dumps(dict(draft), ensure_ascii=False),
+    )
+
+
+async def _delete_avatar_draft(cache, user_id: int) -> None:
+    await cache.redis.delete(_avatar_draft_key(user_id))
+
+
+def _validate_visual_for_avatar(data: CreateCharacterAvatarRequest) -> None:
+    if not data.name or not data.name.strip():
+        raise HTTPException(status_code=400, detail="Введите имя персонажа")
+    if not data.appearance or not data.appearance.strip():
+        raise HTTPException(status_code=400, detail="Заполните поле внешности")
+    try:
+        validate_model_gender(data.model_type, data.gender)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    visual_fields = [
+        data.appearance,
+        data.visual_body,
+        data.visual_face,
+        data.visual_default_outfit,
+        data.visual_style_tags,
+        *(data.wardrobe or {}).values(),
+    ]
+    if any(field and CYRILLIC_RE.search(field) for field in visual_fields):
+        raise HTTPException(status_code=400, detail="Поля внешности должны быть на английском")
+
+
+async def _ensure_avatar_cache_available(cache) -> None:
+    try:
+        await cache.redis.ping()
+    except Exception as e:
+        logger.error("Avatar draft Redis unavailable: %s", e)
+        raise HTTPException(status_code=503, detail="Генерация аватарки временно недоступна")
+
+
+@router.post("/api/create_character/avatar")
+async def generate_character_avatar(
+    data: CreateCharacterAvatarRequest,
+    user: User = Depends(get_current_user),
+):
+    _validate_visual_for_avatar(data)
+    cache = _require_avatar_cache()
+    await _ensure_avatar_cache_available(cache)
+
+    lock_name = _avatar_draft_lock(user.telegram_id)
+    lock_acquired = await cache.acquire_lock(lock_name, ttl=600)
+    if not lock_acquired:
+        raise HTTPException(status_code=409, detail="Аватарка уже генерируется")
+
+    try:
+        sub_service = get_subscription_service()
+        async with get_session() as session:
+            allowed, remaining, limit = await sub_service.check_usage_allowed(
+                user.telegram_id,
+                "characters_created",
+                session,
+            )
+            if not allowed:
+                raise UsageLimitExceeded("characters_created", limit)
+
+        visual_data = await _build_visual_data(data)
+        current_hash = _appearance_hash(data.name, visual_data)
+
+        try:
+            draft = await _load_avatar_draft(cache, user.telegram_id)
+        except Exception as e:
+            logger.error("Failed to load avatar draft: user_id=%s error=%s", user.telegram_id, e)
+            raise HTTPException(status_code=503, detail="Генерация аватарки временно недоступна")
+
+        if not draft:
+            draft = {
+                "draft_id": uuid.uuid4().hex,
+                "avatar_urls": [],
+                "selected_avatar_url": "",
+                "free_generations_used": 0,
+                "paid_generations_used": 0,
+                "appearance_hash": current_hash,
+            }
+        elif draft.get("appearance_hash") != current_hash:
+            draft = {
+                **draft,
+                "avatar_urls": [],
+                "selected_avatar_url": "",
+                "appearance_hash": current_hash,
+            }
+
+        free_used = int(draft.get("free_generations_used") or 0)
+        is_paid_generation = free_used >= FREE_AVATAR_GENERATIONS_PER_DRAFT
+        if is_paid_generation:
+            async with get_session() as session:
+                allowed, remaining, limit = await sub_service.check_usage_allowed(
+                    user.telegram_id,
+                    "images_generated",
+                    session,
+                )
+                if not allowed:
+                    raise UsageLimitExceeded("images_generated", limit)
+
+        try:
+            avatar_url = await photo_generation_service.generate_avatar(
+                {
+                    "id": f"draft_{user.telegram_id}_{draft['draft_id']}",
+                    "name": data.name,
+                    "model_type": data.model_type,
+                    "is_nsfw": True,
+                    "visual_data": visual_data,
+                }
+            )
+        except UnsupportedPhotoModelError as e:
+            logger.exception(
+                "Character avatar preview unsupported model: user_id=%s model_type=%s error=%s",
+                user.telegram_id,
+                data.model_type,
+                e,
+            )
+            root_logger.exception("Character avatar preview unsupported model")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "unsupported_photo_model", "message": str(e)},
+            )
+        except PhotoPromptBudgetError as e:
+            logger.exception(
+                "Character avatar preview prompt budget failed: user_id=%s model_type=%s gender=%s error=%s",
+                user.telegram_id,
+                data.model_type,
+                data.gender,
+                e,
+            )
+            root_logger.exception("Character avatar preview prompt budget failed")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "prompt_budget", "message": "Слишком длинное описание внешности для аватарки"},
+            )
+        except PhotoProviderError as e:
+            logger.exception(
+                "Character avatar preview provider failed: user_id=%s model_type=%s gender=%s error=%s",
+                user.telegram_id,
+                data.model_type,
+                data.gender,
+                e,
+            )
+            root_logger.exception("Character avatar preview provider failed")
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "provider_failed", "message": "Провайдер генерации фото временно недоступен"},
+            )
+        except PhotoGenerationError as e:
+            logger.exception(
+                "Character avatar preview generation failed: user_id=%s model_type=%s gender=%s error=%s",
+                user.telegram_id,
+                data.model_type,
+                data.gender,
+                e,
+            )
+            root_logger.exception("Character avatar preview generation failed")
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "generation_failed", "message": str(e) or "Ошибка генерации аватарки"},
+            )
+        except Exception as e:
+            logger.exception(
+                "Character avatar preview unexpected failure: user_id=%s model_type=%s gender=%s error=%s",
+                user.telegram_id,
+                data.model_type,
+                data.gender,
+                e,
+            )
+            root_logger.exception("Character avatar preview unexpected failure")
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "unexpected_avatar_generation_error", "message": str(e) or "Ошибка генерации аватарки"},
+            )
+
+        previous_draft = dict(draft)
+        avatar_urls = list(draft.get("avatar_urls") or [])
+        avatar_urls.append(avatar_url)
+        draft = {
+            **draft,
+            "avatar_urls": avatar_urls,
+            "selected_avatar_url": avatar_url,
         }
-    return {
-        "schema_version": 1,
-        "body_type": "proportional",
-        "height": "average",
-        "breast_size": "medium",
-        "butt_size": "rounded",
-        "outfit_preset": "casual",
-    }
+        if is_paid_generation:
+            draft["paid_generations_used"] = int(draft.get("paid_generations_used") or 0) + 1
+        else:
+            draft["free_generations_used"] = free_used + 1
 
+        try:
+            await _save_avatar_draft(cache, user.telegram_id, draft)
+        except Exception as e:
+            logger.error("Failed to save avatar draft: user_id=%s error=%s", user.telegram_id, e)
+            raise HTTPException(status_code=503, detail="Генерация аватарки временно недоступна")
 
-def _normalize_body_profile(profile: BodyProfile | None, gender: str) -> dict:
-    base = _default_body_profile(gender)
-    if profile:
-        base.update(profile.model_dump(exclude_none=True))
-    base["schema_version"] = 1
-    if gender == "male":
-        base.pop("breast_size", None)
-        base.pop("butt_size", None)
-    else:
-        base.setdefault("breast_size", "medium")
-        base.setdefault("butt_size", "rounded")
-    return base
+        if is_paid_generation:
+            try:
+                async with get_session() as session:
+                    await sub_service.increment_usage(user.telegram_id, "images_generated", session)
+            except Exception:
+                try:
+                    await _save_avatar_draft(cache, user.telegram_id, previous_draft)
+                except Exception:
+                    logger.exception("Failed to rollback paid avatar draft: user_id=%s", user.telegram_id)
+                raise
 
-
-async def _build_custom_identity_metadata(
-    *,
-    avatar_url: str,
-    character_id: str,
-    gender: str,
-    body_profile: BodyProfile | None,
-) -> tuple[str, dict, dict]:
-    avatar_path = await persist_avatar_reference(avatar_url, character_id)
-    image_data_url = await local_image_to_data_url(avatar_path)
-    identity = await analyze_identity_reference(image_data_url)
-    identity_reference = {
-        "status": "ready",
-        "source_image": avatar_path,
-        "provider": "openrouter",
-        "model": identity["model"],
-        "analyzed_at": identity["analyzed_at"],
-        "identity_prompt": identity["identity_prompt"],
-        "visible_traits": identity["visible_traits"],
-        "avoid": identity["avoid"],
-        "notes": identity["notes"],
-        "consent_confirmed": True,
-    }
-    return avatar_path, identity_reference, _normalize_body_profile(body_profile, gender)
+        return {
+            "draft_id": draft["draft_id"],
+            "avatar_url": avatar_url,
+            "avatar_urls": avatar_urls,
+            "selected_avatar_url": avatar_url,
+            "free_generations_used": draft["free_generations_used"],
+            "paid_generations_used": draft["paid_generations_used"],
+            "free_generations_remaining": max(
+                0,
+                FREE_AVATAR_GENERATIONS_PER_DRAFT - int(draft["free_generations_used"]),
+            ),
+            "charged": is_paid_generation,
+        }
+    finally:
+        await cache.release_lock(lock_name)
 
 
 @router.post("/api/create_character")
@@ -106,23 +339,40 @@ async def create_character(
 ):
     if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
         raise HTTPException(status_code=400, detail="All main fields are required")
-    model_type = "real" if data.custom_avatar else data.model_type
-    if data.custom_avatar:
-        if not data.avatar_url:
-            raise HTTPException(status_code=400, detail="Avatar photo is required for custom photo identity")
-        if not data.identity_consent_confirmed:
-            raise HTTPException(status_code=400, detail="Identity consent confirmation is required")
+    model_type = data.model_type
 
     try:
         validate_model_gender(model_type, data.gender)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    if not data.avatar_draft_id or not data.selected_avatar_url:
+        raise HTTPException(status_code=400, detail="Сгенерируйте аватарку перед созданием персонажа")
+
+    visual_data = await _build_visual_data(data)
+    avatar_url = data.selected_avatar_url.strip()
+    current_hash = _appearance_hash(data.name, visual_data)
+    cache = _require_avatar_cache()
+    await _ensure_avatar_cache_available(cache)
+    try:
+        draft = await _load_avatar_draft(cache, user.telegram_id)
+    except Exception as e:
+        logger.error("Failed to load avatar draft before character create: user_id=%s error=%s", user.telegram_id, e)
+        raise HTTPException(status_code=503, detail="Генерация аватарки временно недоступна")
+
+    if not draft or draft.get("draft_id") != data.avatar_draft_id:
+        raise HTTPException(status_code=400, detail="Черновик аватарки не найден")
+    if draft.get("appearance_hash") != current_hash:
+        raise HTTPException(status_code=400, detail="Аватарка устарела, сгенерируйте новую")
+    if avatar_url not in (draft.get("avatar_urls") or []):
+        raise HTTPException(status_code=400, detail="Выбранная аватарка не найдена в черновике")
+
+    visual_data["avatar"] = avatar_url
+
     sub_service = get_subscription_service()
     async with get_session() as session:
         allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "characters_created", session)
         if not allowed:
-            from shared.database.exceptions import UsageLimitExceeded
             raise UsageLimitExceeded("characters_created", limit)
 
     character_id = f"custom_{user.telegram_id}_{uuid.uuid4().hex[:8]}"
@@ -131,60 +381,6 @@ async def create_character(
         result = await db.execute(select(Character).where(Character.id == character_id))
         if result.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Character ID collision, please retry")
-
-        style_tags = data.visual_style_tags or ""
-        if not style_tags.strip():
-            if model_type == "anime":
-                style_tags = "anime style, cel shading, vibrant colors"
-            elif model_type == "real":
-                style_tags = "soft natural lighting, film photography, warm tones"
-            else:
-                style_tags = ""
-
-        wardrobe = data.wardrobe or {}
-        # Auto-add required wardrobe keys if missing
-        if data.gender == "male":
-            wardrobe.setdefault("nude", "nothing, showing his naked body")
-            wardrobe.setdefault("underwear", "black boxer briefs")
-        else:
-            wardrobe.setdefault("nude", "nothing, showing her naked body")
-            wardrobe.setdefault("underwear", "white bra, white panties")
-
-        visual_data = {
-            "model_type": model_type,
-            "gender": data.gender,
-            "appearance": _clean_visual_field(data.appearance or ""),
-            "body": _clean_visual_field(data.visual_body or ""),
-            "face": _clean_visual_field(data.visual_face or ""),
-            "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
-            "style_tags": style_tags,
-            "wardrobe": wardrobe,
-            "custom_avatar": data.custom_avatar,
-        }
-
-        if data.custom_avatar:
-            try:
-                avatar_path, identity_reference, body_profile = await _build_custom_identity_metadata(
-                    avatar_url=data.avatar_url,
-                    character_id=character_id,
-                    gender=data.gender,
-                    body_profile=data.body_profile,
-                )
-                visual_data["avatar"] = avatar_path
-                visual_data["identity_reference"] = identity_reference
-                visual_data["body_profile"] = body_profile
-            except IdentityReferenceError as e:
-                raise HTTPException(status_code=502, detail=str(e))
-            except Exception as e:
-                logger.warning("Failed to prepare custom identity avatar: %s", e)
-                raise HTTPException(status_code=400, detail="Failed to process custom avatar")
-        elif data.avatar_url:
-            try:
-                avatar_path = await save_avatar(data.avatar_url, character_id)
-                visual_data["avatar"] = f"/images/{avatar_path}"
-            except Exception as e:
-                logger.warning(f"Failed to save avatar: {e}, using provider URL")
-                visual_data["avatar"] = data.avatar_url
 
         tags = [tag.strip() for tag in data.tags if tag.strip()]
 
@@ -246,13 +442,22 @@ async def create_character(
             entity_id=str(character_id),
         )
 
-    cache = get_cache()
+        try:
+            await _delete_avatar_draft(cache, user.telegram_id)
+        except Exception as e:
+            logger.exception(
+                "Failed to delete avatar draft after character create: character_id=%s user_id=%s error=%s",
+                character_id,
+                user.telegram_id,
+                e,
+            )
+
     if cache:
         await cache.invalidate_character(character_id)
 
     logger.info(f"User {user.telegram_id} created character '{character_id}'")
 
-    return {"character_id": character_id}
+    return {"character_id": character_id, "avatar": avatar_url}
 
 
 @router.put("/api/characters/{character_id}")
@@ -273,12 +478,7 @@ async def update_character(
 
         if not data.name or not data.description or not data.personality or not data.scenario or not data.first_message:
             raise HTTPException(status_code=400, detail="All main fields are required")
-        model_type = "real" if data.custom_avatar else data.model_type
-        if data.custom_avatar:
-            if not data.avatar_url and not (character.visual_data or {}).get("avatar"):
-                raise HTTPException(status_code=400, detail="Avatar photo is required for custom photo identity")
-            if not data.identity_consent_confirmed:
-                raise HTTPException(status_code=400, detail="Identity consent confirmation is required")
+        model_type = data.model_type
 
         try:
             validate_model_gender(model_type, data.gender)
@@ -288,63 +488,12 @@ async def update_character(
         sub_service = get_subscription_service()
         allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "content_edits", db)
         if not allowed:
-            from shared.database.exceptions import UsageLimitExceeded
             raise UsageLimitExceeded("content_edits", limit)
 
-        style_tags = data.visual_style_tags or ""
-        if not style_tags.strip():
-            if model_type == "anime":
-                style_tags = "anime style, cel shading, vibrant colors"
-            elif model_type == "real":
-                style_tags = "soft natural lighting, film photography, warm tones"
-            else:
-                style_tags = ""
-
-        old_visual = character.visual_data or {}
-        visual_data = {
-            "model_type": model_type,
-            "gender": data.gender,
-            "appearance": _clean_visual_field(data.appearance or ""),
-            "body": _clean_visual_field(data.visual_body or ""),
-            "face": _clean_visual_field(data.visual_face or ""),
-            "default_outfit": _clean_visual_field(data.visual_default_outfit or ""),
-            "style_tags": style_tags,
-            "wardrobe": data.wardrobe,
-            "avatar": old_visual.get("avatar", ""),
-            "custom_avatar": data.custom_avatar,
-        }
-
-        if data.custom_avatar:
-            avatar_changed = bool(data.avatar_url and data.avatar_url != old_visual.get("avatar", ""))
-            if avatar_changed:
-                try:
-                    avatar_path, identity_reference, body_profile = await _build_custom_identity_metadata(
-                        avatar_url=data.avatar_url,
-                        character_id=character_id,
-                        gender=data.gender,
-                        body_profile=data.body_profile,
-                    )
-                    visual_data["avatar"] = avatar_path
-                    visual_data["identity_reference"] = identity_reference
-                    visual_data["body_profile"] = body_profile
-                except IdentityReferenceError as e:
-                    raise HTTPException(status_code=502, detail=str(e))
-                except Exception as e:
-                    logger.warning("Failed to prepare custom identity avatar: %s", e)
-                    raise HTTPException(status_code=400, detail="Failed to process custom avatar")
-            else:
-                visual_data["identity_reference"] = old_visual.get("identity_reference")
-                visual_data["body_profile"] = _normalize_body_profile(
-                    data.body_profile,
-                    data.gender,
-                ) if data.body_profile else old_visual.get("body_profile") or _normalize_body_profile(None, data.gender)
-        elif data.avatar_url and data.avatar_url != old_visual.get("avatar", ""):
-            try:
-                avatar_path = await save_avatar(data.avatar_url, character_id)
-                visual_data["avatar"] = f"/images/{avatar_path}"
-            except Exception as e:
-                logger.warning(f"Failed to save avatar: {e}, using provider URL")
-                visual_data["avatar"] = data.avatar_url
+        existing_avatar = (character.visual_data or {}).get("avatar", "")
+        visual_data = await _build_visual_data(data)
+        if existing_avatar:
+            visual_data["avatar"] = existing_avatar
 
         scenarios = [
             {
@@ -384,135 +533,3 @@ async def update_character(
     logger.info(f"User {user.telegram_id} updated character '{character_id}'")
 
     return {"success": True}
-
-
-@router.post("/api/create_character/generate-avatar")
-async def generate_avatar(
-    data: dict,
-    user: User = Depends(get_current_user),
-):
-    rate_limiter = get_rate_limiter()
-    if rate_limiter:
-        allowed = await rate_limiter.check_image_rate_limit(user.telegram_id)
-        if not allowed:
-            limits = RATE_LIMITS["images"]
-            raise RateLimitExceeded(limit=limits["limit"], window=limits["window"], retry_after=limits["retry_after"])
-
-    model_type = data.get("model_type", "anime")
-    gender = data.get("gender", "female")
-    try:
-        validate_model_gender(model_type, gender)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    sub_service = get_subscription_service()
-    async with get_session() as session:
-        allowed, remaining, limit = await sub_service.check_usage_allowed(user.telegram_id, "avatar_generations", session)
-        if not allowed:
-            from shared.database.exceptions import UsageLimitExceeded
-            raise UsageLimitExceeded("avatar_generations", limit)
-
-    appearance = data.get("appearance", "")
-    body = data.get("body", "")
-    face = data.get("face", "")
-    default_outfit = data.get("default_outfit", "")
-    style_tags = data.get("style_tags", "")
-    if not style_tags.strip():
-        if model_type == "anime":
-            style_tags = "anime style, cel shading, vibrant colors"
-        elif model_type == "real":
-            style_tags = "soft natural lighting, film photography, warm tones"
-        else:
-            style_tags = ""
-
-    prompt = ImagePrompt(
-        character_base=", ".join(filter(None, [appearance, body])),
-        facial_expression=face,
-        clothing=default_outfit,
-        style=style_tags,
-        nsfw_level=0,
-    )
-
-    pos, neg = await prompt.build_prompt(model_type, gender=gender)
-
-    task_id = str(uuid4())
-    task_params = {
-        "model_type": model_type,
-        "positive_prompt": pos,
-        "negative_prompt": neg,
-        "allow_nsfw": False,
-        "user_id": user.telegram_id,
-    }
-
-    redis = await get_redis()
-    await redis.set(
-        f"task:{task_id}",
-        json.dumps({
-            "status": "pending",
-            "user_id": user.telegram_id,
-            "created_at": datetime.utcnow().isoformat()
-        }),
-        ex=3600
-    )
-
-    try:
-        from main import app
-        arq_pool = getattr(app.state, "arq_pool", None)
-        if arq_pool:
-            await arq_pool.enqueue_job("generate_avatar_task", task_id, task_params)
-            logger.info(f"Avatar task {task_id} enqueued")
-        else:
-            logger.warning("arq pool not configured, executing avatar generation synchronously")
-            from shared.queue.tasks import generate_avatar_task
-            ctx = {"redis": redis, "get_session": get_session}
-            result = await generate_avatar_task(ctx, task_id, task_params)
-            if result.get("status") == "completed":
-                async with get_session() as session:
-                    await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
-                return result.get("result", {})
-            raise HTTPException(status_code=500, detail=result.get("error", "Generation failed"))
-    except RateLimitExceeded:
-        raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Avatar generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
-
-    async with get_session() as session:
-        await sub_service.increment_usage(user.telegram_id, "avatar_generations", session)
-
-    return {"task_id": task_id, "status": "pending"}
-
-
-MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5MB
-ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
-
-
-@router.post("/api/create_character/upload-avatar")
-async def upload_avatar(
-    file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
-):
-    if file.content_type not in ALLOWED_AVATAR_TYPES:
-        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WebP images are allowed")
-
-    content = await file.read()
-    if len(content) > MAX_AVATAR_SIZE:
-        raise HTTPException(status_code=400, detail="File size must be under 5MB")
-
-    from pathlib import Path
-    import aiofiles
-
-    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-    ext = ext_map.get(file.content_type, ".png")
-    temp_name = f"temp_{uuid.uuid4().hex[:12]}{ext}"
-
-    avatars_dir = Path(IMAGES_STORAGE_PATH) / "avatars"
-    avatars_dir.mkdir(parents=True, exist_ok=True)
-
-    full_path = avatars_dir / temp_name
-    async with aiofiles.open(full_path, "wb") as f:
-        await f.write(content)
-
-    return {"url": f"/images/avatars/{temp_name}"}

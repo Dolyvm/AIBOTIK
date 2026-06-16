@@ -15,10 +15,6 @@ except ModuleNotFoundError:
     sys.modules.setdefault("redis", redis_mod)
     sys.modules.setdefault("redis.asyncio", redis_asyncio)
 
-from backend.api.image_gen.services.scene_analyzer import (
-    calculate_nsfw_fallback,
-    calculate_sfw_fallback,
-)
 from shared import constants
 
 
@@ -52,8 +48,3 @@ def test_get_modifier_for_stage_uses_heat_level(monkeypatch):
     )
 
     assert modifier == {"instruction": "stage three", "allowed_actions": ["hug"]}
-
-
-def test_image_fallback_uses_heat_level():
-    assert [calculate_nsfw_fallback(level) for level in range(4)] == [0, 1, 2, 2]
-    assert [calculate_sfw_fallback(level) for level in range(4)] == [0, 1, 1, 1]

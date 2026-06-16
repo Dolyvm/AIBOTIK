@@ -8,11 +8,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import select
 from shared.models import Prompt
 from shared.database import get_session
-from shared.services.cache import get_cache
+from shared.services.cache import CacheService, get_cache, set_cache
+from shared.services.redis_client import get_redis
 from shared.services.prompt_service import (
     COMPACT_RUNTIME_PROMPT_KEYS,
     DEFAULT_PROMPTS,
-    IMAGE_SAFETY_PROMPT_KEYS,
+    PHOTO_PROMPT_KEYS,
     clear_cache,
 )
 
@@ -70,163 +71,125 @@ PROMPT_METADATA = {
         "name": "History Summarization"
     },
 
-    "scene_analyzer_prompt": {
-        "category": "scene_analysis",
-        "name": "Scene Analysis for Image Generation"
+    "photo_scene_extractor": {
+        "category": "photo",
+        "name": "Photo Scene Extractor"
     },
-
-    "nsfw_level_0": {
-        "category": "image",
-        "name": "NSFW Level 0 (SFW) - Positive"
+    "photo_prompt_real_female": {
+        "category": "photo",
+        "name": "Photo Prompt: Real Female"
     },
-    "nsfw_level_0_neg": {
-        "category": "image",
-        "name": "NSFW Level 0 (SFW) - Negative"
+    "photo_prompt_real_male": {
+        "category": "photo",
+        "name": "Photo Prompt: Real Male"
     },
-    "nsfw_level_1": {
-        "category": "image",
-        "name": "NSFW Level 1 (Teasing) - Positive"
+    "photo_prompt_anime_female": {
+        "category": "photo",
+        "name": "Photo Prompt: Anime Female"
     },
-    "nsfw_level_1_neg": {
-        "category": "image",
-        "name": "NSFW Level 1 (Teasing) - Negative"
+    "photo_prompt_anime_male": {
+        "category": "photo",
+        "name": "Photo Prompt: Anime Male"
     },
-    "nsfw_level_2": {
-        "category": "image",
-        "name": "NSFW Level 2 (Revealing) - Positive"
+    "photo_negative_anime_female": {
+        "category": "photo",
+        "name": "Photo Negative Prompt: Anime Female"
     },
-    "nsfw_level_2_neg": {
-        "category": "image",
-        "name": "NSFW Level 2 (Revealing) - Negative"
+    "photo_negative_anime_male": {
+        "category": "photo",
+        "name": "Photo Negative Prompt: Anime Male"
     },
-    "nsfw_level_3": {
-        "category": "image",
-        "name": "NSFW Level 3 (Topless) - Positive"
+    "photo_policy_anime_filler_tags": {
+        "category": "photo_policy",
+        "name": "Anime Filler Tags"
     },
-    "nsfw_level_3_neg": {
-        "category": "image",
-        "name": "NSFW Level 3 (Topless) - Negative"
+    "photo_policy_anime_user_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime User Quality Tags"
     },
-    "nsfw_level_2_real": {
-        "category": "image",
-        "name": "Real NSFW Level 2 - Positive"
+    "photo_policy_anime_rating_safe": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: Safe"
     },
-    "nsfw_level_2_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 2 - Negative"
+    "photo_policy_anime_rating_nsfw": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: NSFW"
     },
-    "nsfw_level_2_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 2 - Positive"
+    "photo_policy_anime_rating_explicit": {
+        "category": "photo_policy",
+        "name": "Anime Rating Tags: Explicit"
     },
-    "nsfw_level_2_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 2 - Negative"
+    "photo_policy_anime_nudity_tags": {
+        "category": "photo_policy",
+        "name": "Anime Nudity Tags"
     },
-    "nsfw_level_3_real": {
-        "category": "image",
-        "name": "Real NSFW Level 3 - Positive"
+    "photo_policy_anime_focus_tags": {
+        "category": "photo_policy",
+        "name": "Anime Focus Tags"
     },
-    "nsfw_level_3_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 3 - Negative"
+    "photo_policy_anime_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime Quality Tags"
     },
-    "nsfw_level_3_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 3 - Positive"
+    "photo_policy_anime_avatar_quality_tags": {
+        "category": "photo_policy",
+        "name": "Anime Avatar Quality Tags"
     },
-    "nsfw_level_3_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 3 - Negative"
+    "photo_policy_anime_subject_female": {
+        "category": "photo_policy",
+        "name": "Anime Subject Tags: Female"
     },
-    "nsfw_level_4": {
-        "category": "image",
-        "name": "NSFW Level 4 (Nude) - Positive"
+    "photo_policy_anime_subject_male": {
+        "category": "photo_policy",
+        "name": "Anime Subject Tags: Male"
     },
-    "nsfw_level_4_neg": {
-        "category": "image",
-        "name": "NSFW Level 4 (Nude) - Negative"
+    "photo_policy_anime_negative_explicit": {
+        "category": "photo_policy",
+        "name": "Anime Negative Tags: Explicit"
     },
-    "nsfw_level_5": {
-        "category": "image",
-        "name": "NSFW Level 5 (Explicit) - Positive"
+    "photo_policy_avatar_scene": {
+        "category": "photo_policy",
+        "name": "Avatar Scene JSON"
     },
-    "nsfw_level_5_neg": {
-        "category": "image",
-        "name": "NSFW Level 5 (Explicit) - Negative"
+    "photo_policy_avatar_default_outfit": {
+        "category": "photo_policy",
+        "name": "Avatar Default Outfit"
     },
-    "nsfw_level_4_real": {
-        "category": "image",
-        "name": "Real NSFW Level 4 - Positive"
+    "photo_policy_real_default_outfit": {
+        "category": "photo_policy",
+        "name": "Real Default Outfit"
     },
-    "nsfw_level_4_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 4 - Negative"
+    "photo_policy_real_clothed_prefix": {
+        "category": "photo_policy",
+        "name": "Real Clothed Prefix"
     },
-    "nsfw_level_4_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 4 - Positive"
+    "photo_policy_real_default_outfit_priority": {
+        "category": "photo_policy",
+        "name": "Real Outfit Wardrobe Priority"
     },
-    "nsfw_level_4_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 4 - Negative"
+    "photo_policy_default_style_tags_real": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Real"
     },
-    "nsfw_level_5_real": {
-        "category": "image",
-        "name": "Real NSFW Level 5 - Positive"
+    "photo_policy_default_style_tags_anime": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Anime"
     },
-    "nsfw_level_5_real_neg": {
-        "category": "image",
-        "name": "Real NSFW Level 5 - Negative"
+    "photo_policy_default_style_tags_manhwa": {
+        "category": "photo_policy",
+        "name": "Default Style Tags: Manhwa"
     },
-    "nsfw_level_5_real_female": {
-        "category": "image",
-        "name": "Real Female NSFW Level 5 - Positive"
+    "photo_policy_manhwa_style_tags": {
+        "category": "photo_policy",
+        "name": "Manhwa Fallback Style Tags"
     },
-    "nsfw_level_5_real_female_neg": {
-        "category": "image",
-        "name": "Real Female NSFW Level 5 - Negative"
+    "photo_policy_default_wardrobe_female": {
+        "category": "photo_policy",
+        "name": "Default Wardrobe JSON: Female"
     },
-
-    "anime_base_positive": {
-        "category": "image",
-        "name": "Anime Base Positive Prompt"
-    },
-    "anime_base_negative": {
-        "category": "image",
-        "name": "Anime Base Negative Prompt"
-    },
-    "real_base_positive": {
-        "category": "image",
-        "name": "Real Base Positive Prompt"
-    },
-    "real_base_negative": {
-        "category": "image",
-        "name": "Real Base Negative Prompt"
-    },
-    "real_base_positive_female": {
-        "category": "image",
-        "name": "Real Female Base Positive Prompt"
-    },
-    "real_base_negative_female": {
-        "category": "image",
-        "name": "Real Female Base Negative Prompt"
-    },
-    "real_base_positive_male": {
-        "category": "image",
-        "name": "Real Male Base Positive Prompt"
-    },
-    "real_base_negative_male": {
-        "category": "image",
-        "name": "Real Male Base Negative Prompt"
-    },
-    "manhwa_base_positive": {
-        "category": "image",
-        "name": "Manhwa Base Positive Prompt"
-    },
-    "manhwa_base_negative": {
-        "category": "image",
-        "name": "Manhwa Base Negative Prompt"
+    "photo_policy_default_wardrobe_male": {
+        "category": "photo_policy",
+        "name": "Default Wardrobe JSON: Male"
     },
 
     "character_modifiers_emily_stage_1": {
@@ -274,14 +237,20 @@ PROMPT_METADATA = {
         "category": "character",
         "name": "SFW Content Restriction"
     },
-    "scene_analyzer_prompt_sfw": {
-        "category": "scene_analysis",
-        "name": "Scene Analyzer (SFW)"
-    },
 }
 
 
+async def ensure_cache_service():
+    if get_cache():
+        return
+    try:
+        set_cache(CacheService(await get_redis()))
+    except Exception as e:
+        print(f"Redis cache unavailable; prompts will only be synced to DB: {e}")
+
+
 async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
+    await ensure_cache_service()
     await clear_cache()
 
     cache = get_cache()
@@ -294,12 +263,12 @@ async def refresh_prompt_cache(keys: set[str] | frozenset[str]):
             await cache.set_prompt(key, content)
 
 
-async def init_prompts(sync_compact: bool = False, sync_image_safety: bool = False):
+async def init_prompts(sync_compact: bool = False, sync_photo: bool = False):
     sync_keys = set()
     if sync_compact:
         sync_keys.update(COMPACT_RUNTIME_PROMPT_KEYS)
-    if sync_image_safety:
-        sync_keys.update(IMAGE_SAFETY_PROMPT_KEYS)
+    if sync_photo:
+        sync_keys.update(PHOTO_PROMPT_KEYS)
 
     async with get_session() as db:
         result = await db.execute(select(Prompt))
@@ -337,8 +306,8 @@ async def init_prompts(sync_compact: bool = False, sync_image_safety: bool = Fal
     modes = []
     if sync_compact:
         modes.append("sync-compact")
-    if sync_image_safety:
-        modes.append("sync-image-safety")
+    if sync_photo:
+        modes.append("sync-photo")
     mode = "+".join(modes) if modes else "create-missing"
     print(f"Prompts initialized ({mode}): created={created_count}, updated={updated_count}")
 
@@ -351,15 +320,15 @@ if __name__ == "__main__":
         help="Update only compact runtime prompt keys in DB and invalidate prompt cache.",
     )
     parser.add_argument(
-        "--sync-image-safety",
+        "--sync-photo",
         action="store_true",
-        help="Update only image safety prompt keys in DB and invalidate prompt cache.",
+        help="Update only photo prompt keys in DB and invalidate prompt cache.",
     )
     args = parser.parse_args()
 
     asyncio.run(
         init_prompts(
             sync_compact=args.sync_compact,
-            sync_image_safety=args.sync_image_safety,
+            sync_photo=args.sync_photo,
         )
     )

@@ -5,6 +5,7 @@ from .chat import ChatRepository
 from .message import MessageRepository
 from .transaction import TransactionRepository
 from .image import GeneratedImageRepository
+from .image_generation_job import ImageGenerationJobRepository
 from .character import CharacterRepository
 from .world import WorldRepository
 from .prompt import PromptRepository
@@ -18,6 +19,7 @@ __all__ = [
     "MessageRepository",
     "TransactionRepository",
     "GeneratedImageRepository",
+    "ImageGenerationJobRepository",
     "CharacterRepository",
     "WorldRepository",
     "PromptRepository",

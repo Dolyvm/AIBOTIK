@@ -1,7 +1,7 @@
 """Репозиторий для работы с сообщениями."""
 from sqlalchemy import select, update, delete, case
 
-from shared.models import Message, MessageRole, Chat
+from shared.models import Message, MessageRole, Chat, Character
 from .base import BaseRepository
 from ..validators import validate_enum_value
 
@@ -32,6 +32,16 @@ class MessageRepository(BaseRepository[Message]):
             update(Chat)
             .where(Chat.id == chat_id)
             .values(msgs_since_summary=Chat.msgs_since_summary + 1)
+        )
+        character_id = (
+            select(Chat.target_id)
+            .where(Chat.id == chat_id, Chat.chat_type == "character")
+            .scalar_subquery()
+        )
+        await self.session.execute(
+            update(Character)
+            .where(Character.id == character_id)
+            .values(total_message_count=Character.total_message_count + 1)
         )
 
         await self.session.commit()

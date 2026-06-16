@@ -133,11 +133,9 @@
                     <th>Тариф</th>
                     <th>Истекает</th>
                     <th title="Сообщения">Сообщ.</th>
-                    <th title="Изображения">Фото</th>
                     <th title="Персонажи">Перс.</th>
                     <th title="Миры">Миры</th>
                     <th title="Редактирования">Ред.</th>
-                    <th title="Аватары">Ава.</th>
                     <th>Активность</th>
                 </tr>
             </thead>
@@ -166,11 +164,6 @@
                         {{ u_msgs.used }}/{% if u_msgs.limit >= 9999 %}∞{% else %}{{ u_msgs.limit }}{% endif %}
                         {% if u_msgs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_msgs.bonus }}</sup>{% endif %}
                     </td>
-                    {% set u_imgs = u.usage.images %}
-                    <td title="бонус: +{{ u_imgs.bonus }}">
-                        {{ u_imgs.used }}/{% if u_imgs.limit >= 9999 %}∞{% else %}{{ u_imgs.limit }}{% endif %}
-                        {% if u_imgs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_imgs.bonus }}</sup>{% endif %}
-                    </td>
                     {% set u_chars = u.usage.characters_created %}
                     <td title="бонус: +{{ u_chars.bonus }}">
                         {{ u_chars.used }}/{% if u_chars.limit >= 9999 %}∞{% else %}{{ u_chars.limit }}{% endif %}
@@ -185,11 +178,6 @@
                     <td title="бонус: +{{ u_edits.bonus }}">
                         {{ u_edits.used }}/{% if u_edits.limit >= 9999 %}∞{% else %}{{ u_edits.limit }}{% endif %}
                         {% if u_edits.bonus > 0 %}<sup style="color:#27ae60">+{{ u_edits.bonus }}</sup>{% endif %}
-                    </td>
-                    {% set u_avs = u.usage.avatar_generations %}
-                    <td title="бонус: +{{ u_avs.bonus }}">
-                        {{ u_avs.used }}/{% if u_avs.limit >= 9999 %}∞{% else %}{{ u_avs.limit }}{% endif %}
-                        {% if u_avs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_avs.bonus }}</sup>{% endif %}
                     </td>
                     <td style="font-size:12px; white-space:nowrap;">
                         {% if u.last_active_at %}{{ u.last_active_at.strftime("%d.%m.%y %H:%M") }}{% else %}—{% endif %}
@@ -241,11 +229,9 @@
             <!-- Добавить бонус -->
             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                 <input type="number" id="bonus-messages"  min="0" placeholder="Сообщ. +" style="width:90px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
-                <input type="number" id="bonus-images"    min="0" placeholder="Фото +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-chars"     min="0" placeholder="Перс. +"  style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-worlds"    min="0" placeholder="Миры +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-edits"     min="0" placeholder="Ред. +"   style="width:75px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
-                <input type="number" id="bonus-avatars"   min="0" placeholder="Ава. +"   style="width:75px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <button onclick="applyBonus()" style="padding:5px 12px; background:#27ae60; color:#fff; border:none; border-radius:4px; cursor:pointer;">Добавить бонус</button>
             </div>
         </div>
@@ -301,11 +287,9 @@
             const bonus = {};
             const map = [
                 ['bonus-messages',  'messages'],
-                ['bonus-images',    'images'],
                 ['bonus-chars',     'characters_created'],
                 ['bonus-worlds',    'worlds_created'],
                 ['bonus-edits',     'content_edits'],
-                ['bonus-avatars',   'avatar_generations'],
             ];
             for (const [elId, key] of map) {
                 const val = parseInt(document.getElementById(elId).value);

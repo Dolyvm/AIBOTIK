@@ -149,7 +149,6 @@ def upgrade() -> None:
         sa.Column('prompt', sa.Text(), nullable=False),
         sa.Column('file_size', sa.Integer(), nullable=True),
         sa.Column('content_type', sa.String(length=50), nullable=True),
-        sa.Column('nsfw_level', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=True),
         sa.ForeignKeyConstraint(['chat_id'], ['chats.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['users.telegram_id'], ondelete='CASCADE'),

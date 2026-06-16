@@ -78,15 +78,6 @@ class StatisticsService:
                 WHERE e.event_type = 'message_sent'
                     AND e.meta->>'character_id' IS NOT NULL
                 GROUP BY (e.meta->>'character_id')
-            ),
-            image_stats AS (
-                SELECT 
-                    (e.meta->>'character_id') AS character_id,
-                    COUNT(e.id) AS images
-                FROM events e
-                WHERE e.event_type = 'image_generated'
-                    AND e.meta->>'character_id' IS NOT NULL
-                GROUP BY (e.meta->>'character_id')
             )
             SELECT 
                 ch.name AS "Персонаж",
@@ -97,13 +88,11 @@ class StatisticsService:
                     THEN ROUND(COALESCE(cs.chats, 0)::numeric / v.views * 100, 1)
                     ELSE 0
                 END AS "Конверсия (%)",
-                COALESCE(ms.messages, 0) AS "Сообщения",
-                COALESCE(img.images, 0) AS "Фотографии"
+                COALESCE(ms.messages, 0) AS "Сообщения"
             FROM characters ch
             LEFT JOIN view_stats v ON v.character_id = ch.id
             LEFT JOIN chat_stats cs ON cs.target_id = ch.id
             LEFT JOIN message_stats ms ON ms.target_id = ch.id
-            LEFT JOIN image_stats img ON img.character_id = ch.id
             ORDER BY "Просмотры" DESC
             LIMIT :head
         """)
@@ -185,7 +174,6 @@ class StatisticsService:
         * Распределение по последним событиям (считает, сколько раз то или иное событие было финальным). Пример:
             {
               "message_sent": 45,
-              "image_generated": 12,
               "character_click": 8,
               "chat_created": 5
             }
@@ -270,17 +258,13 @@ class StatisticsService:
                 u.last_active_at,
                 u.created_at,
                 COALESCE(mu.messages_sent, 0)      AS messages_sent,
-                COALESCE(mu.images_generated, 0)   AS images_generated,
                 COALESCE(mu.characters_created, 0) AS characters_created,
                 COALESCE(mu.worlds_created, 0)     AS worlds_created,
                 COALESCE(mu.content_edits, 0)      AS content_edits,
-                COALESCE(mu.avatar_generations, 0) AS avatar_generations,
                 COALESCE(mu.bonus_messages_sent, 0)      AS bonus_messages_sent,
-                COALESCE(mu.bonus_images_generated, 0)   AS bonus_images_generated,
                 COALESCE(mu.bonus_characters_created, 0) AS bonus_characters_created,
                 COALESCE(mu.bonus_worlds_created, 0)     AS bonus_worlds_created,
-                COALESCE(mu.bonus_content_edits, 0)      AS bonus_content_edits,
-                COALESCE(mu.bonus_avatar_generations, 0) AS bonus_avatar_generations
+                COALESCE(mu.bonus_content_edits, 0)      AS bonus_content_edits
             FROM users u
             LEFT JOIN monthly_usage mu
                 ON mu.user_id = u.telegram_id AND mu.period = :period
@@ -302,11 +286,9 @@ class StatisticsService:
 
             usage_types = {
                 "messages": ("messages_sent", "bonus_messages_sent"),
-                "images": ("images_generated", "bonus_images_generated"),
                 "characters_created": ("characters_created", "bonus_characters_created"),
                 "worlds_created": ("worlds_created", "bonus_worlds_created"),
                 "content_edits": ("content_edits", "bonus_content_edits"),
-                "avatar_generations": ("avatar_generations", "bonus_avatar_generations"),
             }
             usage_summary = {}
             for ut, (db_field, bonus_field) in usage_types.items():
@@ -335,4 +317,3 @@ class StatisticsService:
             "per_page": per_page,
             "total_pages": total_pages,
         }
-

@@ -858,20 +858,10 @@
                      :class="msg.role === 'user' ? 'own' : 'foreign'">
                     <div class="message-bubble">
                         <div v-if="msg.content" class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
-                        <div v-if="msg.isGenerating" class="photo-container generating">
-                            <div class="generating-placeholder">
-                                <i class="fas fa-spinner fa-spin"></i>
-                                <span>Генерирую изображение...</span>
-                            </div>
-                        </div>
-                        <div v-else-if="msg.avatar" class="photo-container">
+                        <div v-if="msg.avatar" class="photo-container">
                             <img class="message-photo"
                                  :src="msg.avatar"
-                                 :class="{'nsfw-blur': shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)}"
-                                 @click="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar) ? reveal(msg.avatar) : expandImage(msg.avatar)">
-                            <span v-if="shouldBlurImage(msg.nsfw_level) && !isRevealed(msg.avatar)" class="click-hint">
-                                Нажмите для просмотра
-                            </span>
+                                 @click="expandImage(msg.avatar)">
                         </div>
                     </div>
                     <div v-if="index === undoTargetIndex" class="turn-actions">
@@ -909,11 +899,14 @@
                     rows="1"
                     ref="inputField"
                 ></textarea>
-                <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming">
-                    <i class="fas fa-paper-plane"></i>
+                <button class="btn-generate-image"
+                        @click="generateImage"
+                        :disabled="!currentChatId || currentChatType !== 'character' || isWaitingResponse || isStreaming || isGeneratingImage"
+                        title="Сгенерировать фото">
+                    <i :class="isGeneratingImage ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
                 </button>
-                <button v-if="currentChatType === 'character' && currentChatPhotoGenerationAvailable" @click="requestPhoto" :disabled="isWaitingResponse || isStreaming">
-                    <i class="fas fa-camera"></i>
+                <button @click="sendMessage" :disabled="!inputMessage.trim() || isWaitingResponse || isStreaming || isGeneratingImage">
+                    <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
         </div>
@@ -972,8 +965,7 @@
                             <div class="cc-segmented" role="group" aria-label="Стиль персонажа">
                                 <button class="cc-segment"
                                         :class="{ active: createCharacterData.model_type === 'anime' }"
-                                        @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'anime')"
-                                        :disabled="createCharacterData.custom_avatar"
+                                        @click="createCharacterData.model_type = 'anime'"
                                         type="button">
                                     Anime
                                 </button>
@@ -986,8 +978,7 @@
                                 <button v-if="createCharacterData.gender === 'male'"
                                         class="cc-segment"
                                         :class="{ active: createCharacterData.model_type === 'manhwa' }"
-                                        @click="!createCharacterData.custom_avatar && (createCharacterData.model_type = 'manhwa')"
-                                        :disabled="createCharacterData.custom_avatar"
+                                        @click="createCharacterData.model_type = 'manhwa'"
                                         type="button">
                                     Manhwa
                                 </button>
@@ -1005,37 +996,6 @@
                             <input v-model="createCharacterData.tags_str" type="text" class="cc-name-input" placeholder="anime, female, fantasy, romance">
                         </div>
 
-                        <div class="cc-field">
-                            <label>Аватар</label>
-                            <div class="cc-upload-grid">
-                                <button class="cc-upload-card"
-                                        :class="{ active: !createCharacterData.custom_avatar }"
-                                        @click="createCharacterData.custom_avatar = false; createCharacterData.identity_consent_confirmed = false; if(createCharacterData.custom_avatar === false) { newCharacterPreview = null; }"
-                                        type="button">
-                                    <span class="cc-upload-card__icon"><i class="fas fa-palette"></i></span>
-                                    <span class="cc-upload-card__title">Сгенерировать</span>
-                                </button>
-                                <button class="cc-upload-card"
-                                        :class="{ active: createCharacterData.custom_avatar }"
-                                        @click="createCharacterData.custom_avatar = true; createCharacterData.model_type = 'real'; $refs.customAvatarInput.click()"
-                                        type="button">
-                                    <span class="cc-upload-card__icon"><i class="fas fa-camera"></i></span>
-                                    <span class="cc-upload-card__title">Фото</span>
-                                </button>
-                            </div>
-                            <input type="file" ref="customAvatarInput" accept="image/jpeg,image/png,image/webp" style="display: none;" @change="handleCustomAvatarUpload($event)">
-
-                            <div v-if="createCharacterData.custom_avatar && newCharacterPreview" class="cc-inline-preview">
-                                <img :src="newCharacterPreview" class="cc-inline-preview__image" alt="Custom avatar">
-                                <button class="cc-icon-btn cc-icon-btn--danger" @click="newCharacterPreview = null; createCharacterData.custom_avatar = false;" type="button" aria-label="Удалить фото">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                            <div v-if="isUploadingAvatar" class="cc-inline-status">
-                                <div class="cc-spinner"></div>
-                                <span>Загрузка...</span>
-                            </div>
-                        </div>
                     </section>
                 </div>
 
@@ -1097,12 +1057,12 @@
                     </section>
                 </div>
 
-                <!-- Шаг 3: Внешность и аватар -->
+                <!-- Шаг 3: Внешность -->
                 <div v-if="ccStep === 2">
                     <section class="cc-form-panel">
                         <div class="cc-panel-header">
                             <div>
-                                <h3 class="cc-summary-title">Внешность и аватар</h3>
+                                <h3 class="cc-summary-title">Внешность</h3>
                             </div>
                             <button class="cc-icon-text-btn"
                                     @click="openAppearanceInstruction"
@@ -1111,7 +1071,6 @@
                             </button>
                         </div>
 
-                        <template v-if="!createCharacterData.custom_avatar">
                             <div class="cc-field">
                                 <label>Внешность (EN) <span class="cc-required">*</span></label>
                                 <textarea v-model="createCharacterData.appearance" class="scenario-textarea cc-textarea" placeholder="appearance tags..."></textarea>
@@ -1147,91 +1106,45 @@
                                 </button>
                             </div>
 
-                            <div class="cc-media-well">
-                                <div v-if="isGeneratingPreview" class="cc-preview-loading">
-                                    <div class="cc-spinner"></div>
-                                    <span>Генерация аватара...</span>
-                                </div>
-                                <img v-else-if="newCharacterPreview" :src="newCharacterPreview" class="cc-preview-image" alt="Avatar">
-                                <div v-else class="cc-preview-placeholder">
-                                    <i class="fas fa-user-circle"></i>
-                                    <span>Аватар не сгенерирован</span>
-                                </div>
-
-                                <div v-if="generatedAvatars.length > 1" class="avatar-gallery">
-                                    <div v-for="(url, idx) in generatedAvatars" :key="idx"
-                                         class="avatar-thumb" :class="{ selected: idx === selectedAvatarIndex }"
-                                         @click="selectedAvatarIndex = idx; newCharacterPreview = url">
-                                        <img :src="url" alt="Avatar variant">
+                            <div v-if="!editingCharacterId" class="cc-field">
+                                <label>Аватарка <span class="cc-required">*</span></label>
+                                <div class="cc-preview-section cc-avatar-generator">
+                                    <div v-if="isGeneratingCharacterAvatar" class="cc-preview-loading">
+                                        <div class="cc-spinner"></div>
+                                        <span>Генерация...</span>
                                     </div>
-                                </div>
+                                    <img v-else-if="selectedCharacterAvatarUrl"
+                                         :src="selectedCharacterAvatarUrl"
+                                         class="cc-preview-image"
+                                         alt="Avatar">
+                                    <div v-else class="cc-preview-placeholder">
+                                        <i class="fas fa-user"></i>
+                                        <span>{{ characterAvatarIsStale ? 'Аватарка устарела' : 'Аватарка не создана' }}</span>
+                                    </div>
 
-                                <button class="cc-btn cc-btn--generate" @click="generateNewCharacterPreview"
-                                        :disabled="isGeneratingPreview || !avatarGenerationAllowed"
-                                        type="button">
-                                    <i class="fas fa-image"></i>
-                                    <template v-if="isGeneratingPreview">Генерация...</template>
-                                    <template v-else-if="!avatarGenerationAllowed">Лимит исчерпан</template>
-                                    <template v-else>Сгенерировать аватар</template>
-                                </button>
-                                <div v-if="!avatarGenerationAllowed" class="cc-limit-hint">
-                                    Лимит генераций аватара исчерпан
-                                </div>
-                            </div>
-                        </template>
-
-                        <template v-else>
-                            <div class="cc-reference-card">
-                                <img v-if="newCharacterPreview" :src="newCharacterPreview" class="cc-reference-card__image" alt="Reference avatar">
-                                <div v-else class="cc-reference-card__placeholder">
-                                    <i class="fas fa-camera"></i>
-                                </div>
-                                <div class="cc-reference-card__body">
-                                    <div class="cc-reference-card__title">Фото</div>
-                                    <div class="cc-reference-card__text">{{ newCharacterPreview ? 'Загружено' : 'Не загружено' }}</div>
-                                </div>
-                            </div>
-
-                            <div class="cc-subsection-title">Конструктор</div>
-
-                            <div class="cc-field">
-                                <label>Телосложение</label>
-                                <div class="cc-chip-grid">
-                                    <button v-for="opt in (createCharacterData.gender === 'male' ? maleBodyTypes : femaleBodyTypes)"
-                                            :key="opt.v"
-                                            class="cc-chip"
-                                            :class="{ active: createCharacterData.body_profile.body_type === opt.v }"
-                                            @click="createCharacterData.body_profile.body_type = opt.v"
+                                    <button class="cc-btn cc-btn--generate"
+                                            @click="generateCharacterAvatar"
+                                            :disabled="isGeneratingCharacterAvatar"
                                             type="button">
-                                        {{ opt.l }}
+                                        <i :class="isGeneratingCharacterAvatar ? 'fas fa-spinner fa-spin' : 'fas fa-wand-magic-sparkles'"></i>
+                                        {{ createCharacterAvatar.avatar_urls.length ? 'Перегенерировать' : 'Сгенерировать аватарку' }}
                                     </button>
+
+                                    <div v-if="createCharacterAvatar.avatar_urls.length && !characterAvatarIsStale" class="avatar-gallery">
+                                        <button v-for="url in createCharacterAvatar.avatar_urls"
+                                                :key="url"
+                                                class="avatar-thumb"
+                                                :class="{ selected: createCharacterAvatar.selected_avatar_url === url }"
+                                                @click="selectCharacterAvatar(url)"
+                                                type="button"
+                                                aria-label="Выбрать аватарку">
+                                            <img :src="url" alt="">
+                                        </button>
+                                    </div>
+                                    <div class="cc-helper">{{ characterAvatarHint }}</div>
                                 </div>
                             </div>
-                            <div class="cc-field">
-                                <label>Рост</label>
-                                <div class="cc-chip-grid cc-chip-grid--three">
-                                    <button v-for="opt in heightOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.height === opt.v }" @click="createCharacterData.body_profile.height = opt.v" type="button">{{ opt.l }}</button>
-                                </div>
-                            </div>
-                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
-                                <label>Грудь</label>
-                                <div class="cc-chip-grid">
-                                    <button v-for="opt in breastSizeOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.breast_size === opt.v }" @click="createCharacterData.body_profile.breast_size = opt.v" type="button">{{ opt.l }}</button>
-                                </div>
-                            </div>
-                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
-                                <label>Ягодицы</label>
-                                <div class="cc-chip-grid">
-                                    <button v-for="opt in buttSizeOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.butt_size === opt.v }" @click="createCharacterData.body_profile.butt_size = opt.v" type="button">{{ opt.l }}</button>
-                                </div>
-                            </div>
-                            <div class="cc-field">
-                                <label>Наряд</label>
-                                <div class="cc-chip-grid">
-                                    <button v-for="opt in outfitPresetOptions" :key="opt.v" class="cc-chip" :class="{ active: createCharacterData.body_profile.outfit_preset === opt.v }" @click="createCharacterData.body_profile.outfit_preset = opt.v" type="button">{{ opt.l }}</button>
-                                </div>
-                            </div>
-                        </template>
+
                     </section>
                 </div>
 
@@ -1239,9 +1152,12 @@
                 <div v-if="ccStep === 3">
                     <section class="cc-form-panel">
                         <div class="cc-final-preview">
-                            <img v-if="newCharacterPreview" :src="newCharacterPreview" class="cc-final-preview__image" alt="Avatar">
-                            <div v-else class="cc-final-preview__placeholder">
-                                <i class="fas fa-user-circle"></i>
+                            <img v-if="!editingCharacterId && selectedCharacterAvatarUrl"
+                                 :src="selectedCharacterAvatarUrl"
+                                 class="cc-final-preview__image"
+                                 alt="Avatar">
+                            <div v-else-if="!editingCharacterId" class="cc-final-preview__placeholder">
+                                <i class="fas fa-user"></i>
                             </div>
                             <div class="cc-final-preview__meta">
                                 <div class="cc-final-preview__name">{{ createCharacterData.name || 'Новый персонаж' }}</div>
@@ -1260,10 +1176,6 @@
                             </div>
                         </div>
 
-                        <label v-if="createCharacterData.custom_avatar" class="cc-consent-row">
-                            <input type="checkbox" v-model="createCharacterData.identity_consent_confirmed">
-                            <span>Согласен использовать фото для генерации персонажа.</span>
-                        </label>
                     </section>
                 </div>
             </div>
@@ -1274,7 +1186,7 @@
                 <button v-else
                         class="cc-btn cc-btn--final"
                         @click="createCharacterFinal"
-                        :disabled="isCreatingCharacter"
+                        :disabled="isCreatingCharacter || (!editingCharacterId && !selectedCharacterAvatarUrl)"
                         type="button">
                     <i class="fas fa-check"></i>
                     {{ isCreatingCharacter ? (editingCharacterId ? 'Сохранение...' : 'Создание...') : (editingCharacterId ? 'Сохранить' : 'Создать персонажа') }}
@@ -1627,58 +1539,41 @@
                 const currentChatAvatar = ref('');
                 const currentChatType = ref('character');
                 const currentCharacterId = ref(null);
-                const currentChatCustomAvatar = ref(false);
-                const currentChatPhotoGenerationAvailable = ref(false);
                 const chatHistory = ref([]);
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
                 const isStreaming = ref(false);
                 const isUndoing = ref(false);
+                const activeImageJob = ref(null);
+                let imageJobPollTimer = null;
+                const isActiveImageJobStatus = (status) => status === 'queued' || status === 'running';
+                const isGeneratingImage = computed(() =>
+                    !!activeImageJob.value && isActiveImageJobStatus(activeImageJob.value.status)
+                );
                 const messagesContainer = ref(null);
 
                 // Create Character
-                const defaultBodyProfile = (gender = 'female') => gender === 'male'
-                    ? { body_type: 'athletic', height: 'average', outfit_preset: 'casual' }
-                    : { body_type: 'proportional', height: 'average', breast_size: 'medium', butt_size: 'rounded', outfit_preset: 'casual' };
                 const defaultCreateCharacterData = () => ({
                     name: '', short_description: '', description: '', personality: '',
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
-                    avatar_url: null, custom_avatar: false, tags_str: '',
-                    identity_consent_confirmed: false,
-                    body_profile: defaultBodyProfile('female'),
+                    tags_str: '',
                     is_public: true,
                 });
-                const femaleBodyTypes = [
-                    { v: 'slim', l: 'Slim' }, { v: 'athletic', l: 'Athletic' },
-                    { v: 'proportional', l: 'Proportional' }, { v: 'soft_curvy', l: 'Soft curvy' },
-                    { v: 'large', l: 'Large' },
-                ];
-                const maleBodyTypes = [
-                    { v: 'lean', l: 'Lean' }, { v: 'athletic', l: 'Athletic' },
-                    { v: 'muscular', l: 'Muscular' }, { v: 'broad', l: 'Broad' },
-                    { v: 'large', l: 'Large' },
-                ];
-                const heightOptions = [
-                    { v: 'short', l: 'Short' }, { v: 'average', l: 'Average' }, { v: 'tall', l: 'Tall' },
-                ];
-                const breastSizeOptions = [
-                    { v: 'small', l: 'Small' }, { v: 'medium', l: 'Medium' },
-                    { v: 'large', l: 'Large' }, { v: 'very_large', l: 'Very large' },
-                ];
-                const buttSizeOptions = [
-                    { v: 'compact', l: 'Compact' }, { v: 'medium', l: 'Medium' },
-                    { v: 'rounded', l: 'Rounded' }, { v: 'large', l: 'Large' },
-                ];
-                const outfitPresetOptions = [
-                    { v: 'casual', l: 'Casual' }, { v: 'elegant', l: 'Elegant' },
-                    { v: 'sporty', l: 'Sporty' }, { v: 'home', l: 'Home' },
-                ];
+                const defaultCreateCharacterAvatar = () => ({
+                    draft_id: null,
+                    avatar_urls: [],
+                    selected_avatar_url: '',
+                    free_generations_used: 0,
+                    paid_generations_used: 0,
+                    free_generations_remaining: 2,
+                    appearance_signature: '',
+                });
                 const characterCreatorSteps = [
                     { title: 'Имя и стиль' },
                     { title: 'Описание и сценарий' },
-                    { title: 'Внешность и аватар' },
+                    { title: 'Внешность' },
                     { title: 'Финал' },
                 ];
                 const heatLevelOptions = [
@@ -1688,14 +1583,10 @@
                     { v: 3, l: 'Сразу', text: 'Максимальный темп', icon: 'fas fa-fire' },
                 ];
                 const createCharacterData = ref(defaultCreateCharacterData());
-                const newCharacterPreview = ref(null);
-                const generatedAvatars = ref([]);
-                const selectedAvatarIndex = ref(0);
-                const avatarGenCount = ref(0);
+                const createCharacterAvatar = ref(defaultCreateCharacterAvatar());
+                const isGeneratingCharacterAvatar = ref(false);
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
-                const isUploadingAvatar = ref(false);
-                const customAvatarInput = ref(null);
 
                 // Create World
                 const defaultCreateWorldData = () => ({
@@ -1741,6 +1632,71 @@
                     const index = chatHistory.value.findIndex(msg => msg.clientMessageId === clientMessageId);
                     if (index === -1) return false;
                     return patchChatMessage(index, patch);
+                };
+
+                const clearImageJobPolling = () => {
+                    if (imageJobPollTimer) {
+                        clearTimeout(imageJobPollTimer);
+                        imageJobPollTimer = null;
+                    }
+                };
+
+                const setActiveImageJob = (job) => {
+                    activeImageJob.value = job && isActiveImageJobStatus(job.status)
+                        ? { job_id: job.job_id, status: job.status }
+                        : null;
+                };
+
+                const appendImageEventIfMissing = (image) => {
+                    if (!image || !image.image_id) return false;
+                    const exists = chatHistory.value.some(msg => msg.image_id === image.image_id);
+                    if (exists) return false;
+                    chatHistory.value.push(image);
+                    return true;
+                };
+
+                const startImageJobPolling = (job, sourceChatId, sourceSessionId) => {
+                    if (!job || !job.job_id || !sourceChatId) return;
+                    clearImageJobPolling();
+                    setActiveImageJob(job);
+
+                    const poll = async () => {
+                        try {
+                            const response = await axios.get(`/api/chat/${sourceChatId}/image-jobs/${job.job_id}`);
+                            if (!isCurrentChatSession(sourceChatId, sourceSessionId)) return;
+
+                            const data = response.data;
+                            if (isActiveImageJobStatus(data.status)) {
+                                setActiveImageJob(data);
+                                imageJobPollTimer = setTimeout(poll, 2500);
+                                return;
+                            }
+
+                            clearImageJobPolling();
+                            setActiveImageJob(null);
+
+                            if (data.status === 'succeeded' && data.image) {
+                                const appended = appendImageEventIfMissing(data.image);
+                                if (appended) {
+                                    await nextTick();
+                                    scrollToBottom();
+                                }
+                                loadSubscription();
+                            } else if (data.status === 'failed') {
+                                showToast(data.message || 'Ошибка генерации фото', 'error');
+                            }
+                        } catch (error) {
+                            if (!isCurrentChatSession(sourceChatId, sourceSessionId)) return;
+                            if (error.response?.status === 404) {
+                                clearImageJobPolling();
+                                setActiveImageJob(null);
+                                return;
+                            }
+                            imageJobPollTimer = setTimeout(poll, 4000);
+                        }
+                    };
+
+                    imageJobPollTimer = setTimeout(poll, 1200);
                 };
 
                 // Computed: отфильтрованные группы (пропуск национальности для аниме)
@@ -1796,18 +1752,47 @@
                 });
                 const usageLabels = {
                     messages: 'Сообщения',
-                    images: 'Изображения',
+                    images_generated: 'Фото',
                     characters_created: 'Создание персонажей',
                     worlds_created: 'Создание вселенных',
                     content_edits: 'Редактирование',
-                    avatar_generations: 'Генерации аватара',
                 };
                 const modelTypeLabel = (type) => ({
                     anime: 'Anime',
                     real: 'Real',
                     manhwa: 'Manhwa',
                 }[type] || type);
-                const avatarGenerationAllowed = computed(() => checkUsageRemaining('avatar_generations'));
+                const normalizedWardrobeForSignature = (wardrobe) => Object.fromEntries(
+                    Object.entries(wardrobe || {})
+                        .filter(([key, value]) => key && String(value || '').trim())
+                        .sort(([a], [b]) => a.localeCompare(b))
+                );
+                const characterAvatarSignature = computed(() => {
+                    const d = createCharacterData.value;
+                    return JSON.stringify({
+                        name: (d.name || '').trim(),
+                        gender: d.gender,
+                        model_type: d.model_type,
+                        appearance: (d.appearance || '').trim(),
+                        visual_body: (d.visual_body || '').trim(),
+                        visual_face: (d.visual_face || '').trim(),
+                        visual_default_outfit: (d.visual_default_outfit || '').trim(),
+                        wardrobe: normalizedWardrobeForSignature(d.wardrobe),
+                    });
+                });
+                const characterAvatarIsStale = computed(() =>
+                    !!createCharacterAvatar.value.selected_avatar_url
+                    && createCharacterAvatar.value.appearance_signature !== characterAvatarSignature.value
+                );
+                const selectedCharacterAvatarUrl = computed(() =>
+                    characterAvatarIsStale.value ? '' : createCharacterAvatar.value.selected_avatar_url
+                );
+                const characterAvatarHint = computed(() => {
+                    if (characterAvatarIsStale.value) return 'Внешность изменилась, сгенерируйте новую аватарку';
+                    const remaining = createCharacterAvatar.value.free_generations_remaining;
+                    if (remaining > 0) return `Бесплатных попыток: ${remaining}`;
+                    return 'Следующая генерация спишет лимит фото';
+                });
 
                 const loadSubscription = async () => {
                     try {
@@ -1853,8 +1838,8 @@
                 // Legal documents — open external links
                 const openDocument = (key) => {
                     const urls = {
-                        privacy: 'https://telegra.ph/Politika-konfidencialnosti-04-01-26',
-                        terms: 'https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'
+                        privacy: 'https://telegra.ph/Politika-konfidencialnosti-06-16-30',
+                        terms: 'https://telegra.ph/Polzovatelskoe-soglashenie-06-16-33'
                     };
                     const url = urls[key];
                     if (url) {
@@ -1905,10 +1890,6 @@
 
                 // NSFW Blur state
                 const revealedImages = ref(new Set());
-
-                const shouldBlurImage = (nsfwLevel) => {
-                    return profileSettings.value.nsfw_blur && nsfwLevel >= 3;
-                };
 
                 const shouldBlurCard = (item) => {
                     return profileSettings.value.nsfw_blur && item.is_nsfw;
@@ -2016,9 +1997,10 @@
                             const data = error.response?.data;
                             if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
                                 const labels = {
-                                    messages: 'сообщений', images: 'изображений',
+                                    messages: 'сообщений',
+                                    images_generated: 'фото',
                                     characters_created: 'создания персонажей', worlds_created: 'создания вселенных',
-                                    content_edits: 'редактирования', avatar_generations: 'генерации аватаров',
+                                    content_edits: 'редактирования',
                                 };
                                 const label = labels[data.usage_type] || data.usage_type;
                                 showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
@@ -2541,6 +2523,10 @@
                     setTimeout(async () => {
                         try {
                             await axios.delete(`/api/chat/${chatId}`);
+                            if (currentChatId.value === chatId) {
+                                clearImageJobPolling();
+                                setActiveImageJob(null);
+                            }
                             await loadChats();
                             showToast('Чат удалён');
                         } catch {
@@ -2573,6 +2559,8 @@
                 };
 
                 const startChatSession = (chatId = null) => {
+                    clearImageJobPolling();
+                    setActiveImageJob(null);
                     currentChatSessionId.value += 1;
                     currentChatId.value = chatId;
                     isUndoing.value = false;
@@ -2611,9 +2599,10 @@
                         if (!isCurrentChatSession(chatId, sessionId)) return;
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
-                        currentChatCustomAvatar.value = res.data.custom_avatar || false;
-                        currentChatPhotoGenerationAvailable.value = res.data.photo_generation_available !== false;
                         currentView.value = 'chat';
+                        if (res.data.active_image_job) {
+                            startImageJobPolling(res.data.active_image_job, chatId, sessionId);
+                        }
                         await nextTick();
                         scrollToBottom();
                     } catch (e) {
@@ -2661,7 +2650,6 @@
                     currentView.value = 'selection';
                     chatHistory.value = [];
                     currentCharacterId.value = null;
-                    currentChatCustomAvatar.value = false;
                     isWaitingResponse.value = false;
                     isStreaming.value = false;
                     loadChats(); // Refresh list to update dates
@@ -2690,11 +2678,10 @@
                         if (data?.code === 'USAGE_LIMIT_EXCEEDED') {
                             const labels = {
                                 messages: 'сообщений',
-                                images: 'изображений',
+                                images_generated: 'фото',
                                 characters_created: 'создания персонажей',
                                 worlds_created: 'создания вселенных',
                                 content_edits: 'редактирования',
-                                avatar_generations: 'генерации аватаров',
                             };
                             const label = labels[data.usage_type] || data.usage_type || 'сообщений';
                             showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
@@ -2869,122 +2856,30 @@
                     }
                 };
 
-                // Poll for image task completion
-                const pollImageTask = async (taskId, onComplete, onError, options = {}) => {
-                    const maxAttempts = 300; // 15 minutes max (RunPod Serverless cold starts can be slow)
-                    let attempts = 0;
-
-                    while (attempts < maxAttempts) {
-                        try {
-                            const statusRes = await axios.get(`/api/tasks/${taskId}`);
-                            const status = statusRes.data.status;
-
-                            if (status === 'completed') {
-                                const result = statusRes.data.result || {};
-                                const resultChatId = statusRes.data.chat_id ?? result.chat_id;
-                                if (options.expectedChatId !== undefined && Number(resultChatId) !== Number(options.expectedChatId)) {
-                                    onError('Task chat mismatch');
-                                    return;
-                                }
-                                onComplete(result);
-                                return;
-                            } else if (status === 'failed') {
-                                onError(statusRes.data.error || 'Generation failed');
-                                return;
-                            } else if (status === 'not_found') {
-                                onError('Task not found');
-                                return;
-                            }
-                        } catch (e) {
-                            console.error('Poll error:', e);
-                        }
-
-                        await new Promise(r => setTimeout(r, 3000)); // 3 sec interval
-                        attempts++;
-                    }
-
-                    onError('Generation timed out');
-                };
-
-                const requestPhoto = async () => {
+                const generateImage = async () => {
                     const sourceChatId = currentChatId.value;
                     const sourceSessionId = currentChatSessionId.value;
-                    if (!sourceChatId || !isActiveChat(sourceChatId, sourceSessionId)) return;
+                    if (!sourceChatId || isWaitingResponse.value || isStreaming.value || isGeneratingImage.value) return;
+                    if (currentChatType.value !== 'character') {
+                        showToast('Фото можно генерировать только в чате с персонажем', 'error');
+                        return;
+                    }
 
                     isWaitingResponse.value = true;
+                    scrollToBottom();
+
                     try {
-                        const res = await axios.post(`/api/image-gen/${sourceChatId}/generate`);
+                        const response = await axios.post(`/api/chat/${sourceChatId}/generate-image`);
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return;
 
-                        // Check if we got task_id (async) or url (sync fallback)
-                        if (res.data.task_id) {
-                            const clientTaskId = res.data.task_id;
-                            // Add placeholder message
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: null,
-                                isGenerating: true,
-                                nsfw_level: 0,
-                                clientTaskId,
-                                task_id: clientTaskId
-                            });
-                            scrollToBottom();
-                            isWaitingResponse.value = false;
-
-                            // Start polling in background
-                            pollImageTask(
-                                clientTaskId,
-                                (result) => {
-                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
-                                    if (result.chat_id !== undefined && Number(result.chat_id) !== Number(sourceChatId)) return;
-                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
-                                    if (placeholderIndex === -1) return;
-                                    // Update placeholder with actual image
-                                    chatHistory.value[placeholderIndex] = {
-                                        role: 'assistant',
-                                        avatar: result.url,
-                                        nsfw_level: result.nsfw_level || 0
-                                    };
-                                    scrollToBottom();
-                                    isWaitingResponse.value = false;
-                                },
-                                (error) => {
-                                    if (!isActiveChat(sourceChatId, sourceSessionId)) return;
-                                    const placeholderIndex = chatHistory.value.findIndex(msg => msg.clientTaskId === clientTaskId);
-                                    // Remove placeholder and show error
-                                    if (placeholderIndex !== -1) {
-                                        chatHistory.value.splice(placeholderIndex, 1);
-                                    }
-                                    const message = (
-                                        error === 'Не удалось создать real фото через Replicate'
-                                        || error === 'Не удалось применить лицо к фото, попробуйте еще раз'
-                                    )
-                                        ? error
-                                        : 'Не удалось создать фото: ' + error;
-                                    showToast(message);
-                                    isWaitingResponse.value = false;
-                                },
-                                { expectedChatId: sourceChatId }
-                            );
-                        } else if (res.data.url) {
-                            if (res.data.chat_id !== undefined && Number(res.data.chat_id) !== Number(sourceChatId)) return;
-                            // Sync fallback - got URL directly
-                            chatHistory.value.push({
-                                role: 'assistant',
-                                avatar: res.data.url,
-                                nsfw_level: res.data.nsfw_level || 0
-                            });
-                            scrollToBottom();
-                            isWaitingResponse.value = false;
-                        } else {
-                            showToast('Не удалось создать фото');
-                            isWaitingResponse.value = false;
+                        startImageJobPolling(response.data, sourceChatId, sourceSessionId);
+                    } catch (error) {
+                        console.error('Image generation failed:', error);
+                        if (isActiveChat(sourceChatId, sourceSessionId) && error.response?.status !== 429) {
+                            showToast(error.response?.data?.detail || 'Ошибка генерации фото', 'error');
                         }
-                    } catch (e) {
-                        if (isActiveChat(sourceChatId, sourceSessionId) && e.response?.status !== 429) {
-                            showToast('Не удалось создать фото');
-                        }
-                        if (isActiveChat(sourceChatId, sourceSessionId)) {
+                    } finally {
+                        if (isCurrentChatSession(sourceChatId, sourceSessionId)) {
                             isWaitingResponse.value = false;
                         }
                     }
@@ -3001,6 +2896,8 @@
                         chatHistory.value = response.data.first_message
                             ? [{ role: 'assistant', content: response.data.first_message }]
                             : [];
+                        clearImageJobPolling();
+                        setActiveImageJob(null);
                         await nextTick();
                         scrollToBottom();
                         showToast('Сценарий сброшен', 'success');
@@ -3031,6 +2928,8 @@
                     try {
                         await axios.delete(`/api/chat/${sourceChatId}/undo`);
                         if (isActiveChat(sourceChatId, sourceSessionId)) {
+                            clearImageJobPolling();
+                            setActiveImageJob(null);
                             showToast('Сообщения удалены', 'success');
                         }
                     } catch (e) {
@@ -3066,6 +2965,8 @@
                     try {
                         await axios.delete(`/api/chat/${sourceChatId}/undo`);
                         if (!isActiveChat(sourceChatId, sourceSessionId)) return;
+                        clearImageJobPolling();
+                        setActiveImageJob(null);
                         inputMessage.value = oldText;
                         await nextTick();
                         if (inputField.value) {
@@ -3167,7 +3068,7 @@
 
                 const isNsfw = (tags) => {
                     if (!tags) return false;
-                    return tags.some(t => ['NSFW', 'Erotic', 'Taboo', 'Adult'].includes(t));
+                    return tags.some(t => ['NSFW', 'Erotic', 'Taboo', ''].includes(t));
                 };
 
                 const expandImage = (url) => {
@@ -3303,8 +3204,6 @@
                     characters_created: 'создания персонажей',
                     worlds_created: 'создания вселенных',
                     content_edits: 'редактирования',
-                    avatar_generations: 'генерации аватаров',
-                    images: 'изображений',
                 };
 
                 const blockIfLimitReached = (usageType) => {
@@ -3319,9 +3218,117 @@
                 };
 
                 // --- CREATE CHARACTER ---
+                const buildCharacterPayload = () => {
+                    const d = createCharacterData.value;
+                    const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
+                    return {
+                        name: d.name,
+                        short_description: d.short_description,
+                        description: d.description,
+                        personality: d.personality,
+                        scenario: d.scenario,
+                        first_message: d.first_message,
+                        heat_level: d.heat_level || 0,
+                        alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
+                        gender: d.gender,
+                        model_type: d.model_type,
+                        appearance: d.appearance,
+                        visual_body: d.visual_body,
+                        visual_face: d.visual_face,
+                        visual_default_outfit: d.visual_default_outfit,
+                        wardrobe: d.wardrobe,
+                        tags: tags,
+                        is_public: d.is_public,
+                    };
+                };
+
+                const resetCreateCharacterAvatar = () => {
+                    createCharacterAvatar.value = defaultCreateCharacterAvatar();
+                };
+
+                const validateCharacterVisualFields = () => {
+                    const d = createCharacterData.value;
+                    if (!d.appearance || !d.appearance.trim()) {
+                        showToast('Заполните поле внешности');
+                        return false;
+                    }
+                    const cyrillicRe = /[а-яёА-ЯЁ]/;
+                    const visualFields = [
+                        d.appearance,
+                        d.visual_body,
+                        d.visual_face,
+                        d.visual_default_outfit,
+                        ...Object.values(d.wardrobe || {}),
+                    ];
+                    if (visualFields.some(f => f && cyrillicRe.test(f))) {
+                        showToast('Поля внешности должны быть на английском');
+                        return false;
+                    }
+                    return true;
+                };
+
+                const selectCharacterAvatar = (url) => {
+                    if (characterAvatarIsStale.value) return;
+                    createCharacterAvatar.value.selected_avatar_url = url;
+                };
+
+                const generateCharacterAvatar = async () => {
+                    if (editingCharacterId.value || isGeneratingCharacterAvatar.value) return;
+                    const d = createCharacterData.value;
+                    if (!d.name.trim()) {
+                        showToast('Введите имя персонажа');
+                        return;
+                    }
+                    if (d.model_type === 'manhwa' && d.gender !== 'male') {
+                        showToast('Manhwa доступен только для мужских персонажей');
+                        return;
+                    }
+                    if (!validateCharacterVisualFields()) return;
+
+                    isGeneratingCharacterAvatar.value = true;
+                    try {
+                        const payload = buildCharacterPayload();
+                        const res = await axios.post('/api/create_character/avatar', {
+                            name: payload.name,
+                            gender: payload.gender,
+                            model_type: payload.model_type,
+                            appearance: payload.appearance,
+                            visual_body: payload.visual_body,
+                            visual_face: payload.visual_face,
+                            visual_default_outfit: payload.visual_default_outfit,
+                            wardrobe: payload.wardrobe,
+                        });
+                        createCharacterAvatar.value = {
+                            draft_id: res.data.draft_id,
+                            avatar_urls: res.data.avatar_urls || [],
+                            selected_avatar_url: res.data.selected_avatar_url || res.data.avatar_url,
+                            free_generations_used: res.data.free_generations_used || 0,
+                            paid_generations_used: res.data.paid_generations_used || 0,
+                            free_generations_remaining: res.data.free_generations_remaining || 0,
+                            appearance_signature: characterAvatarSignature.value,
+                        };
+                        showToast(res.data.charged ? 'Аватарка сгенерирована, лимит фото списан' : 'Аватарка сгенерирована', 'success');
+                        if (res.data.charged) loadSubscription();
+                    } catch (e) {
+                        console.error(e);
+                        console.error('Avatar generation response:', e.response?.data);
+                        if (e.response?.status !== 429) {
+                            const detail = e.response?.data?.detail;
+                            const message = typeof detail === 'string'
+                                ? detail
+                                : detail?.message
+                                    || (Array.isArray(detail) ? detail[0]?.msg : null)
+                                    || e.response?.data?.message
+                                    || 'Ошибка генерации аватарки';
+                            showToast(message);
+                        }
+                    } finally {
+                        isGeneratingCharacterAvatar.value = false;
+                    }
+                };
+
                 const setCreateCharacterGender = (gender) => {
                     createCharacterData.value.gender = gender;
-                    createCharacterData.value.body_profile = defaultBodyProfile(gender);
                     if (gender !== 'male' && createCharacterData.value.model_type === 'manhwa') {
                         createCharacterData.value.model_type = 'anime';
                     }
@@ -3331,10 +3338,7 @@
                     if (blockIfLimitReached('characters_created')) return;
                     currentView.value = "create-character";
                     createCharacterData.value = defaultCreateCharacterData();
-                    newCharacterPreview.value = null;
-                    generatedAvatars.value = [];
-                    selectedAvatarIndex.value = 0;
-                    avatarGenCount.value = 0;
+                    resetCreateCharacterAvatar();
                     editingCharacterId.value = null;
                     ccStep.value = 0;
                 }
@@ -3360,16 +3364,10 @@
                             visual_face: c.visual_face || '',
                             visual_default_outfit: c.visual_default_outfit || '',
                             wardrobe: c.wardrobe || {},
-                            custom_avatar: c.custom_avatar || false,
-                            identity_consent_confirmed: c.custom_avatar || false,
-                            body_profile: c.body_profile || defaultBodyProfile(c.gender || 'female'),
                             tags_str: (c.tags || []).join(', '),
                             is_public: c.is_public !== false,
                         };
-                        newCharacterPreview.value = c.avatar || null;
-                        generatedAvatars.value = c.avatar ? [c.avatar] : [];
-                        selectedAvatarIndex.value = 0;
-                        avatarGenCount.value = 0;
+                        resetCreateCharacterAvatar();
                         editingCharacterId.value = characterId;
                         ccStep.value = 0;
                         closeModal();
@@ -3379,42 +3377,12 @@
                     }
                 }
 
-                const handleCustomAvatarUpload = async (event) => {
-                    const file = event.target.files[0];
-                    if (!file) return;
-                    if (file.size > 5 * 1024 * 1024) {
-                        showToast('Файл слишком большой (макс. 5MB)');
-                        return;
-                    }
-                    isUploadingAvatar.value = true;
-                    try {
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        const res = await axios.post('/api/create_character/upload-avatar', formData, {
-                            headers: { 'Content-Type': 'multipart/form-data' }
-                        });
-                        newCharacterPreview.value = res.data.url;
-                        createCharacterData.value.custom_avatar = true;
-                        createCharacterData.value.model_type = 'real';
-                        showToast('Фото загружено!');
-                    } catch (e) {
-                        showToast('Ошибка загрузки фото');
-                        createCharacterData.value.custom_avatar = false;
-                    } finally {
-                        isUploadingAvatar.value = false;
-                        event.target.value = '';
-                    }
-                };
-
                 const ccNextStep = () => {
                     const d = createCharacterData.value;
                     if (ccStep.value === 0) {
                         if (!d.name.trim()) {
                             showToast('Введите имя персонажа');
                             return;
-                        }
-                        if (d.custom_avatar) {
-                            d.model_type = 'real';
                         }
                         if (d.model_type === 'manhwa' && d.gender !== 'male') {
                             showToast('Manhwa доступен только для мужских персонажей');
@@ -3426,16 +3394,7 @@
                             return;
                         }
                     } else if (ccStep.value === 2) {
-                        if (!d.custom_avatar && (!d.appearance || !d.appearance.trim())) {
-                            showToast('Заполните поле внешности');
-                            return;
-                        }
-                        const cyrillicRe = /[а-яёА-ЯЁ]/;
-                        const visualFields = [d.appearance, d.visual_body, d.visual_face, d.visual_default_outfit];
-                        if (!d.custom_avatar && visualFields.some(f => f && cyrillicRe.test(f))) {
-                            showToast('Поля внешности должны быть на английском');
-                            return;
-                        }
+                        if (!validateCharacterVisualFields()) return;
                     }
                     if (ccStep.value < 3) ccStep.value++;
                 };
@@ -3454,49 +3413,6 @@
                         ccStep.value = step;
                     }
                 };
-
-                const isGeneratingPreview = ref(false);
-
-                const generateNewCharacterPreview = async () => {
-                    if (isGeneratingPreview.value) return;
-                    if (blockIfLimitReached('avatar_generations')) return;
-                    isGeneratingPreview.value = true;
-                    try {
-                        const res = await axios.post('/api/create_character/generate-avatar', {
-                            gender: createCharacterData.value.gender,
-                            model_type: createCharacterData.value.model_type,
-                            appearance: createCharacterData.value.appearance,
-                            body: createCharacterData.value.visual_body,
-                            face: createCharacterData.value.visual_face,
-                            default_outfit: createCharacterData.value.visual_default_outfit,
-                        });
-
-                        const onAvatarGenerated = (url) => {
-                            generatedAvatars.value.push(url);
-                            selectedAvatarIndex.value = generatedAvatars.value.length - 1;
-                            newCharacterPreview.value = url;
-                            avatarGenCount.value++;
-                            isGeneratingPreview.value = false;
-                            loadSubscription();
-                        };
-
-                        if (res.data.task_id) {
-                            pollImageTask(
-                                res.data.task_id,
-                                (result) => onAvatarGenerated(result.url),
-                                (error) => {
-                                    showToast('Ошибка генерации аватара');
-                                    isGeneratingPreview.value = false;
-                                }
-                            );
-                        } else if (res.data.url) {
-                            onAvatarGenerated(res.data.url);
-                        }
-                    } catch (e) {
-                        showToast('Ошибка генерации аватара');
-                        isGeneratingPreview.value = false;
-                    }
-                }
 
                 const addAlternateGreeting = () => {
                     createCharacterData.value.alternate_greetings.push('');
@@ -3535,54 +3451,32 @@
                         showToast('Manhwa доступен только для мужских персонажей');
                         return;
                     }
-                    if (d.custom_avatar) {
-                        d.model_type = 'real';
-                        if (!newCharacterPreview.value) {
-                            showToast('Загрузите фото');
+                    if (!editingCharacterId.value) {
+                        if (characterAvatarIsStale.value) {
+                            showToast('Аватарка устарела, сгенерируйте новую');
                             return;
                         }
-                        if (!d.identity_consent_confirmed) {
-                            showToast('Подтвердите согласие на использование фото');
+                        if (!selectedCharacterAvatarUrl.value || !createCharacterAvatar.value.draft_id) {
+                            showToast('Сгенерируйте аватарку перед созданием персонажа');
                             return;
                         }
                     }
 
                     isCreatingCharacter.value = true;
                     try {
-                        const tags = d.tags_str ? d.tags_str.split(',').map(t => t.trim()).filter(t => t) : [];
-                        const payload = {
-                            name: d.name,
-                            short_description: d.short_description,
-                            description: d.description,
-                            personality: d.personality,
-                            scenario: d.scenario,
-                            first_message: d.first_message,
-                            heat_level: d.heat_level || 0,
-                            alternate_greetings: d.alternate_greetings.filter(g => g.trim()),
-                            gender: d.gender,
-                            model_type: d.model_type,
-                            appearance: d.appearance,
-                            visual_body: d.visual_body,
-                            visual_face: d.visual_face,
-                            visual_default_outfit: d.visual_default_outfit,
-                            wardrobe: d.wardrobe,
-                            avatar_url: newCharacterPreview.value,
-                            custom_avatar: d.custom_avatar,
-                            identity_consent_confirmed: d.identity_consent_confirmed,
-                            body_profile: d.custom_avatar ? d.body_profile : null,
-                            tags: tags,
-                            is_public: d.is_public,
-                        };
+                        const payload = buildCharacterPayload();
 
                         if (editingCharacterId.value) {
                             await axios.put(`/api/characters/${editingCharacterId.value}`, payload);
                             showToast('Персонаж обновлён!');
                             createCharacterData.value = defaultCreateCharacterData();
-                            newCharacterPreview.value = null;
+                            resetCreateCharacterAvatar();
                             editingCharacterId.value = null;
                             currentView.value = 'selection';
                             loadCharacters();
                         } else {
+                            payload.avatar_draft_id = createCharacterAvatar.value.draft_id;
+                            payload.selected_avatar_url = selectedCharacterAvatarUrl.value;
                             const createRes = await axios.post('/api/create_character', payload);
                             const characterId = createRes.data.character_id;
 
@@ -3590,7 +3484,7 @@
 
                             const chatMeta = {
                                 name: d.name,
-                                avatar: newCharacterPreview.value
+                                avatar: createRes.data.avatar || selectedCharacterAvatarUrl.value || null
                             };
 
                             const chatRes = await axios.post('/api/chat/create', {
@@ -3600,7 +3494,7 @@
                             });
 
                             createCharacterData.value = defaultCreateCharacterData();
-                            newCharacterPreview.value = null;
+                            resetCreateCharacterAvatar();
                             editingCharacterId.value = null;
 
                             await openChat(chatRes.data.chat_id, chatMeta);
@@ -3804,9 +3698,10 @@
                 return {
                     currentView, tab, subTab, setSubTab, characters, worlds, activeChats,
                     loadChats, selectItem, openChat, backToMenu,
-                    chatHistory, inputMessage, sendMessage, requestPhoto,
-                    currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId, currentChatCustomAvatar, currentChatPhotoGenerationAvailable,
-                    isWaitingResponse, isStreaming, isUndoing, messagesContainer, inputField,
+                    chatHistory, inputMessage, sendMessage,
+                    currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
+                    isWaitingResponse, isStreaming, isUndoing, isGeneratingImage, messagesContainer, inputField,
+                    generateImage,
                     undoTargetIndex, undoLastTurn, editLastMessage,
                     handleTextareaKey, handleMessagesClick,
                     formatDate, formatMessage, resetChat, isNsfw, expandImage,
@@ -3820,14 +3715,13 @@
                     goToTab, goToProfile, shareMyProfile, showFullSubscription, getInitials,
                     filterOptions, characterFilters, worldFilters, loadCharacters, loadWorlds, debouncedLoadCharacters, debouncedLoadWorlds,
                     toast, autoContinue, hideKeyboard,
-                    createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData, newCharacterPreview,
-                    generateNewCharacterPreview, isGeneratingPreview,
-                    generatedAvatars, selectedAvatarIndex, avatarGenCount, avatarGenerationAllowed,
+                    createCharacterOnClick, editCharacterOnClick, editingCharacterId, createCharacterData,
+                    createCharacterAvatar, isGeneratingCharacterAvatar,
+                    selectedCharacterAvatarUrl, characterAvatarIsStale, characterAvatarHint,
+                    generateCharacterAvatar, selectCharacterAvatar,
                     modelTypeLabel, setCreateCharacterGender,
-                    femaleBodyTypes, maleBodyTypes, heightOptions, breastSizeOptions, buttSizeOptions, outfitPresetOptions,
                     characterCreatorSteps, heatLevelOptions,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
-                    handleCustomAvatarUpload, isUploadingAvatar, customAvatarInput,
                     addAlternateGreeting, removeAlternateGreeting,
                     addWardrobeItem, removeWardrobeItem, renameWardrobeKey,
                     isCreatingCharacter, createCharacterFinal,
@@ -3850,7 +3744,7 @@
                     // Age confirmation
                     showAgeConfirmation, isConfirmingAge, confirmAge, declineAge,
                     // NSFW Blur
-                    revealedImages, shouldBlurImage, shouldBlurCard, isRevealed, reveal, revealCard,
+                    revealedImages, shouldBlurCard, isRevealed, reveal, revealCard,
                     generateAutoReply,
                     // Swipe to delete chat
                     chatSwipeStyles, handleChatRowClick,

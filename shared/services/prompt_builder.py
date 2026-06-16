@@ -17,16 +17,6 @@ PLAYER_OUTPUT_GUARD = """
 """
 
 
-def _remove_auto_photo_instruction(prompt: str) -> str:
-    lines = [
-        line
-        for line in prompt.splitlines()
-        if "send_photo" not in line
-    ]
-    text = "\n".join(lines)
-    return text.replace(",\n}", "\n}")
-
-
 async def _get_common_style_guide() -> str:
     return await get_prompt("common_style_guide")
 
@@ -50,12 +40,12 @@ async def _get_meta_instruction(allow_nsfw: bool = True) -> str:
         prompt = await get_prompt(key)
         if _is_legacy_meta_instruction(prompt):
             logging.warning("Legacy meta prompt detected for '%s', using compact default", key)
-            return _remove_auto_photo_instruction(DEFAULT_PROMPTS[key])
-        return _remove_auto_photo_instruction(prompt)
+            return DEFAULT_PROMPTS[key]
+        return prompt
     except KeyError:
         if not allow_nsfw:
             logging.warning(f"SFW prompt '{key}' not found, falling back to default")
-            return _remove_auto_photo_instruction(await get_prompt("meta_instruction"))
+            return await get_prompt("meta_instruction")
         raise
 
 

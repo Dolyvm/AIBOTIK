@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Boolean,
-    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger, UniqueConstraint
+    ForeignKey, Enum as SQLEnum, ARRAY, BigInteger, UniqueConstraint, Index
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +36,6 @@ class TransactionSource(enum.Enum):
     DAILY_BONUS = "daily_bonus"
     PURCHASE = "purchase"
     MESSAGE_SENT = "message_sent"
-    IMAGE_GENERATED = "image_generated"
     ADMIN_GRANT = "admin_grant"
 
 
@@ -63,6 +62,7 @@ class User(Base):
     settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
     images = relationship("GeneratedImage", back_populates="user", cascade="all, delete-orphan")
+    image_generation_jobs = relationship("ImageGenerationJob", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
     monthly_usages = relationship("MonthlyUsage", back_populates="user", cascade="all, delete-orphan")
     subscription_payments = relationship("SubscriptionPayment", back_populates="user", cascade="all, delete-orphan")
@@ -95,6 +95,7 @@ class Character(Base):
     description = Column(Text, nullable=False)
     short_description = Column(String(30), nullable=True, default="")
     personality = Column(Text, nullable=False)
+    total_message_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     visual_data = Column(JSONB, nullable=False)
     scenarios = Column(JSONB, default=[])
@@ -169,6 +170,7 @@ class Chat(Base):
     user = relationship("User", back_populates="chats")
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
     images = relationship("GeneratedImage", back_populates="chat", cascade="all, delete-orphan")
+    image_generation_jobs = relationship("ImageGenerationJob", back_populates="chat", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="chat")
 
 
@@ -203,15 +205,16 @@ class GeneratedImage(Base):
     local_path = Column(String(500), nullable=True)
 
     prompt = Column(Text, nullable=False)
+    prompt_metadata = Column(JSONB, default=dict, nullable=False)
 
     file_size = Column(Integer, nullable=True)  
     content_type = Column(String(50), nullable=True)  
-    nsfw_level = Column(Integer, default=0, nullable=True)  
 
     created_at = Column(DateTime, server_default=func.now())
 
     user = relationship("User", back_populates="images")
     chat = relationship("Chat", back_populates="images")
+    generation_jobs = relationship("ImageGenerationJob", back_populates="image")
 
     @property
     def public_url(self) -> str:
@@ -219,6 +222,40 @@ class GeneratedImage(Base):
             from shared.config import IMAGES_BASE_URL
             return f"{IMAGES_BASE_URL}/{self.local_path}"
         return self.provider_url  
+
+
+class ImageGenerationJob(Base):
+    """Persistent status for chat image generation jobs."""
+    __tablename__ = "image_generation_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.telegram_id", ondelete="CASCADE"), nullable=False)
+    chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), default="queued", nullable=False)
+
+    arq_job_id = Column(String(255), nullable=True)
+    image_id = Column(Integer, ForeignKey("generated_images.id", ondelete="SET NULL"), nullable=True)
+    request_payload = Column(JSONB, default=dict, nullable=False)
+    error_code = Column(String(100), nullable=True)
+    error_message = Column(String(500), nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="image_generation_jobs")
+    chat = relationship("Chat", back_populates="image_generation_jobs")
+    image = relationship("GeneratedImage", back_populates="generation_jobs")
+
+    __table_args__ = (
+        Index(
+            "uq_image_generation_jobs_active_chat",
+            "chat_id",
+            unique=True,
+            postgresql_where=status.in_(("queued", "running")),
+        ),
+    )
 
 
 class Transaction(Base):

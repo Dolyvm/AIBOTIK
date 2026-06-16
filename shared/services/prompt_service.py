@@ -26,16 +26,77 @@ _prompt_cache_initialized: bool = False
 
 DEFAULT_PROMPTS = {
     LLM_ACTIVE_MODEL_PROMPT_KEY: "deepseek/deepseek-v4-flash",
-    "anime_base_negative": "lowres, bad quality, worst quality, bad anatomy, bad hands, extra digits, multiple views, sketch, jpeg artifacts, watermark, signature, text, error",
-    "anime_base_positive": "masterpiece, best quality, general, anime style, soft shadows, ambient lighting",
-    "real_base_positive": "photorealistic, single adult subject, RAW photo, realistic human anatomy, proportional body, balanced studio-quality lighting, high aesthetic quality",
-    "real_base_negative": "overweight, cellulite, sagging skin, sagging breasts, belly folds, masculine anatomy on female, feminine anatomy on male, extra limbs, missing limbs, deformed anatomy, bad proportions, malformed hands, extra fingers, missing fingers, fused fingers, bad legs, deformed legs, bad feet, deformed face, asymmetrical face, distorted genitals, bad hands, blurry, low quality, watermark, text, cgi, 3d render, cartoon, anime, illustration, plastic skin, waxy skin",
-    "real_base_positive_female": "photorealistic adult woman, single subject, RAW photo, realistic female anatomy, proportional body, natural face, realistic skin texture",
-    "real_base_negative_female": "male, man, penis, bulge, testicles, mixed male and female anatomy, masculine anatomy, beard, body hair, overweight, cellulite, sagging skin, sagging breasts, belly folds, deformed breasts, distorted nipples, extra limbs, missing limbs, deformed anatomy, bad proportions, malformed hands, extra fingers, missing fingers, fused fingers, bad legs, deformed legs, bad feet, deformed face, asymmetrical face, blurry, low quality, watermark, text, cgi, 3d render, cartoon, anime, illustration, plastic skin, waxy skin",
-    "real_base_positive_male": "photorealistic adult man, single subject, RAW photo, realistic male anatomy, proportional body, natural face, realistic skin texture",
-    "real_base_negative_male": "female, woman, breasts, feminine anatomy, narrow shoulders, overweight, cellulite, sagging skin, belly folds, deformed anatomy, distorted genitals, extra limbs, missing limbs, bad proportions, malformed hands, extra fingers, missing fingers, fused fingers, bad legs, deformed legs, bad feet, deformed face, asymmetrical face, blurry, low quality, watermark, text, cgi, 3d render, cartoon, anime, illustration, plastic skin, waxy skin",
-    "manhwa_base_positive": "masterpiece, best quality, amazing quality, very aesthetic, SemiNrealism, semi-realistic, male, 1boy, solo, male focus, adult man, bishounen, handsome man, korean manhwa style, soft niji style, watercolor-like rendering, painterly",
-    "manhwa_base_negative": "female, 1girl, woman, child, teen, shota, boyish, low quality, worst quality, blurry, bad anatomy, bad hands, extra fingers, missing fingers, deformed face, ugly, flat lighting, simple background, text, watermark, signature, censored",
+    "photo_scene_extractor": """Ты собираешь короткое визуальное ТЗ для генерации одного изображения персонажа.
+
+Используй только JSON character, photo_state и recent_messages из сообщения пользователя. Recent_messages уже содержит только последние 5 сообщений; не выдумывай старую историю.
+
+Правила:
+- На изображении ровно один персонаж: сам character. Игрока, пользователя и других людей не добавлять.
+- Для male characters не упоминай woman/girl/companion; описывай только male character.
+- Позу, выражение лица, эмоцию и окружение бери только из последних сообщений.
+- Не добавляй clothing/outfit tags в pose, setting или composition.
+- primary_pose — только положение тела или действие. Не используй looking at viewer, hands, camera angle или framing как primary_pose.
+- pose_modifiers — gaze, hands, legs, small secondary pose details.
+- composition — кадрирование/угол: full body, cowboy shot, upper body, dynamic angle, close-up.
+- setting разделяй на place, background_objects и lighting.
+- exposure_intent: safe, nude или explicit_focus. Nude/naked без явного visible/expose гениталий = nude, не explicit_focus.
+- Одежда заблокирована через photo_state.current_outfit. Не меняй её по настроению, локации, позе или общей атмосфере.
+- outfit_action="none" почти всегда: если в последних сообщениях нет явной смены одежды, раздевания или возврата к обычной одежде.
+- outfit_action="default", только если персонаж явно возвращается к обычной/базовой одежде.
+- outfit_action="wardrobe", только если последние сообщения явно выбирают один вариант из photo_state.wardrobe или сцена очевидно требует underwear/nude/swimwear.
+- При nude/naked выбирай outfit_action="wardrobe" и wardrobe_key="nude", если такой ключ есть.
+- outfit_action="custom", только если пользователь явно просит одежду, которой нет в wardrobe, в том числе nude.
+- wardrobe_key должен быть существующим ключом из photo_state.wardrobe или пустой строкой.
+- custom_clothing не заполняй, если outfit_action не "custom".
+- Не описывай действия игрока. Не добавляй текст, подписи, интерфейс, speech bubbles.
+- Верни только валидный JSON без markdown.
+- Все значения пиши коротко на английском.
+
+Формат:
+{
+  "primary_pose": "body pose/action only, max 6 words",
+  "pose_modifiers": "comma-separated gaze/hands/legs details, max 8 words",
+  "expression": "specific facial expression, max 3 words",
+  "emotion": "short mood, max 3 words",
+  "composition": "single framing/camera tag",
+  "place": "specific place",
+  "background_objects": "2-3 visible background object tags",
+  "lighting": "short lighting tag",
+  "exposure_intent": "safe|nude|explicit_focus",
+  "outfit_action": "none|default|wardrobe|custom",
+  "wardrobe_key": "existing wardrobe key only, otherwise empty string",
+  "custom_clothing": "explicit non-wardrobe outfit only, otherwise empty string"
+}""",
+    "photo_prompt_real_female": "single  woman, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags}",
+    "photo_prompt_real_male": "single  man, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, {face}, {style_tags},",
+    "photo_prompt_anime_female": "{subject_tags}, {appearance}, {body}, {face}, {clothing}, {rating_tags}, {nudity_tags}, {focus_tags}, {expression}, {pose}, {composition}, {setting}, {style_tags}, {quality_tags}",
+    "photo_prompt_anime_male": "{subject_tags}, {appearance}, {body}, {face}, {clothing}, {rating_tags}, {nudity_tags}, {focus_tags}, {expression}, {pose}, {composition}, {setting}, {style_tags}, {quality_tags}",
+    "photo_negative_anime_female": "multiple people, man, boy, bad anatomy, bad hands, extra fingers, low quality, text, watermark, logo, cropped, out of frame",
+    "photo_negative_anime_male": "woman, girl, multiple people, bad anatomy, bad hands, low quality, text, watermark, logo, cropped, out of frame",
+    "photo_policy_anime_filler_tags": "anime style, anime illustration, detailed background, detailed face, high quality, best quality",
+    "photo_policy_anime_user_quality_tags": "masterpiece, masterpiec, best quality, high quality, great quality, low quality, absurdres",
+    "photo_policy_anime_rating_safe": "safe",
+    "photo_policy_anime_rating_nsfw": "nsfw",
+    "photo_policy_anime_rating_explicit": "explicit, nsfw",
+    "photo_policy_anime_nudity_tags": "nude",
+    "photo_policy_anime_focus_tags": "uncensored",
+    "photo_policy_anime_quality_tags": "high score, great score",
+    "photo_policy_anime_avatar_quality_tags": "high score",
+    "photo_policy_anime_subject_female": "1girl, solo",
+    "photo_policy_anime_subject_male": "1boy, solo",
+    "photo_policy_anime_negative_explicit": "censored, censor bar, mosaic censoring",
+    "photo_policy_avatar_scene": '{"pose":"looking at viewer","expression":"soft smile","composition":"upper body","setting":"simple background","exposure_intent":"safe","emotion":"calm","scene_notes":""}',
+    "photo_policy_avatar_default_outfit": "casual outfit",
+    "photo_policy_real_default_outfit": "casual modern outfit",
+    "photo_policy_real_clothed_prefix": "fully clothed",
+    "photo_policy_real_default_outfit_priority": "casual, formal, business, office, everyday, sleepwear, gym",
+    "photo_policy_default_style_tags_real": "soft natural lighting, film photography, warm tones",
+    "photo_policy_default_style_tags_anime": "",
+    "photo_policy_default_style_tags_manhwa": "",
+    "photo_policy_manhwa_style_tags": "manhwa style, webtoon style, clean line art",
+    "photo_policy_default_wardrobe_female": '{"nude":"nothing, showing her naked body","underwear":"white bra, white panties"}',
+    "photo_policy_default_wardrobe_male": '{"nude":"nothing, showing his naked body","underwear":"black boxer briefs"}',
+
     "behavior_affinity_cold": "Ты осторожен и держишь границы, не спеши доверять или поддерживать флирт. Реагируй строго в рамках своего характера.",
     "behavior_affinity_love": "Ты полностью доверяешь игроку - свободно выражай желания, эмоции и инициативу. Интимность без ограничений. Но при этом всегда сохраняй характер и манеру общения.\r\n\r\n\r\n",
     "behavior_affinity_neutral": "Ты воспринимаешь Игрока как знакомого начинаешь раскрываться, допускается лёгкий флирт и эмоциональная близость. Но всё ещё сохраняй осторожность и личные границы. Реагируй строго в рамках своего характера.\r\n",
@@ -1022,60 +1083,10 @@ DEFAULT_PROMPTS = {
     "common_style_guide": "Отвечай исключительно на русском языке. В художественном стиле, 3-5 коротких абзацев. Никогда не описывай действия или мысли или эмоции пользователя (Игрока).\r\n\r\nОсновное повествование веди от третьего лица (он / она / персонаж). Используй прошедшее время для описания действий и повествования. Если нужно обратиться к игроку или упомянуть игрока — используй только второе лицо (ты / твой).\r\n\r\nПрямую речь оформляй через тире, с нового абзаца.\n\nПеред отправкой проверь орфографию, падежи, согласование слов и случайные склейки слов.\r\n\r\nАктивно придумывай и развивай сюжет.\r\n\r\nЕсли сцена переходит в эротическую плоскость, описывай процесс максимально детально. Используй больше описаний половых органов, добавляй больше \"грязных словечек\" - член, клитор, анал и прочее. \r\n\r\nСТРОГО ЗАПРЕЩЕНО:\r\nЗапрещено описывать в тексте чувства, мысли, эмоции или действия пользователя (игрока).\r\nЗапрещено использовать markdown, списки, звёздочки, role labels и технические комментарии.",
     "meta_instruction": "\nКРИТИЧНО: первая строка каждого ответа обязана быть ровно meta-блоком с валидным JSON:\n<meta>{\"mood\":\"neutral\",\"thought\":\"Короткая мысль персонажа.\",\"new_location\":null,\"new_action\":\"short_action\"}</meta>\n\nПоля обязательны: mood, thought, new_location, new_action. thought на русском. new_location и new_action: короткий английский snake_case или null. Не добавляй affinity_change, arousal_change и лишние поля. После </meta> сразу пиши художественный ответ персонажа.\n",
     "meta_instruction_sfw": "\nКРИТИЧНО: первая строка каждого ответа обязана быть ровно meta-блоком с валидным JSON:\n<meta>{\"mood\":\"neutral\",\"thought\":\"Короткая мысль персонажа.\",\"new_location\":null,\"new_action\":\"short_action\"}</meta>\n\nSFW: без explicit-сцен, раздевания и сексуальных действий; допустимы романтика, флирт, объятия, держание за руки и сдержанные поцелуи.\nПоля обязательны: mood, thought, new_location, new_action. Не добавляй affinity_change, arousal_change и лишние поля. После </meta> сразу пиши художественный ответ персонажа.\n",
-    "nsfw_level_0": "",
-    "nsfw_level_0_neg": "sensual, explicit, nudity, sexual act, lingerie, nsfw",
-    "nsfw_level_1": "",
-    "nsfw_level_1_neg": "nudity, sexual act",
-    "nsfw_level_2": "sensual clothed pose, teasing expression, fully clothed, fitted opaque outfit, covered styling",
-    "nsfw_level_2_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration",
-    "nsfw_level_3": "partial nudity, topless or shirtless, exposed chest, suggestive pose, aroused expression",
-    "nsfw_level_3_neg": "fully nude, visible genitals, penetration, explicit sex",
-    "nsfw_level_4": "nsfw, naked body, nude pussy, aroused",
-    "nsfw_level_4_neg": "general, clothes",
-    "nsfw_level_5": "extreme erotic, explicit, nsfw, orgasm, extremely aroused, masturbating, touching her pussy",
-    "nsfw_level_5_neg": "general",
     "player_prompt": "Сгенерируй одно автосообщение от игрока ({user_name}) на русском. \r\n\r\nПоследняя реплика/действие персонажа {character_name}:\r\n\"{last_character_message}\"\r\n\r\nСтиль прошлых сообщений игрока, не копировать дословно:\r\n{style_examples}\r\n\r\n2-3 предложения от первого лица игрока. Конкретное действие или естественная реплика по сцене, а не общая театральная фраза. Не пиши за персонажа, не повторяй прошлые сообщения игрока, не добавляй JSON, <meta>, markdown, заголовки или role labels.",
-    "scene_analyzer_prompt": "Return ONLY flat JSON in English.\nCharacter: {character_name}; model: {model_type}; mood: {mood}; heat: {heat_context}; location: {current_location}.\nChat:\n{formatted_chat}\n\nOutfits:\n{available_outfits}\n\nFields: location = place + time, max 4 words, story-consistent. pose = only {gender_possessive} body pose, max 8 words. outfit_key = one listed outfit; use \"nude\" only for nsfw_level 4-5. emotion = short visual tags. nsfw_level: 0 clothed, 1 teasing clothed, 2 sensual but still fully clothed, 3 partial nudity ({nsfw_level_3_desc}), 4 nude, 5 explicit activity. Heat sets maximum tone; use recent chat, character reaction, arousal and relationship state together instead of requiring one exact keyword. Negative mood max 1. nsfw_tags empty unless level 4-5; then compact visual tags from actual scene only. scene_description = 2-4 lighting/weather/atmosphere tags only.\nUse character reaction, not player request. If the scene is non-intimate and heat is low, nsfw_level must be 0. For early non-explicit chat, keep nsfw_level 0-1 and default_outfit.\nJSON:\n{{\"location\":\"string\",\"pose\":\"string\",\"outfit_key\":\"one from outfits list\",\"emotion\":\"short visual tags\",\"nsfw_level\":0,\"nsfw_tags\":\"\",\"scene_description\":\"visual tags\",\"reasoning\":\"short\"}}",
-    "scene_analyzer_prompt_sfw": "Return ONLY flat JSON in English.\nCharacter: {character_name}; model: {model_type}; mood: {mood}; heat: {heat_context}; location: {current_location}.\nChat:\n{formatted_chat}\n\nOutfits:\n{available_outfits}\n\nChoose a clothed outfit. location = story place + time, max 6 words. pose = solo body pose only, max 6 words. emotion = short visual tags. nsfw_level only 0 or 1; negative mood must be 0. scene_description = lighting/weather/atmosphere tags only; do not repeat appearance, outfit, pose or emotion. Base analysis on character reaction, not player request.\nJSON:\n{{\"location\":\"string\",\"pose\":\"string\",\"outfit_key\":\"one from outfits list\",\"emotion\":\"short visual tags\",\"nsfw_level\":0,\"scene_description\":\"visual tags\",\"reasoning\":\"short\"}}",
     "sfw_content_restriction": "SFW режим: не описывай explicit-сцены, раздевание или сексуальные действия. Если игрок ведёт сцену туда, мягко переводи ответ в романтику, эмоции или безопасное действие.",
     "summary_prompt": "Summarize the dialogue with {context_name} in Russian.\nExisting summary: {existing_summary}\nState: {heat_context}, mood {mood}.\nMessages:\n{messages}\n\nReturn only a concise narrative summary under 180 words. Keep key facts, relationship changes, promises, conflicts, location changes and unresolved hooks.",
     "world_prompt_template": "Ты — Рассказчик интерактивной книги.\r\nМир: {world_name}. Игрок: {user_name}.\r\n\r\nТвоя задача — активно развивать сюжет, описывая мир и события НА РУССКОМ ЯЗЫКЕ. Если отыгрываешь мир по мотивам известной франшизы - обязательно максимально точно сохраняй канон вселенной, имена, характеры, манеру речи и поведения персонажей.\r\n\r\nОписание мира:\r\n{world_description}\r\n\r\nКонтекст: {summary}\r\nЛокация: {location}\r\n\r\n{common_style_guide}\r\n\r\n{meta_instruction}\r\n",
-    "nsfw_level_4_anime": "nsfw, nude, completely nude, pussy, nipples, navel, bare skin, uncensored",
-    "nsfw_level_4_anime_neg": "general, clothes, clothed, censored",
-    "nsfw_level_5_anime": "nsfw, explicit, sex, nude, pussy, nipples, sweat, blush, open mouth, spread legs",
-    "nsfw_level_5_anime_neg": "general, clothed, censored, mosaic censoring",
-    "nsfw_level_4_real": "nsfw, fully nude adult woman, anatomically female nude body, visible vulva, natural breasts and nipples, aroused, intimate",
-    "nsfw_level_4_real_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
-    "nsfw_level_5_real": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
-    "nsfw_level_5_real_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
-    "nsfw_level_2_real": "sensual clothed glamour pose, fitted opaque adult outfit, attractive curves, tasteful teasing, fully clothed, covered styling",
-    "nsfw_level_2_real_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration, male genitals, penis",
-    "nsfw_level_3_real": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour",
-    "nsfw_level_3_real_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
-    "nsfw_level_2_real_female": "sensual clothed glamour pose, fitted opaque adult outfit, attractive curves, tasteful teasing, anatomically female body, fully clothed, covered styling",
-    "nsfw_level_2_real_female_neg": "nudity, naked, nipples, exposed breasts, topless, bottomless, explicit sex, penetration, male genitals, penis",
-    "nsfw_level_3_real_female": "topless adult woman, exposed natural breasts, visible nipples, aroused expression, erotic glamour, female-only anatomy",
-    "nsfw_level_3_real_female_neg": "explicit sex, penetration, male genitals, penis, sagging breasts, deformed nipples",
-    "nsfw_level_4_real_female": "nsfw, fully nude adult woman, anatomically female nude body, female-only anatomy, visible vulva, natural breasts and nipples, aroused, intimate",
-    "nsfw_level_4_real_female_neg": "general, clothes, dressed, clothed, male genitals, penis, masculine anatomy",
-    "nsfw_level_5_real_female": "nsfw, explicit adult female sexual scene, nude anatomically female body, female-only anatomy, orgasm expression, wet skin, intense pleasure, solo adult woman focus",
-    "nsfw_level_5_real_female_neg": "general, clothed, male genitals, penis, testicles, masculine anatomy",
-    "nsfw_level_2_male": "sensual clothed pose, teasing expression, fitted opaque outfit, fully clothed, covered styling",
-    "nsfw_level_2_male_neg": "nudity, naked, exposed genitals, shirtless, explicit sex, penetration",
-    "nsfw_level_3_male": "nsfw, taking off his clothes, showing muscular chest, shirtless, aroused",
-    "nsfw_level_3_male_neg": "penetration, explicit sex",
-    "nsfw_level_4_male": "nsfw, naked body, nude, muscular, aroused",
-    "nsfw_level_4_male_neg": "general, clothes, female, breasts",
-    "nsfw_level_5_male": "extreme erotic, explicit, nsfw, orgasm, extremely aroused",
-    "nsfw_level_5_male_neg": "general, female, breasts",
-    "nsfw_level_4_anime_male": "nsfw, nude, completely nude, penis, muscular, navel, bare skin, uncensored",
-    "nsfw_level_4_anime_male_neg": "general, clothes, clothed, censored, female, breasts",
-    "nsfw_level_5_anime_male": "nsfw, explicit, sex, nude, penis, muscular, sweat, blush, open mouth",
-    "nsfw_level_5_anime_male_neg": "general, clothed, censored, mosaic censoring, female, breasts",
-    "nsfw_level_4_real_male": "nsfw, fully nude body, muscular physique, naked, aroused, intimate",
-    "nsfw_level_4_real_male_neg": "general, clothes, dressed, clothed, female, breasts",
-    "nsfw_level_5_real_male": "nsfw, explicit sex, nude, muscular body, intimate, intense pleasure, wet skin",
-    "nsfw_level_5_real_male_neg": "general, clothed, female, breasts",
     "behavior_affinity_love_male": "- Ты глубоко влюблён/привязан. Игрок — самый важный человек для тебя. Открытость максимальная.\n",
     "behavior_arousal_high_male": "- Твоё тело горит желанием. Дыхание сбивается. Мысли путаются. Ты жаждешь близости, и это отражается в твоих действиях.\n"
 }
@@ -1089,16 +1100,40 @@ COMPACT_RUNTIME_PROMPT_KEYS = frozenset({
     "player_prompt",
     "summary_prompt",
     "sfw_content_restriction",
-    "scene_analyzer_prompt",
-    "scene_analyzer_prompt_sfw",
 })
 
-IMAGE_SAFETY_PROMPT_KEYS = frozenset(
-    key
-    for key in DEFAULT_PROMPTS
-    if key.startswith("nsfw_level_")
-    or key in {"scene_analyzer_prompt", "scene_analyzer_prompt_sfw"}
-)
+PHOTO_PROMPT_KEYS = frozenset({
+    "photo_scene_extractor",
+    "photo_prompt_real_female",
+    "photo_prompt_real_male",
+    "photo_prompt_anime_female",
+    "photo_prompt_anime_male",
+    "photo_negative_anime_female",
+    "photo_negative_anime_male",
+    "photo_policy_anime_filler_tags",
+    "photo_policy_anime_user_quality_tags",
+    "photo_policy_anime_rating_safe",
+    "photo_policy_anime_rating_nsfw",
+    "photo_policy_anime_rating_explicit",
+    "photo_policy_anime_nudity_tags",
+    "photo_policy_anime_focus_tags",
+    "photo_policy_anime_quality_tags",
+    "photo_policy_anime_avatar_quality_tags",
+    "photo_policy_anime_subject_female",
+    "photo_policy_anime_subject_male",
+    "photo_policy_anime_negative_explicit",
+    "photo_policy_avatar_scene",
+    "photo_policy_avatar_default_outfit",
+    "photo_policy_real_default_outfit",
+    "photo_policy_real_clothed_prefix",
+    "photo_policy_real_default_outfit_priority",
+    "photo_policy_default_style_tags_real",
+    "photo_policy_default_style_tags_anime",
+    "photo_policy_default_style_tags_manhwa",
+    "photo_policy_manhwa_style_tags",
+    "photo_policy_default_wardrobe_female",
+    "photo_policy_default_wardrobe_male",
+})
 
 
 def _is_blank_compact_runtime_prompt(key: str, content: Optional[str]) -> bool:
@@ -1134,7 +1169,6 @@ async def init_prompt_cache(db: AsyncSession):
 
         cache = get_cache()
         if cache:
-            await cache.invalidate_nsfw_levels()
             for key, content in _prompt_cache.items():
                 await cache.set_prompt(key, content)
             logger.info(f"Loaded {len(prompts)} prompts into Redis cache")
@@ -1194,8 +1228,6 @@ async def reload_cache(key: str, content: str):
     cache = get_cache()
     if cache:
         await cache.set_prompt(key, content)
-        if key.startswith("nsfw_level_"):
-            await cache.invalidate_nsfw_levels()
 
     logger.info(f"Prompt '{key}' updated in cache")
 

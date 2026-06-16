@@ -9,6 +9,16 @@ from .base import BaseRepository
 class CharacterRepository(BaseRepository[Character]):
     model = Character
 
+    async def get_total_message_counts_batch(self, character_ids: list[str]) -> dict[str, int]:
+        if not character_ids:
+            return {}
+
+        result = await self.session.execute(
+            select(Character.id, Character.total_message_count)
+            .where(Character.id.in_(character_ids))
+        )
+        return {row[0]: int(row[1] or 0) for row in result.all()}
+
     async def get_all_with_filter(self, tag: Optional[str] = None) -> list[Character]:
         query = select(Character)
         if tag:

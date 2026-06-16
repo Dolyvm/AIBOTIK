@@ -13,11 +13,9 @@ TTL_CHARACTERS_LIST = 1800
 TTL_WORLDS_LIST = 1800  
 TTL_PROMPT = 86400  
 TTL_CHARACTER_MODIFIERS = 86400  
-TTL_NSFW_LEVELS = 86400  
 TTL_CHAT_STATE = 10800  
 TTL_ACTIVE_CHAT = 10800  
 TTL_FILTERS = 3600  
-TTL_SCENE_ANALYSIS = 300  
 
 class CacheService:
     def __init__(self, redis: aioredis.Redis):
@@ -249,34 +247,6 @@ class CacheService:
         except Exception as e:
             logger.error(f"Cache error invalidating character modifiers: {e}")
 
-    async def get_nsfw_levels(self) -> Optional[list]:
-        key = "nsfw_levels"
-        try:
-            data = await self.redis.get(key)
-            if data:
-                logger.debug(f"Cache HIT: {key}")
-                return json.loads(data)
-            logger.debug(f"Cache MISS: {key}")
-            return None
-        except Exception as e:
-            logger.error(f"Cache error getting nsfw levels: {e}")
-            return None
-
-    async def set_nsfw_levels(self, levels: list) -> None:
-        key = "nsfw_levels"
-        try:
-            await self.redis.setex(key, TTL_NSFW_LEVELS, json.dumps(levels))
-            logger.debug(f"Cache SET: {key}")
-        except Exception as e:
-            logger.error(f"Cache error setting nsfw levels: {e}")
-
-    async def invalidate_nsfw_levels(self) -> None:
-        try:
-            await self.redis.delete("nsfw_levels")
-            logger.debug("Cache INVALIDATED: nsfw_levels")
-        except Exception as e:
-            logger.error(f"Cache error invalidating nsfw levels: {e}")
-
     async def get_chat_state(self, chat_id: int) -> Optional[dict]:
         key = f"chat:{chat_id}:state"
         try:
@@ -358,27 +328,6 @@ class CacheService:
             logger.debug("Cache SET: character filters")
         except Exception as e:
             logger.error(f"Cache error setting character filters: {e}")
-
-    async def get_scene_analysis(self, chat_id: int, context_hash: str) -> Optional[dict]:
-        key = f"scene:chat:{chat_id}:{context_hash}"
-        try:
-            data = await self.redis.get(key)
-            if data:
-                logger.debug(f"Cache HIT: {key}")
-                return json.loads(data)
-            logger.debug(f"Cache MISS: {key}")
-            return None
-        except Exception as e:
-            logger.error(f"Cache error getting scene analysis {chat_id}: {e}")
-            return None
-
-    async def set_scene_analysis(self, chat_id: int, context_hash: str, analysis: dict) -> None:
-        key = f"scene:chat:{chat_id}:{context_hash}"
-        try:
-            await self.redis.setex(key, TTL_SCENE_ANALYSIS, json.dumps(analysis))
-            logger.debug(f"Cache SET: {key}")
-        except Exception as e:
-            logger.error(f"Cache error setting scene analysis {chat_id}: {e}")
 
     async def acquire_lock(self, lock_name: str, ttl: int = 60) -> bool:
         key = f"lock:{lock_name}"

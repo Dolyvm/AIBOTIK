@@ -120,11 +120,10 @@ async def get_plans():
                 k: -1 if config.get("display_as_unlimited") else config[k]
                 for k in [
                     "messages",
-                    "images",
+                    "images_generated",
                     "characters_created",
                     "worlds_created",
                     "content_edits",
-                    "avatar_generations",
                 ]
             },
         })
