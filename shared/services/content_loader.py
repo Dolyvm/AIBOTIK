@@ -107,6 +107,7 @@ def world_to_dict(world: World) -> dict:
         "short_description": world.short_description or "",
         "description": world.description,
         "cover_image": world.cover_image,
+        "total_message_count": world.total_message_count or 0,
         "setting": setting,
         "main_scenario_title": main_scenario_title,
         "intro_message": intro_message,

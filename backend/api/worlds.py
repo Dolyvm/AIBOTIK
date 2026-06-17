@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_session
-from shared.database.repositories import ChatRepository
+from shared.database.repositories import ChatRepository, WorldRepository
 from shared.services.analytics import AnalyticsService
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -89,10 +89,12 @@ async def list_worlds(
     if world_ids:
         async with get_session() as session:
             chat_repo = ChatRepository(session)
-            message_counts = await chat_repo.get_message_counts_batch("world", world_ids)
+            world_repo = WorldRepository(session)
+            message_counts = await world_repo.get_total_message_counts_batch(world_ids)
             chat_session_counts = await chat_repo.get_chat_counts_batch("world", world_ids)
         for r in result:
             message_count = message_counts.get(r["id"], 0)
+            r["total_message_count"] = message_count
             r["message_count"] = message_count
             r["chat_count"] = message_count
             r["chat_session_count"] = chat_session_counts.get(r["id"], 0)
@@ -176,7 +178,8 @@ async def get_world_detail(world_id: str, user: User = Depends(get_current_user)
             # }
         )
         chat_repo = ChatRepository(session)
-        message_counts = await chat_repo.get_message_counts_batch("world", [world_id])
+        world_repo = WorldRepository(session)
+        message_counts = await world_repo.get_total_message_counts_batch([world_id])
         chat_session_counts = await chat_repo.get_chat_counts_batch("world", [world_id])
 
     message_count = message_counts.get(world_id, 0)
@@ -184,6 +187,7 @@ async def get_world_detail(world_id: str, user: User = Depends(get_current_user)
     return {
         **world,
         "scenarios": scenarios,
+        "total_message_count": message_count,
         "message_count": message_count,
         "chat_count": message_count,
         "chat_session_count": chat_session_counts.get(world_id, 0),
