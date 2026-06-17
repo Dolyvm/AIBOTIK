@@ -73,13 +73,13 @@ PHOTO_PROMPT_ROWS = [('photo_scene_extractor',
  ('photo_prompt_real_female',
   'photo',
   'Photo Prompt: Real Female',
-  'single  woman, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, '
-  '{body}, {face}, {style_tags}'),
+  'A realistic photograph of a single adult woman. {scene_description} She is wearing {clothing}. '
+  '{appearance} {body} {face}. {style_tags}'),
  ('photo_prompt_real_male',
   'photo',
   'Photo Prompt: Real Male',
-  'single  man, {clothing}, {pose}, {expression}, {setting}, {scene_notes}, {appearance}, {body}, '
-  '{face}, {style_tags},'),
+  'A realistic photograph of a single adult man. {scene_description} He is wearing {clothing}. '
+  '{appearance} {body} {face}. {style_tags}'),
  ('photo_prompt_anime_female',
   'photo',
   'Photo Prompt: Anime Female',
@@ -165,6 +165,108 @@ PHOTO_PROMPT_ROWS = [('photo_scene_extractor',
   'photo_policy',
   'Default Wardrobe JSON: Male',
   '{"nude":"nothing, showing his naked body","underwear":"black boxer briefs"}')]
+
+PHOTO_PROMPT_ROWS.extend([
+    (
+        "photo_scene_extractor_real",
+        "photo",
+        "Photo Scene Extractor: Real",
+        """Ты собираешь короткое фотографическое описание для real photo generation через Z-Image-Turbo.
+
+Используй только JSON character, photo_state и recent_messages из сообщения пользователя. Recent_messages уже содержит только последние 5 сообщений; не выдумывай старую историю.
+
+Правила:
+- На изображении ровно один взрослый персонаж: сам character. Игрока, пользователя и других людей не добавлять.
+- scene_description пиши на английском как 1-2 связных предложения, не как CSV/tags.
+- Пиши литературно-фотографически: framing, pose, hands/legs, background, lighting, camera feel.
+- Для chat photos предпочитай full-body, cowboy shot или dynamic framing, если сцена явно не просит close-up/portrait.
+- Не используй upper body по умолчанию. Upper body допустим только если последние сообщения явно про портрет/лицо/крупный план.
+- Не добавляй одежду в scene_description; одежда приходит отдельно через photo_state/outfit.
+- exposure_intent: safe, nude или explicit_focus. Nude/naked без явного visible/expose гениталий = nude, не explicit_focus.
+- Одежда заблокирована через photo_state.current_outfit. Не меняй её по настроению, локации, позе или общей атмосфере.
+- outfit_action="none" почти всегда: если в последних сообщениях нет явной смены одежды, раздевания или возврата к обычной одежде.
+- outfit_action="default", только если персонаж явно возвращается к обычной/базовой одежде.
+- outfit_action="wardrobe", только если последние сообщения явно выбирают один вариант из photo_state.wardrobe или сцена очевидно требует underwear/nude/swimwear.
+- При nude/naked выбирай outfit_action="wardrobe" и wardrobe_key="nude", если такой ключ есть.
+- outfit_action="custom", только если пользователь явно просит одежду, которой нет в wardrobe, в том числе nude.
+- wardrobe_key должен быть существующим ключом из photo_state.wardrobe или пустой строкой.
+- custom_clothing не заполняй, если outfit_action не "custom".
+- Не описывай действия игрока. Не добавляй текст, подписи, интерфейс, speech bubbles.
+- Верни только валидный JSON без markdown.
+
+Формат:
+{
+  "scene_description": "A full-body realistic photograph of her standing in a dim hotel room, one hand on the doorframe and the other resting on her hip. Warm bedside light falls across the curtains and wooden floor.",
+  "exposure_intent": "safe|nude|explicit_focus",
+  "expression": "specific facial expression, max 4 words",
+  "outfit_action": "none|default|wardrobe|custom",
+  "wardrobe_key": "existing wardrobe key only, otherwise empty string",
+  "custom_clothing": "explicit non-wardrobe outfit only, otherwise empty string"
+}""",
+    ),
+    (
+        "photo_scene_extractor_anime",
+        "photo",
+        "Photo Scene Extractor: Anime",
+        PHOTO_PROMPT_ROWS[0][3],
+    ),
+    (
+        "photo_scene_extractor_manhwa",
+        "photo",
+        "Photo Scene Extractor: Manhwa",
+        """Ты собираешь короткое tag-style ТЗ для генерации одного manhwa/webtoon изображения male character.
+
+Используй только JSON character, photo_state и recent_messages из сообщения пользователя. Recent_messages уже содержит только последние 5 сообщений; не выдумывай старую историю.
+
+Правила:
+- На изображении ровно один male character. Игрока, пользователя, woman/girl/companion и других людей не добавлять.
+- Все значения пиши коротко на английском, как SDXL/Illustrious tags.
+- primary_pose — только положение тела или действие. Не используй looking at viewer, hands, camera angle или framing как primary_pose.
+- pose_modifiers — gaze, hands, legs, small secondary pose details.
+- composition — кадрирование/угол: full body, cowboy shot, dynamic angle, upper body, close-up.
+- Для chat photos предпочитай full body/cowboy shot/dynamic angle, если сцена явно не портретная.
+- setting разделяй на place, background_objects и lighting.
+- exposure_intent: safe, nude или explicit_focus. Nude/naked без явного visible/expose гениталий = nude, не explicit_focus.
+- Одежда заблокирована через photo_state.current_outfit. Не меняй её по настроению, локации, позе или общей атмосфере.
+- outfit_action="none" почти всегда: если в последних сообщениях нет явной смены одежды, раздевания или возврата к обычной одежде.
+- outfit_action="default", только если персонаж явно возвращается к обычной/базовой одежде.
+- outfit_action="wardrobe", только если последние сообщения явно выбирают один вариант из photo_state.wardrobe или сцена очевидно требует underwear/nude.
+- При nude/naked выбирай outfit_action="wardrobe" и wardrobe_key="nude", если такой ключ есть.
+- outfit_action="custom", только если пользователь явно просит одежду, которой нет в wardrobe, в том числе nude.
+- wardrobe_key должен быть существующим ключом из photo_state.wardrobe или пустой строкой.
+- custom_clothing не заполняй, если outfit_action не "custom".
+- Не описывай действия игрока. Не добавляй текст, подписи, интерфейс, speech bubbles.
+- Верни только валидный JSON без markdown.
+
+Формат:
+{
+  "primary_pose": "body pose/action only, max 6 words",
+  "pose_modifiers": "comma-separated gaze/hands/legs details, max 8 words",
+  "expression": "specific facial expression, max 3 words",
+  "emotion": "short mood, max 3 words",
+  "composition": "single framing/camera tag",
+  "place": "specific place",
+  "background_objects": "2-3 visible background object tags",
+  "lighting": "short lighting tag",
+  "exposure_intent": "safe|nude|explicit_focus",
+  "outfit_action": "none|default|wardrobe|custom",
+  "wardrobe_key": "existing wardrobe key only, otherwise empty string",
+  "custom_clothing": "explicit non-wardrobe outfit only, otherwise empty string"
+}""",
+    ),
+    (
+        "photo_prompt_manhwa_male",
+        "photo",
+        "Photo Prompt: Manhwa Male",
+        "{subject_tags}, {rating_tags}, {nudity_tags}, {focus_tags}, {pose}, {composition}, {expression}, {clothing}, {appearance}, {face}, {body}, {setting}, {style_tags}, {quality_tags}",
+    ),
+    (
+        "photo_negative_manhwa_male",
+        "photo",
+        "Photo Negative Prompt: Manhwa Male",
+        "woman, girl, female, multiple people, child, teen, shota, bad anatomy, bad hands, low quality, text, watermark, logo, cropped, out of frame",
+    ),
+])
 
 
 PROMPT_UPSERT = sa.text(

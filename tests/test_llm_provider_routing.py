@@ -6,7 +6,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost/db")
 from shared.services.llm import LLMClient
 
 
-def test_llm_payload_ignores_alibaba_by_default():
+def test_deepseek_payload_ignores_alibaba_by_default():
     client = LLMClient(
         api_key="test-key",
         model="deepseek/deepseek-v4-flash",
@@ -23,7 +23,7 @@ def test_llm_payload_ignores_alibaba_by_default():
     assert payload["provider"]["ignore"] == ["alibaba"]
 
 
-def test_llm_payload_preserves_provider_preferences_and_existing_ignores():
+def test_deepseek_payload_preserves_provider_preferences_and_existing_ignores():
     provider = {"sort": "throughput", "ignore": ["deepinfra"]}
     client = LLMClient(
         api_key="test-key",
@@ -46,7 +46,7 @@ def test_llm_payload_preserves_provider_preferences_and_existing_ignores():
     assert provider == {"sort": "throughput", "ignore": ["deepinfra"]}
 
 
-def test_llm_payload_applies_alibaba_ignore_after_extra_payload_provider_override():
+def test_deepseek_payload_applies_alibaba_ignore_after_extra_payload_provider_override():
     client = LLMClient(
         api_key="test-key",
         model="deepseek/deepseek-v4-flash",
@@ -66,3 +66,23 @@ def test_llm_payload_applies_alibaba_ignore_after_extra_payload_provider_overrid
         "sort": "latency",
         "ignore": ["openai", "alibaba"],
     }
+
+
+def test_qwen_payload_keeps_alibaba_available():
+    provider = {"sort": "throughput"}
+    client = LLMClient(
+        api_key="test-key",
+        model="qwen/qwen3.6-flash",
+        provider=provider,
+    )
+
+    _, payload = asyncio.run(
+        client._build_payload(
+            system_prompt="system",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=20,
+        )
+    )
+
+    assert payload["provider"] == {"sort": "throughput"}
+    assert provider == {"sort": "throughput"}

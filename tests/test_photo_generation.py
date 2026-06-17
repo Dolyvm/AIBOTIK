@@ -65,7 +65,7 @@ class FakeLLM:
 
 def test_photo_scene_extractor_uses_only_last_five_messages(monkeypatch):
     async def fake_get_prompt(key):
-        assert key == "photo_scene_extractor"
+        assert key == "photo_scene_extractor_real"
         return "extract"
 
     monkeypatch.setattr(photo, "get_prompt", fake_get_prompt)
@@ -372,16 +372,24 @@ def test_replicate_client_uses_version_hash_from_owner_model_version():
     assert version == photo.ANIME_MODEL_VERSION.rsplit(":", 1)[1]
 
 
-def test_manhwa_rejected_before_provider(monkeypatch):
+def test_manhwa_uses_runpod_provider_and_manhwa_prompts(monkeypatch):
     service = photo.PhotoGenerationService(llm_client=object(), replicate_client=object())
 
-    with pytest.raises(photo.UnsupportedPhotoModelError):
-        asyncio.run(
-            service.build_prompt_bundle(
-                {"name": "M", "model_type": "manhwa", "visual": {"gender": "male"}},
-                {},
-            )
+    bundle = asyncio.run(
+        service.build_prompt_bundle(
+            {
+                "name": "M",
+                "model_type": "manhwa",
+                "visual": {"gender": "male", "appearance": "black hair"},
+            },
+            {"primary_pose": "standing", "composition": "full body"},
         )
+    )
+
+    assert bundle.provider == "runpod_manhwa"
+    assert bundle.replicate_model == "runpod:manhwa"
+    assert bundle.prompt_metadata["model_type"] == "manhwa"
+    assert "manhwa style" in bundle.prompt
 
 
 def test_photo_prompts_are_registered_for_admin_and_defaults():

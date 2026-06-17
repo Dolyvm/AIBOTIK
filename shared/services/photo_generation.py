@@ -421,6 +421,15 @@ def _render_template(template: str, context: Mapping[str, Any]) -> str:
     return _dedupe_csv(rendered, 200)
 
 
+def _render_real_template(template: str, context: Mapping[str, Any]) -> str:
+    rendered = template.format_map(_SafeFormatDict({k: _clean_text(v) for k, v in context.items()}))
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    rendered = re.sub(r"\s+([,.])", r"\1", rendered)
+    rendered = re.sub(r"(?:\.\s*){2,}", ". ", rendered)
+    rendered = re.sub(r"\s+,", ",", rendered)
+    return rendered.strip(" ,")
+
+
 def _template_fields(template: str) -> set[str]:
     fields: set[str] = set()
     for _, field_name, _, _ in Formatter().parse(template):
@@ -436,10 +445,11 @@ def _fit_prompt_budget(
     removable_fields: Sequence[str],
     label: str,
     log_meta: Mapping[str, Any] | None = None,
+    renderer: Callable[[str, Mapping[str, Any]], str] = _render_template,
 ) -> str:
     original_context = dict(context)
     active_context = dict(original_context)
-    original_prompt = _render_template(template, active_context)
+    original_prompt = renderer(template, active_context)
     original_tokens = _estimate_prompt_tokens(original_prompt)
     if original_tokens <= budget:
         return original_prompt
@@ -465,7 +475,7 @@ def _fit_prompt_budget(
             continue
         active_context[field] = ""
         removed_fields.append(field)
-        prompt = _render_template(template, active_context)
+        prompt = renderer(template, active_context)
         if _estimate_prompt_tokens(prompt) <= budget:
             return prompt
 
@@ -997,6 +1007,11 @@ def _normalize_gender(character: Mapping[str, Any]) -> str:
     return gender if gender in {"male", "female"} else "female"
 
 
+def _ensure_supported_model_gender(model_type: str, gender: str) -> None:
+    if model_type == "manhwa" and gender != "male":
+        raise UnsupportedPhotoModelError("Генерация manhwa доступна только для male characters")
+
+
 def _character_visual(character: Mapping[str, Any]) -> dict[str, Any]:
     visual_data = character.get("visual_data") or {}
     visual = character.get("visual") or {}
@@ -1478,6 +1493,14 @@ def _message_payload(messages: Iterable[Message | Mapping[str, Any]]) -> list[di
     return result
 
 
+def _scene_extractor_prompt_key(model_type: str) -> str:
+    if model_type == "real":
+        return "photo_scene_extractor_real"
+    if model_type == "manhwa":
+        return "photo_scene_extractor_manhwa"
+    return "photo_scene_extractor_anime"
+
+
 def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
     outfit_action = _clean_text(scene.get("outfit_action")).lower()
     custom_clothing = _clean_text(scene.get("custom_clothing"))
@@ -1492,6 +1515,7 @@ def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
         custom_clothing = _clean_text(scene.get("clothing"))
 
     return {
+        "scene_description": _clean_text(scene.get("scene_description"))[:600],
         "pose": _clean_text(scene.get("pose"))[:180],
         "primary_pose": _clean_text(scene.get("primary_pose"))[:120],
         "pose_modifiers": _dedupe_csv(scene.get("pose_modifiers"), 20)[:180],
@@ -1511,6 +1535,43 @@ def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
         "setting": _clean_text(scene.get("setting") or scene.get("environment"))[:180],
         "scene_notes": _clean_text(scene.get("scene_notes") or scene.get("details"))[:220],
     }
+
+
+def _real_scene_description(scene: Mapping[str, Any], gender: str) -> str:
+    description = _clean_text(scene.get("scene_description"))
+    if description:
+        return description
+
+    subject = "her" if gender == "female" else "him"
+    composition = _clean_text(scene.get("composition")) or "full-body"
+    pose = _dedupe_csv(
+        [
+            scene.get("primary_pose"),
+            scene.get("pose"),
+            scene.get("pose_modifiers"),
+            scene.get("gaze"),
+            scene.get("hands"),
+        ],
+        20,
+    )
+    setting = _dedupe_csv(
+        [
+            scene.get("place") or scene.get("setting"),
+            scene.get("background_objects"),
+            scene.get("lighting"),
+            scene.get("scene_notes"),
+        ],
+        30,
+    )
+
+    first = f"A {composition} realistic photograph"
+    if pose:
+        first = f"{first} of {subject} {pose}"
+    else:
+        first = f"{first} of {subject}"
+    if setting:
+        return f"{first} in {setting}."
+    return f"{first} with natural photographic framing."
 
 
 class ReplicateImageClient:
@@ -1716,9 +1777,10 @@ class PhotoGenerationService:
         recent_messages: Sequence[Message | Mapping[str, Any]],
         chat_state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        system_prompt = await get_prompt("photo_scene_extractor")
         model_type = _normalize_model_type(character)
+        system_prompt = await get_prompt(_scene_extractor_prompt_key(model_type))
         gender = _normalize_gender(character)
+        _ensure_supported_model_gender(model_type, gender)
         visual_data = _character_visual(character)
         wardrobe = _wardrobe(character)
 
@@ -1752,6 +1814,7 @@ class PhotoGenerationService:
         policy = await get_photo_prompt_policy()
         model_type = _normalize_model_type(character)
         gender = _normalize_gender(character)
+        _ensure_supported_model_gender(model_type, gender)
         prompt_model_type = "anime" if model_type == "manhwa" else model_type
         visual = dict(_visual_parts(character, policy))
         prompt_character: Mapping[str, Any] = character
@@ -1787,9 +1850,10 @@ class PhotoGenerationService:
             if prompt_model_type == "real"
             else _dedupe_csv(clothing, 40)
         )
-        template = await get_prompt(f"photo_prompt_{prompt_model_type}_{gender}")
+        template_model_type = "manhwa" if model_type == "manhwa" else prompt_model_type
+        template = await get_prompt(f"photo_prompt_{template_model_type}_{gender}")
         if prompt_model_type == "anime":
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            negative_template = await get_prompt(f"photo_negative_{template_model_type}_{gender}")
             anime_result = _build_anime_prompt_result(
                 character=prompt_character,
                 gender=gender,
@@ -1828,8 +1892,12 @@ class PhotoGenerationService:
                 prompt_metadata=prompt_metadata,
             )
 
-        pose = scene.get("pose", "")
-        scene_notes = scene.get("scene_notes", "")
+        exposure_level = _anime_exposure_level(scene, clothing_prompt)
+        normalized_scene = {
+            **dict(scene),
+            "scene_description": _real_scene_description(scene, gender),
+            "exposure_level": exposure_level,
+        }
 
         context = {
             "character_name": character.get("name", ""),
@@ -1839,14 +1907,15 @@ class PhotoGenerationService:
             "body": visual["body"],
             "face": visual["face"],
             "clothing": clothing_prompt,
-            "pose": pose,
+            "scene_description": normalized_scene["scene_description"],
+            "pose": scene.get("pose", ""),
             "expression": scene.get("expression", ""),
             "emotion": scene.get("emotion", ""),
             "setting": scene.get("setting", ""),
-            "scene_notes": scene_notes,
+            "scene_notes": scene.get("scene_notes", ""),
             "style_tags": visual["style_tags"],
         }
-        removable_fields = ("scene_notes", "style_tags", "setting", "emotion")
+        removable_fields = ("style_tags", "scene_notes", "setting", "emotion", "body", "face")
         prompt = _fit_prompt_budget(
             template,
             context,
@@ -1854,21 +1923,40 @@ class PhotoGenerationService:
             removable_fields=removable_fields,
             label=f"{model_type}/{gender}",
             log_meta=log_meta,
+            renderer=_render_real_template,
         )
 
         negative_prompt = None
         replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
         replicate_model = ANIME_MODEL_VERSION if prompt_model_type == "anime" else REAL_MODEL
+        prompt_metadata = {
+            "profile_version": "real_prompt_v1",
+            "purpose": "chat_photo",
+            "model_type": model_type,
+            "provider": "replicate",
+            "gender": gender,
+            "normalized_scene": normalized_scene,
+            "outfit_decision": dict(outfit_decision or {}),
+            "exposure_level": exposure_level,
+            "positive_prompt": prompt,
+            "negative_prompt": None,
+            "positive_tokens": _estimate_prompt_tokens(prompt),
+            "negative_tokens": 0,
+            "replicate_input": dict(replicate_input),
+            "replicate_model": replicate_model,
+            "log_meta": dict(log_meta or {}),
+        }
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            scene=dict(scene),
+            scene=normalized_scene,
             replicate_input=replicate_input,
             replicate_model=replicate_model,
             provider="replicate",
             state_meta_update=state_meta_update,
+            prompt_metadata=prompt_metadata,
         )
 
     async def build_avatar_prompt_bundle(
@@ -1881,13 +1969,15 @@ class PhotoGenerationService:
         model_type = _normalize_model_type(avatar_character)
         prompt_model_type = "anime" if model_type == "manhwa" else model_type
         gender = _normalize_gender(avatar_character)
+        _ensure_supported_model_gender(model_type, gender)
         visual = _visual_parts(avatar_character, policy)
         wardrobe = _wardrobe(avatar_character)
         clothing_prompt = _avatar_clothing_prompt(prompt_model_type, gender, visual, wardrobe, policy)
-        template = await get_prompt(f"photo_prompt_{prompt_model_type}_{gender}")
+        template_model_type = "manhwa" if model_type == "manhwa" else prompt_model_type
+        template = await get_prompt(f"photo_prompt_{template_model_type}_{gender}")
         if prompt_model_type == "anime":
             scene = dict(policy.avatar_scene)
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            negative_template = await get_prompt(f"photo_negative_{template_model_type}_{gender}")
             anime_result = _build_anime_prompt_result(
                 character=avatar_character,
                 gender=gender,
@@ -1924,6 +2014,18 @@ class PhotoGenerationService:
                 prompt_metadata=prompt_metadata,
             )
 
+        scene_description = (
+            "An upper-body realistic portrait with the character looking at the camera "
+            "against a simple softly lit background."
+        )
+        exposure_level = _anime_exposure_level(policy.avatar_scene, clothing_prompt)
+        normalized_scene = {
+            **dict(policy.avatar_scene),
+            "scene_description": scene_description,
+            "exposure_level": exposure_level,
+        }
+        outfit_decision = {"source": "avatar_default", "clothing": clothing_prompt}
+
         context = {
             "character_name": avatar_character.get("name", ""),
             "gender": gender,
@@ -1932,6 +2034,7 @@ class PhotoGenerationService:
             "body": _strip_user_quality_tags(visual["body"], policy),
             "face": _strip_user_quality_tags(visual["face"], policy),
             "clothing": clothing_prompt,
+            "scene_description": scene_description,
             "pose": policy.avatar_scene.get("pose", ""),
             "expression": policy.avatar_scene.get("expression", ""),
             "emotion": policy.avatar_scene.get("emotion", ""),
@@ -1948,26 +2051,40 @@ class PhotoGenerationService:
             removable_fields=removable_fields,
             label=f"avatar/{model_type}/{gender}",
             log_meta=log_meta,
+            renderer=_render_real_template,
         )
 
         negative_prompt = None
 
         replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
         replicate_model = ANIME_MODEL_VERSION if prompt_model_type == "anime" else REAL_MODEL
+        prompt_metadata = {
+            "profile_version": "real_prompt_v1",
+            "purpose": "avatar",
+            "model_type": model_type,
+            "provider": "replicate",
+            "gender": gender,
+            "normalized_scene": normalized_scene,
+            "outfit_decision": outfit_decision,
+            "exposure_level": exposure_level,
+            "positive_prompt": prompt,
+            "negative_prompt": None,
+            "positive_tokens": _estimate_prompt_tokens(prompt),
+            "negative_tokens": 0,
+            "replicate_input": dict(replicate_input),
+            "replicate_model": replicate_model,
+            "log_meta": dict(log_meta or {}),
+        }
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            scene={
-                "pose": context.get("pose", ""),
-                "expression": context.get("expression", ""),
-                "setting": context.get("setting", ""),
-                "scene_notes": context.get("scene_notes", ""),
-            },
+            scene=normalized_scene,
             replicate_input=replicate_input,
             replicate_model=replicate_model,
             provider="replicate",
+            prompt_metadata=prompt_metadata,
         )
 
     @staticmethod
