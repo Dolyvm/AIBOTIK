@@ -179,7 +179,6 @@ async def get_author_profile(
         like_repo = LikeRepository(session)
         chat_repo = ChatRepository(session)
 
-        message_counts_worlds = await chat_repo.get_message_counts_batch("world", world_ids)
         chat_session_counts_chars = await chat_repo.get_chat_counts_batch("character", char_ids)
         chat_session_counts_worlds = await chat_repo.get_chat_counts_batch("world", world_ids)
         like_counts = await like_repo.get_like_counts_batch(char_ids)
@@ -225,7 +224,7 @@ async def get_author_profile(
 
     worlds_payload = []
     for w in worlds:
-        message_count = message_counts_worlds.get(w.id, 0)
+        message_count = w.total_message_count or 0
         worlds_payload.append({
             "id": w.id,
             "name": w.name,
@@ -233,6 +232,7 @@ async def get_author_profile(
             "cover_image": w.cover_image or "",
             "tags": w.tags or [],
             "is_nsfw": w.is_nsfw,
+            "total_message_count": message_count,
             "message_count": message_count,
             "chat_count": message_count,
             "chat_session_count": chat_session_counts_worlds.get(w.id, 0),

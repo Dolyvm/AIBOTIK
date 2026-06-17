@@ -119,6 +119,7 @@ class World(Base):
     description = Column(Text, nullable=False)
     short_description = Column(String(30), nullable=True, default="")
     cover_image = Column(String(500), nullable=True)
+    total_message_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     scenarios = Column(JSONB, default=[])
     locations = Column(JSONB, default=[])
