@@ -122,6 +122,68 @@ class ImageGenerationJobRepository(BaseRepository[ImageGenerationJob]):
         await self.session.refresh(job)
         return job
 
+    async def record_runpod_job(
+        self,
+        job_id: int,
+        *,
+        provider: str,
+        runpod_job_id: str,
+        endpoint_id: str | None = None,
+        status_payload: dict | None = None,
+    ) -> ImageGenerationJob | None:
+        job = await self.get_by_id(job_id)
+        if not job:
+            return None
+        payload = dict(job.request_payload or {})
+        runpod_jobs = list(payload.get("runpod_jobs") or [])
+        existing = next(
+            (
+                item
+                for item in runpod_jobs
+                if isinstance(item, dict)
+                and item.get("provider") == provider
+                and item.get("job_id") == runpod_job_id
+            ),
+            None,
+        )
+        item = existing if existing is not None else {}
+        item.update(
+            {
+                "provider": provider,
+                "job_id": runpod_job_id,
+                "endpoint_id": endpoint_id,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+        )
+        if status_payload:
+            item["status"] = status_payload.get("status")
+            item["delayTime"] = status_payload.get("delayTime")
+            item["executionTime"] = status_payload.get("executionTime")
+        if existing is None:
+            runpod_jobs.append(item)
+        payload["runpod_jobs"] = runpod_jobs
+        job.request_payload = payload
+        job.updated_at = datetime.utcnow()
+        await self.session.commit()
+        await self.session.refresh(job)
+        return job
+
+    async def get_active_started_before(
+        self,
+        cutoff: datetime,
+        *,
+        limit: int = 50,
+    ) -> list[ImageGenerationJob]:
+        result = await self.session.execute(
+            select(ImageGenerationJob)
+            .where(ImageGenerationJob.status.in_(ACTIVE_IMAGE_JOB_STATUSES))
+            .where(ImageGenerationJob.started_at.is_not(None))
+            .where(ImageGenerationJob.started_at < cutoff)
+            .order_by(ImageGenerationJob.started_at.asc(), ImageGenerationJob.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def cancel_active_for_chat(self, chat_id: int) -> int:
         result = await self.session.execute(
             update(ImageGenerationJob)

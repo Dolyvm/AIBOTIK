@@ -55,6 +55,7 @@ Expected boot logs:
 
 ```text
 worker boot started
-comfy/facefusion dependencies ready
+FaceFusion models preflight passed
+ONNXRuntime providers include CUDAExecutionProvider
 serverless handler registered
 ```
