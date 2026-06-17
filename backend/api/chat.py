@@ -28,7 +28,7 @@ from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
-from shared.config import CHAT_MODEL
+from shared.config import ADMIN_TELEGRAM_IDS, CHAT_MODEL
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
@@ -129,13 +129,92 @@ def _image_event(image: GeneratedImage) -> dict:
     }
 
 
-def _job_status_payload(job, image: GeneratedImage | None = None) -> dict:
+def _is_admin_user(user: User) -> bool:
+    return getattr(user, "telegram_id", None) in ADMIN_TELEGRAM_IDS
+
+
+def _debug_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+
+def _markdown_code_block(label: str, text: str) -> str:
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"**{label}**\n{fence}\n{text}\n{fence}"
+
+
+def _photo_prompt_debug_event(image: GeneratedImage) -> dict | None:
+    metadata = image.prompt_metadata or {}
+    replicate_input = metadata.get("replicate_input") if isinstance(metadata, dict) else {}
+    if not isinstance(replicate_input, dict):
+        replicate_input = {}
+
+    provider_prompt = _debug_text(
+        metadata.get("provider_prompt")
+        or replicate_input.get("prompt")
+        or metadata.get("positive_prompt")
+        or image.prompt
+    )
+    if not provider_prompt:
+        return None
+
+    negative_prompt = _debug_text(
+        metadata.get("provider_negative_prompt")
+        or replicate_input.get("negative_prompt")
+        or metadata.get("negative_prompt")
+    )
+    provider = _debug_text(metadata.get("provider") or metadata.get("runpod_provider") or "unknown")
+    model = _debug_text(metadata.get("replicate_model") or metadata.get("provider_model"))
+
+    lines = [
+        "Photo prompt debug",
+        f"Provider: `{provider}`",
+    ]
+    if model:
+        lines.append(f"Model: `{model}`")
+    lines.extend(["", _markdown_code_block("Positive", provider_prompt)])
+    if negative_prompt:
+        lines.extend(["", _markdown_code_block("Negative", negative_prompt)])
+
+    return {
+        "role": "assistant",
+        "type": "photo_prompt_debug",
+        "debug_for_image_id": image.id,
+        "content": "\n".join(lines),
+        "timestamp": image.created_at.isoformat(),
+    }
+
+
+def _image_events(image: GeneratedImage, *, include_debug: bool = False) -> list[dict]:
+    events = [_image_event(image)]
+    if include_debug:
+        debug_event = _photo_prompt_debug_event(image)
+        if debug_event:
+            events.append(debug_event)
+    return events
+
+
+def _job_status_payload(
+    job,
+    image: GeneratedImage | None = None,
+    *,
+    include_debug: bool = False,
+) -> dict:
     payload = {
         "job_id": job.id,
         "status": job.status,
     }
     if image:
         payload["image"] = _image_event(image)
+        if include_debug:
+            debug_event = _photo_prompt_debug_event(image)
+            if debug_event:
+                payload["debug_messages"] = [debug_event]
     if job.status in {"failed", "canceled"}:
         payload["message"] = job.error_message or (
             "Генерация отменена" if job.status == "canceled" else "Ошибка генерации фото"
@@ -188,7 +267,7 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
         job_repo = ImageGenerationJobRepository(session)
 
         messages = await message_repo.get_history(chat_id)
-        images = await image_repo.get_by_chat_formatted(chat_id)
+        images = await image_repo.get_by_chat(chat_id)
         active_image_job = await job_repo.get_active_for_chat(chat_id)
         character_data = await get_character(chat.target_id) if chat.chat_type == "character" else None
         photo_capabilities = (
@@ -211,8 +290,13 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             }
             for msg in messages
         ]
+        image_events = [
+            event
+            for image in images
+            for event in _image_events(image, include_debug=_is_admin_user(user))
+        ]
 
-        all_events = msg_dicts + images
+        all_events = msg_dicts + image_events
         all_events.sort(key=lambda x: x["timestamp"])
 
         return {
@@ -231,6 +315,7 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "custom_avatar": photo_capabilities["custom_avatar"],
             "photo_generation_available": photo_capabilities["available"],
             "photo_generation_mode": photo_capabilities["mode"],
+            "photo_prompt_debug_available": _is_admin_user(user),
         }
 
 
@@ -438,7 +523,7 @@ async def get_image_generation_job(
             raise HTTPException(status_code=404, detail="Image generation job not found")
 
         image = await session.get(GeneratedImage, job.image_id) if job.image_id else None
-        return _job_status_payload(job, image)
+        return _job_status_payload(job, image, include_debug=_is_admin_user(user))
 
 
 @router.get("/by-character/{target_id}")

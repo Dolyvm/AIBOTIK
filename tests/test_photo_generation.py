@@ -28,6 +28,7 @@ from shared.services.prompt_service import (
     DEFAULT_PROMPTS,
     PHOTO_PROMPT_KEYS as DEFAULT_PHOTO_PROMPT_KEYS,
 )
+from shared.services.workflows.manhwa_illustrious import MANHWA_BASE_NEGATIVE, MANHWA_BASE_POSITIVE
 from shared.subscription_plans import PLAN_LIMITS, USAGE_TYPE_MAP
 
 
@@ -390,6 +391,10 @@ def test_manhwa_uses_runpod_provider_and_manhwa_prompts(monkeypatch):
     assert bundle.replicate_model == "runpod:manhwa"
     assert bundle.prompt_metadata["model_type"] == "manhwa"
     assert "manhwa style" in bundle.prompt
+    assert bundle.prompt_metadata["provider_prompt"].startswith(MANHWA_BASE_POSITIVE)
+    assert bundle.prompt_metadata["provider_negative_prompt"].startswith(MANHWA_BASE_NEGATIVE)
+    assert bundle.prompt_metadata["provider_prompt"] != bundle.prompt
+    assert bundle.prompt_metadata["provider_negative_prompt"] != bundle.negative_prompt
 
 
 def test_photo_prompts_are_registered_for_admin_and_defaults():

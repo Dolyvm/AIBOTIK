@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import os
 import sys
@@ -25,6 +26,113 @@ except ModuleNotFoundError:
     telegram_init_data.validate = lambda *_args, **_kwargs: None
     telegram_init_data.parse = lambda *_args, **_kwargs: {}
     sys.modules.setdefault("telegram_init_data", telegram_init_data)
+
+try:
+    import fastapi  # noqa: F401
+except ModuleNotFoundError:
+    fastapi_mod = types.ModuleType("fastapi")
+    fastapi_responses = types.ModuleType("fastapi.responses")
+
+    class FakeHTTPException(Exception):
+        def __init__(self, status_code=500, detail=None):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
+
+    class FakeAPIRouter:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def get(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+        def post(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+        def delete(self, *_args, **_kwargs):
+            return lambda fn: fn
+
+    class FakeJSONResponse:
+        def __init__(self, content=None, status_code=200, **_kwargs):
+            self.content = content
+            self.status_code = status_code
+            self.body = json.dumps(content or {}, ensure_ascii=False).encode("utf-8")
+
+    class FakeStreamingResponse:
+        def __init__(self, content=None, **kwargs):
+            self.content = content
+            self.kwargs = kwargs
+
+    fastapi_mod.APIRouter = FakeAPIRouter
+    fastapi_mod.HTTPException = FakeHTTPException
+    fastapi_mod.Body = lambda default=None, **_kwargs: default
+    fastapi_mod.Depends = lambda dependency=None, **_kwargs: dependency
+    fastapi_mod.Header = lambda default=None, **_kwargs: default
+    fastapi_mod.Request = object
+    fastapi_mod.status = types.SimpleNamespace(
+        HTTP_401_UNAUTHORIZED=401,
+        HTTP_403_FORBIDDEN=403,
+        HTTP_404_NOT_FOUND=404,
+    )
+    fastapi_responses.JSONResponse = FakeJSONResponse
+    fastapi_responses.StreamingResponse = FakeStreamingResponse
+    sys.modules.setdefault("fastapi", fastapi_mod)
+    sys.modules.setdefault("fastapi.responses", fastapi_responses)
+
+try:
+    import pydantic  # noqa: F401
+except ModuleNotFoundError:
+    pydantic_mod = types.ModuleType("pydantic")
+
+    class FakeBaseModel:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    pydantic_mod.BaseModel = FakeBaseModel
+    sys.modules.setdefault("pydantic", pydantic_mod)
+
+try:
+    import arq  # noqa: F401
+except ModuleNotFoundError:
+    arq_mod = types.ModuleType("arq")
+    arq_connections = types.ModuleType("arq.connections")
+    arq_cron = types.ModuleType("arq.cron")
+
+    class FakeRedisSettings:
+        def __init__(self, dsn=None):
+            self.dsn = dsn
+
+        @classmethod
+        def from_dsn(cls, dsn):
+            return cls(dsn)
+
+    arq_connections.RedisSettings = FakeRedisSettings
+    arq_cron.cron = lambda *args, **kwargs: {"args": args, "kwargs": kwargs}
+    arq_mod.connections = arq_connections
+    arq_mod.cron = arq_cron
+    sys.modules.setdefault("arq", arq_mod)
+    sys.modules.setdefault("arq.connections", arq_connections)
+    sys.modules.setdefault("arq.cron", arq_cron)
+
+try:
+    import aiogram  # noqa: F401
+except ModuleNotFoundError:
+    aiogram_mod = types.ModuleType("aiogram")
+
+    class FakeBotSession:
+        async def close(self):
+            return None
+
+    class FakeBot:
+        def __init__(self, *_args, **_kwargs):
+            self.session = FakeBotSession()
+
+        async def send_message(self, *_args, **_kwargs):
+            return None
+
+    aiogram_mod.Bot = FakeBot
+    sys.modules.setdefault("aiogram", aiogram_mod)
 
 
 class FakeSessionManager:
@@ -125,6 +233,101 @@ def test_generate_image_enqueues_background_job(monkeypatch):
         {"role": "user", "content": "Сделай фото"}
     ]
     assert created_jobs[0].request_payload["chat_state"] == {"heat_level": 2}
+
+
+def test_photo_prompt_debug_event_formats_positive_and_optional_negative():
+    from backend.api import chat as chat_api
+
+    created_at = datetime.datetime(2026, 1, 2, 3, 4, 5)
+    image = types.SimpleNamespace(
+        id=44,
+        public_url="https://example.com/image.png",
+        created_at=created_at,
+        prompt="fallback prompt",
+        prompt_metadata={
+            "provider": "replicate",
+            "replicate_model": "model:version",
+            "provider_prompt": "final positive prompt",
+            "provider_negative_prompt": "final negative prompt",
+        },
+    )
+
+    event = chat_api._photo_prompt_debug_event(image)
+
+    assert event["role"] == "assistant"
+    assert event["type"] == "photo_prompt_debug"
+    assert event["debug_for_image_id"] == 44
+    assert event["timestamp"] == created_at.isoformat()
+    assert "Provider: `replicate`" in event["content"]
+    assert "Model: `model:version`" in event["content"]
+    assert "final positive prompt" in event["content"]
+    assert "final negative prompt" in event["content"]
+
+    image.prompt_metadata["provider_negative_prompt"] = ""
+    event = chat_api._photo_prompt_debug_event(image)
+    assert "**Positive**" in event["content"]
+    assert "**Negative**" not in event["content"]
+
+
+def test_get_image_generation_job_returns_debug_messages_for_admin_only(monkeypatch):
+    from backend.api import chat as chat_api
+
+    job = types.SimpleNamespace(
+        id=91,
+        status="succeeded",
+        image_id=44,
+        error_message=None,
+    )
+    image = types.SimpleNamespace(
+        id=44,
+        public_url="https://example.com/image.png",
+        created_at=datetime.datetime(2026, 1, 2, 3, 4, 5),
+        prompt="bundle prompt",
+        prompt_metadata={
+            "provider": "runpod_manhwa",
+            "replicate_model": "runpod:manhwa",
+            "positive_prompt": "bundle prompt",
+            "provider_prompt": "runpod final positive prompt",
+            "provider_negative_prompt": "runpod final negative prompt",
+        },
+    )
+
+    class FakeSession:
+        async def get(self, model, entity_id):
+            if model is chat_api.GeneratedImage and entity_id == image.id:
+                return image
+            return None
+
+    class FakeJobRepo:
+        def __init__(self, _session):
+            pass
+
+        async def get_by_chat_and_id(self, chat_id, job_id):
+            assert chat_id == 7
+            assert job_id == job.id
+            return job
+
+    async def fake_verify(_chat_id, _user):
+        return types.SimpleNamespace(id=_chat_id)
+
+    monkeypatch.setattr(chat_api, "ADMIN_TELEGRAM_IDS", [123])
+    monkeypatch.setattr(chat_api, "verify_chat_ownership", fake_verify)
+    monkeypatch.setattr(chat_api, "get_session", lambda: FakeSessionManager(FakeSession()))
+    monkeypatch.setattr(chat_api, "ImageGenerationJobRepository", FakeJobRepo)
+
+    admin_response = asyncio.run(
+        chat_api.get_image_generation_job(7, job.id, types.SimpleNamespace(telegram_id=123))
+    )
+    non_admin_response = asyncio.run(
+        chat_api.get_image_generation_job(7, job.id, types.SimpleNamespace(telegram_id=456))
+    )
+
+    assert admin_response["image"]["image_id"] == image.id
+    assert admin_response["debug_messages"][0]["debug_for_image_id"] == image.id
+    assert "runpod final positive prompt" in admin_response["debug_messages"][0]["content"]
+    assert "runpod final negative prompt" in admin_response["debug_messages"][0]["content"]
+    assert "bundle prompt" not in admin_response["debug_messages"][0]["content"]
+    assert "debug_messages" not in non_admin_response
 
 
 def test_generate_chat_image_task_marks_success(monkeypatch):

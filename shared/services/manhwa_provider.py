@@ -68,6 +68,14 @@ def _truncate_for_clip(prompt: str, max_words: int = CLIP_MAX_WORDS) -> str:
     return truncated
 
 
+def build_provider_prompts(positive_prompt: str, negative_prompt: str = "") -> dict[str, str]:
+    """Return the exact positive/negative prompts sent to the RunPod workflow."""
+    return {
+        "positive_prompt": _truncate_for_clip(f"{MANHWA_BASE_POSITIVE}, {positive_prompt}"),
+        "negative_prompt": _truncate_for_clip(f"{MANHWA_BASE_NEGATIVE}, {negative_prompt}"),
+    }
+
+
 async def generate(
     *,
     positive_prompt: str,
@@ -75,9 +83,12 @@ async def generate(
     seed: int = -1,
     on_job_created: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
 ) -> str:
-    positive = _truncate_for_clip(f"{MANHWA_BASE_POSITIVE}, {positive_prompt}")
-    negative = _truncate_for_clip(f"{MANHWA_BASE_NEGATIVE}, {negative_prompt}")
-    workflow = build_manhwa_workflow(positive, negative, seed=seed)
+    provider_prompts = build_provider_prompts(positive_prompt, negative_prompt)
+    workflow = build_manhwa_workflow(
+        provider_prompts["positive_prompt"],
+        provider_prompts["negative_prompt"],
+        seed=seed,
+    )
 
     try:
         output = await manhwa_client().run(

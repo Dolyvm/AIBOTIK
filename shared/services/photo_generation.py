@@ -1757,6 +1757,26 @@ async def _sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+def _provider_prompt_metadata(
+    *,
+    provider: str,
+    prompt: str,
+    negative_prompt: str | None,
+    replicate_input: Mapping[str, Any],
+) -> dict[str, str | None]:
+    if provider == "runpod_manhwa":
+        provider_prompts = manhwa_provider.build_provider_prompts(prompt, negative_prompt or "")
+        return {
+            "provider_prompt": provider_prompts["positive_prompt"],
+            "provider_negative_prompt": provider_prompts["negative_prompt"] or None,
+        }
+
+    return {
+        "provider_prompt": _clean_text(replicate_input.get("prompt")),
+        "provider_negative_prompt": _clean_text(replicate_input.get("negative_prompt")) or None,
+    }
+
+
 class PhotoGenerationService:
     def __init__(
         self,
@@ -1879,6 +1899,14 @@ class PhotoGenerationService:
             prompt_metadata["provider"] = provider
             prompt_metadata["replicate_input"] = dict(replicate_input)
             prompt_metadata["replicate_model"] = replicate_model
+            prompt_metadata.update(
+                _provider_prompt_metadata(
+                    provider=provider,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    replicate_input=replicate_input,
+                )
+            )
             return PhotoPromptBundle(
                 model_type=model_type,
                 gender=gender,
@@ -1946,6 +1974,14 @@ class PhotoGenerationService:
             "replicate_model": replicate_model,
             "log_meta": dict(log_meta or {}),
         }
+        prompt_metadata.update(
+            _provider_prompt_metadata(
+                provider="replicate",
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                replicate_input=replicate_input,
+            )
+        )
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
@@ -2002,6 +2038,14 @@ class PhotoGenerationService:
             prompt_metadata["provider"] = provider
             prompt_metadata["replicate_input"] = dict(replicate_input)
             prompt_metadata["replicate_model"] = replicate_model
+            prompt_metadata.update(
+                _provider_prompt_metadata(
+                    provider=provider,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    replicate_input=replicate_input,
+                )
+            )
             return PhotoPromptBundle(
                 model_type=model_type,
                 gender=gender,
@@ -2075,6 +2119,14 @@ class PhotoGenerationService:
             "replicate_model": replicate_model,
             "log_meta": dict(log_meta or {}),
         }
+        prompt_metadata.update(
+            _provider_prompt_metadata(
+                provider="replicate",
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                replicate_input=replicate_input,
+            )
+        )
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
