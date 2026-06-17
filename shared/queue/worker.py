@@ -6,7 +6,11 @@ from shared.database import get_session
 from shared.services.redis_client import get_redis
 from shared.services.cache import CacheService, set_cache
 from shared.services.prompt_service import init_prompt_cache
-from shared.queue.tasks import expire_subscriptions_task, generate_chat_image_task
+from shared.queue.tasks import (
+    cancel_stale_image_jobs_task,
+    expire_subscriptions_task,
+    generate_chat_image_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +44,11 @@ async def shutdown(ctx):
 
 
 class WorkerSettings:
-    functions = [generate_chat_image_task]
+    functions = [generate_chat_image_task, cancel_stale_image_jobs_task]
 
     cron_jobs = [
         cron(expire_subscriptions_task, minute=0),  # каждый час
+        cron(cancel_stale_image_jobs_task, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
     ]
 
     redis_settings = RedisSettings.from_dsn(
@@ -51,7 +56,7 @@ class WorkerSettings:
     )
 
     max_jobs = 10
-    job_timeout = int(os.getenv("WORKER_JOB_TIMEOUT", "900"))
+    job_timeout = int(os.getenv("WORKER_JOB_TIMEOUT", "600"))
     keep_result = 3600
 
     on_startup = startup

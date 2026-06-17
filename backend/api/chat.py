@@ -28,12 +28,14 @@ from auth.authorization import verify_chat_ownership
 from shared.services.content_loader import get_character, get_world, get_first_message
 from shared.services.llm import LLMClient
 from shared.services.context_manager import ContextManager
-from shared.config import CHAT_MODEL, LLM_CHAT_PROVIDER_ROUTING
+from shared.config import ADMIN_TELEGRAM_IDS, CHAT_MODEL, LLM_CHAT_PROVIDER_ROUTING
 from shared.services.rate_limiter import get_rate_limiter, RateLimitExceeded, RATE_LIMITS
 from shared.services.subscription import get_subscription_service
 from shared.database.exceptions import UsageLimitExceeded
 from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_chat_image_paths, collect_images_since, delete_files
+from shared.services import facefusion_provider, manhwa_provider
+from shared.services.runpod_job_registry import cancel_recorded_runpod_jobs
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -106,6 +108,14 @@ async def _sync_existing_chat_to_scenario_heat(
     chat.state_meta = state_meta
 
 
+async def _cancel_active_image_job_for_chat(job_repo: ImageGenerationJobRepository, chat_id: int, reason: str) -> None:
+    active_job = await job_repo.get_active_for_chat(chat_id)
+    if not active_job:
+        return
+    await cancel_recorded_runpod_jobs(active_job.request_payload, reason=reason)
+    await job_repo.mark_canceled(active_job.id)
+
+
 def _stream_event(event_type: str, **payload) -> str:
     return json.dumps({"type": event_type, **payload}, ensure_ascii=False) + "\n"
 
@@ -119,18 +129,122 @@ def _image_event(image: GeneratedImage) -> dict:
     }
 
 
-def _job_status_payload(job, image: GeneratedImage | None = None) -> dict:
+def _is_admin_user(user: User) -> bool:
+    return getattr(user, "telegram_id", None) in ADMIN_TELEGRAM_IDS
+
+
+def _debug_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+
+def _markdown_code_block(label: str, text: str) -> str:
+    fence = "```"
+    while fence in text:
+        fence += "`"
+    return f"**{label}**\n{fence}\n{text}\n{fence}"
+
+
+def _photo_prompt_debug_event(image: GeneratedImage) -> dict | None:
+    metadata = image.prompt_metadata or {}
+    replicate_input = metadata.get("replicate_input") if isinstance(metadata, dict) else {}
+    if not isinstance(replicate_input, dict):
+        replicate_input = {}
+
+    provider_prompt = _debug_text(
+        metadata.get("provider_prompt")
+        or replicate_input.get("prompt")
+        or metadata.get("positive_prompt")
+        or image.prompt
+    )
+    if not provider_prompt:
+        return None
+
+    negative_prompt = _debug_text(
+        metadata.get("provider_negative_prompt")
+        or replicate_input.get("negative_prompt")
+        or metadata.get("negative_prompt")
+    )
+    provider = _debug_text(metadata.get("provider") or metadata.get("runpod_provider") or "unknown")
+    model = _debug_text(metadata.get("replicate_model") or metadata.get("provider_model"))
+
+    lines = [
+        "Photo prompt debug",
+        f"Provider: `{provider}`",
+    ]
+    if model:
+        lines.append(f"Model: `{model}`")
+    lines.extend(["", _markdown_code_block("Positive", provider_prompt)])
+    if negative_prompt:
+        lines.extend(["", _markdown_code_block("Negative", negative_prompt)])
+
+    return {
+        "role": "assistant",
+        "type": "photo_prompt_debug",
+        "debug_for_image_id": image.id,
+        "content": "\n".join(lines),
+        "timestamp": image.created_at.isoformat(),
+    }
+
+
+def _image_events(image: GeneratedImage, *, include_debug: bool = False) -> list[dict]:
+    events = [_image_event(image)]
+    if include_debug:
+        debug_event = _photo_prompt_debug_event(image)
+        if debug_event:
+            events.append(debug_event)
+    return events
+
+
+def _job_status_payload(
+    job,
+    image: GeneratedImage | None = None,
+    *,
+    include_debug: bool = False,
+) -> dict:
     payload = {
         "job_id": job.id,
         "status": job.status,
     }
     if image:
         payload["image"] = _image_event(image)
+        if include_debug:
+            debug_event = _photo_prompt_debug_event(image)
+            if debug_event:
+                payload["debug_messages"] = [debug_event]
     if job.status in {"failed", "canceled"}:
         payload["message"] = job.error_message or (
             "Генерация отменена" if job.status == "canceled" else "Ошибка генерации фото"
         )
     return payload
+
+
+def _photo_capabilities_for_character(character: dict | None) -> dict:
+    visual = (character or {}).get("visual") or {}
+    model_type = (character or {}).get("model_type") or visual.get("model_type")
+    custom_avatar = bool(visual.get("custom_avatar"))
+    identity_reference = visual.get("identity_reference") or {}
+    face_swap_available = (
+        custom_avatar
+        and identity_reference.get("status") == "ready"
+        and facefusion_provider.is_configured()
+    )
+    manhwa_available = model_type == "manhwa" and manhwa_provider.is_configured()
+    available = bool(character)
+    if custom_avatar:
+        available = available and face_swap_available
+    if model_type == "manhwa":
+        available = available and manhwa_available
+    return {
+        "available": available,
+        "mode": "identity_facefusion" if custom_avatar else "standard",
+        "custom_avatar": custom_avatar,
+        "face_swap_available": face_swap_available,
+        "manhwa_available": manhwa_available,
+    }
 
 
 def _message_snapshot(messages) -> list[dict]:
@@ -153,8 +267,20 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
         job_repo = ImageGenerationJobRepository(session)
 
         messages = await message_repo.get_history(chat_id)
-        images = await image_repo.get_by_chat_formatted(chat_id)
+        images = await image_repo.get_by_chat(chat_id)
         active_image_job = await job_repo.get_active_for_chat(chat_id)
+        character_data = await get_character(chat.target_id) if chat.chat_type == "character" else None
+        photo_capabilities = (
+            _photo_capabilities_for_character(character_data)
+            if chat.chat_type == "character"
+            else {
+                "available": False,
+                "mode": "unavailable",
+                "custom_avatar": False,
+                "face_swap_available": False,
+                "manhwa_available": False,
+            }
+        )
 
         msg_dicts = [
             {
@@ -164,8 +290,13 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             }
             for msg in messages
         ]
+        image_events = [
+            event
+            for image in images
+            for event in _image_events(image, include_debug=_is_admin_user(user))
+        ]
 
-        all_events = msg_dicts + images
+        all_events = msg_dicts + image_events
         all_events.sort(key=lambda x: x["timestamp"])
 
         return {
@@ -180,6 +311,11 @@ async def get_history(chat_id: int, user: User = Depends(get_current_user)):
             "active_image_job": (
                 _job_status_payload(active_image_job) if active_image_job else None
             ),
+            "photo_capabilities": photo_capabilities,
+            "custom_avatar": photo_capabilities["custom_avatar"],
+            "photo_generation_available": photo_capabilities["available"],
+            "photo_generation_mode": photo_capabilities["mode"],
+            "photo_prompt_debug_available": _is_admin_user(user),
         }
 
 
@@ -317,6 +453,9 @@ async def generate_image(
     character = await get_character(chat.target_id)
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
+    photo_capabilities = _photo_capabilities_for_character(character)
+    if not photo_capabilities["available"]:
+        raise HTTPException(status_code=503, detail="Генерация фото для этого персонажа временно недоступна")
 
     async with get_session() as session:
         message_repo = MessageRepository(session)
@@ -384,7 +523,7 @@ async def get_image_generation_job(
             raise HTTPException(status_code=404, detail="Image generation job not found")
 
         image = await session.get(GeneratedImage, job.image_id) if job.image_id else None
-        return _job_status_payload(job, image)
+        return _job_status_payload(job, image, include_debug=_is_admin_user(user))
 
 
 @router.get("/by-character/{target_id}")
@@ -489,7 +628,7 @@ async def reset_chat(chat_id: int, user: User = Depends(get_current_user)):
                 content = await get_character(verified_chat.target_id)
                 scenario_heat = _scenario_heat_level(content, verified_chat.scenario_index or 0)
 
-            await job_repo.cancel_active_for_chat(chat_id)
+            await _cancel_active_image_job_for_chat(job_repo, chat_id, "chat_reset")
             await chat_repo.reset_history(chat_id, heat_level=scenario_heat)
 
             delete_files(paths)
@@ -644,7 +783,7 @@ async def undo_last_turn(chat_id: int, user: User = Depends(get_current_user)):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        await job_repo.cancel_active_for_chat(chat_id)
+        await _cancel_active_image_job_for_chat(job_repo, chat_id, "chat_undo")
         paths = await collect_images_since(session, chat_id, user_msg_created_at)
 
         # Удалить GeneratedImages, созданные после отправки user-сообщения
@@ -676,7 +815,7 @@ async def delete_chat(
         paths = await collect_chat_image_paths(session, chat_id)
 
         job_repo = ImageGenerationJobRepository(session)
-        await job_repo.cancel_active_for_chat(chat_id)
+        await _cancel_active_image_job_for_chat(job_repo, chat_id, "chat_delete")
 
         chat_repo = ChatRepository(session)
         await chat_repo.delete(chat_id)

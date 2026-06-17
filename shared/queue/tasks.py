@@ -1,10 +1,12 @@
 import logging
 import os
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 
 from aiogram import Bot
 from sqlalchemy import select, update
 
+from shared.config import RUNPOD_FACE_SWAP_ENDPOINT_ID, RUNPOD_MANHWA_ENDPOINT_ID
 from shared.database.exceptions import UsageLimitExceeded
 from shared.database.repositories import ImageGenerationJobRepository
 from shared.models import Chat, ImageGenerationJob, SubscriptionPlan, User
@@ -17,6 +19,7 @@ from shared.services.photo_generation import (
     PhotoProviderError,
     UnsupportedPhotoModelError,
 )
+from shared.services.runpod_job_registry import cancel_recorded_runpod_jobs
 from shared.services.subscription import get_subscription_service
 
 logger = logging.getLogger(__name__)
@@ -123,6 +126,23 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
             if not fresh_chat:
                 raise PhotoGenerationCanceled("Chat was deleted")
 
+        async def record_runpod_job(
+            provider: str,
+            runpod_job_id: str,
+            status_payload: dict,
+        ) -> None:
+            endpoint_id = {
+                "runpod_facefusion": RUNPOD_FACE_SWAP_ENDPOINT_ID,
+                "runpod_manhwa": RUNPOD_MANHWA_ENDPOINT_ID,
+            }.get(provider)
+            await job_repo.record_runpod_job(
+                job_id,
+                provider=provider,
+                runpod_job_id=runpod_job_id,
+                endpoint_id=endpoint_id,
+                status_payload=status_payload,
+            )
+
         try:
             await ensure_job_active()
             image = await service.generate_for_chat(
@@ -133,6 +153,7 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
                 recent_messages=recent_messages,
                 chat_state=chat_state,
                 before_save=ensure_job_active,
+                on_runpod_job_created=record_runpod_job,
             )
             await ensure_job_active()
             await sub_service.increment_usage(user.telegram_id, "images_generated", session)
@@ -153,8 +174,22 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
             return {"status": "succeeded", "job_id": job_id, "image_id": image.id}
         except PhotoGenerationCanceled:
             await session.rollback()
+            fresh_job = await job_repo.get_by_id(job_id)
+            await cancel_recorded_runpod_jobs(
+                fresh_job.request_payload if fresh_job else payload,
+                reason="local_job_canceled",
+            )
             await job_repo.mark_canceled(job_id)
             return {"status": "canceled", "job_id": job_id}
+        except asyncio.CancelledError:
+            await session.rollback()
+            fresh_job = await job_repo.get_by_id(job_id)
+            await cancel_recorded_runpod_jobs(
+                fresh_job.request_payload if fresh_job else payload,
+                reason="arq_coroutine_cancelled",
+            )
+            await job_repo.mark_canceled(job_id, "Генерация отменена по таймауту")
+            raise
         except UnsupportedPhotoModelError as e:
             await session.rollback()
             await job_repo.mark_failed(job_id, "unsupported_photo_model", str(e))
@@ -165,6 +200,11 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
             return {"status": "failed", "job_id": job_id, "error": "prompt_budget"}
         except PhotoProviderError as e:
             await session.rollback()
+            fresh_job = await job_repo.get_by_id(job_id)
+            await cancel_recorded_runpod_jobs(
+                fresh_job.request_payload if fresh_job else payload,
+                reason="provider_failed",
+            )
             logger.exception("Photo provider failed in worker: job_id=%s error=%s", job_id, e)
             await job_repo.mark_failed(job_id, "provider_failed", "Ошибка генерации фото")
             return {"status": "failed", "job_id": job_id, "error": "provider_failed"}
@@ -179,6 +219,47 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
             return {"status": "failed", "job_id": job_id, "error": "generation_failed"}
         except Exception as e:
             await session.rollback()
+            fresh_job = await job_repo.get_by_id(job_id)
+            await cancel_recorded_runpod_jobs(
+                fresh_job.request_payload if fresh_job else payload,
+                reason="unexpected_error",
+            )
             logger.exception("Unexpected image generation worker failure: job_id=%s error=%s", job_id, e)
             await job_repo.mark_failed(job_id, "unexpected_error", "Ошибка генерации фото")
             return {"status": "failed", "job_id": job_id, "error": "unexpected_error"}
+
+
+async def cancel_stale_image_jobs_task(ctx: dict) -> dict:
+    """Watchdog: cancel local active image jobs that outlived the app budget."""
+    get_session = ctx.get("get_session")
+    if not get_session:
+        logger.error("cancel_stale_image_jobs_task: no get_session in context")
+        return {"status": "failed", "canceled": 0}
+
+    max_age_seconds = int(os.getenv("IMAGE_JOB_WATCHDOG_SECONDS", "660"))
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    canceled = 0
+
+    async with get_session() as session:
+        job_repo = ImageGenerationJobRepository(session)
+        jobs = await job_repo.get_active_started_before(cutoff)
+        for job in jobs:
+            remote_canceled = await cancel_recorded_runpod_jobs(
+                job.request_payload,
+                reason="watchdog_stale_job",
+            )
+            await job_repo.mark_failed(
+                job.id,
+                "watchdog_stale_job",
+                "Генерация остановлена по таймауту",
+            )
+            canceled += 1
+            logger.warning(
+                "Stale image job canceled: job_id=%s chat_id=%s remote_canceled=%s age_limit_seconds=%s",
+                job.id,
+                job.chat_id,
+                remote_canceled,
+                max_age_seconds,
+            )
+
+    return {"status": "ok", "canceled": canceled}

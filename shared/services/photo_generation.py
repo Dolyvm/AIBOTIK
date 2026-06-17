@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import re
@@ -21,6 +22,7 @@ from shared.config import (
     STRUCTURED_MODEL,
 )
 from shared.models import Chat, GeneratedImage, Message, User
+from shared.services import facefusion_provider, manhwa_provider
 from shared.services.llm import LLMClient
 from shared.services.prompt_service import get_prompt
 
@@ -36,6 +38,7 @@ REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS = 3
 PROMPT_BUDGETS = {
     "real": 450,
     "anime": 180,
+    "manhwa": 180,
 }
 ANIME_PROMPT_PROFILE_VERSION = "anime_prompt_v2"
 ANIME_AVATAR_PROMPT_BUDGET = 180
@@ -95,6 +98,7 @@ class PhotoPromptBundle:
     scene: dict[str, Any]
     replicate_input: dict[str, Any]
     replicate_model: str
+    provider: str = "replicate"
     state_meta_update: dict[str, Any] | None = None
     prompt_metadata: dict[str, Any] | None = None
 
@@ -417,6 +421,15 @@ def _render_template(template: str, context: Mapping[str, Any]) -> str:
     return _dedupe_csv(rendered, 200)
 
 
+def _render_real_template(template: str, context: Mapping[str, Any]) -> str:
+    rendered = template.format_map(_SafeFormatDict({k: _clean_text(v) for k, v in context.items()}))
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    rendered = re.sub(r"\s+([,.])", r"\1", rendered)
+    rendered = re.sub(r"(?:\.\s*){2,}", ". ", rendered)
+    rendered = re.sub(r"\s+,", ",", rendered)
+    return rendered.strip(" ,")
+
+
 def _template_fields(template: str) -> set[str]:
     fields: set[str] = set()
     for _, field_name, _, _ in Formatter().parse(template):
@@ -432,10 +445,11 @@ def _fit_prompt_budget(
     removable_fields: Sequence[str],
     label: str,
     log_meta: Mapping[str, Any] | None = None,
+    renderer: Callable[[str, Mapping[str, Any]], str] = _render_template,
 ) -> str:
     original_context = dict(context)
     active_context = dict(original_context)
-    original_prompt = _render_template(template, active_context)
+    original_prompt = renderer(template, active_context)
     original_tokens = _estimate_prompt_tokens(original_prompt)
     if original_tokens <= budget:
         return original_prompt
@@ -461,7 +475,7 @@ def _fit_prompt_budget(
             continue
         active_context[field] = ""
         removed_fields.append(field)
-        prompt = _render_template(template, active_context)
+        prompt = renderer(template, active_context)
         if _estimate_prompt_tokens(prompt) <= budget:
             return prompt
 
@@ -982,9 +996,7 @@ def _normalize_model_type(character: Mapping[str, Any]) -> str:
     model_type = _clean_text(character.get("model_type") or visual.get("model_type") or "anime").lower()
     if model_type == "manhva":
         model_type = "manhwa"
-    if model_type == "manhwa":
-        raise UnsupportedPhotoModelError("Генерация фото для manhwa пока не поддерживается")
-    if model_type not in {"anime", "real"}:
+    if model_type not in {"anime", "real", "manhwa"}:
         raise UnsupportedPhotoModelError(f"Генерация фото для типа '{model_type}' не поддерживается")
     return model_type
 
@@ -993,6 +1005,11 @@ def _normalize_gender(character: Mapping[str, Any]) -> str:
     visual = _character_visual(character)
     gender = _clean_text(visual.get("gender") or character.get("gender") or "female").lower()
     return gender if gender in {"male", "female"} else "female"
+
+
+def _ensure_supported_model_gender(model_type: str, gender: str) -> None:
+    if model_type == "manhwa" and gender != "male":
+        raise UnsupportedPhotoModelError("Генерация manhwa доступна только для male characters")
 
 
 def _character_visual(character: Mapping[str, Any]) -> dict[str, Any]:
@@ -1017,6 +1034,68 @@ def _visual_field_tag(key: str, value: Any) -> str:
     if key == "skin" and not re.search(r"\bskin\b", text, re.IGNORECASE):
         return f"{text} skin"
     return text
+
+
+def _identity_reference(visual: Mapping[str, Any]) -> dict[str, Any]:
+    identity = visual.get("identity_reference")
+    if not isinstance(identity, Mapping) or identity.get("status") != "ready":
+        return {}
+    return dict(identity)
+
+
+def _identity_prompt_items(visual: Mapping[str, Any]) -> list[str]:
+    identity = _identity_reference(visual)
+    if not identity:
+        return []
+    items = _split_csv_items(identity.get("identity_prompt"))
+    traits = identity.get("visible_traits")
+    if isinstance(traits, Mapping):
+        for key in ("hair", "skin", "eyes", "makeup", "accessories", "face_vibe"):
+            value = _clean_text(traits.get(key))
+            if value and value.lower() != "uncertain":
+                items.extend(_split_csv_items(value))
+    return _dedupe_items(items, max_items=20)
+
+
+def _identity_source_image(character: Mapping[str, Any]) -> str:
+    visual = _character_visual(character)
+    if not visual.get("custom_avatar"):
+        return ""
+    identity = _identity_reference(visual)
+    return _clean_text(identity.get("source_image") or visual.get("avatar"))
+
+
+def _body_profile_items(visual: Mapping[str, Any]) -> list[str]:
+    profile = visual.get("body_profile")
+    if not isinstance(profile, Mapping):
+        return []
+    items = []
+    body_type = _clean_text(profile.get("body_type")).replace("_", " ")
+    height = _clean_text(profile.get("height"))
+    breast_size = _clean_text(profile.get("breast_size")).replace("_", " ")
+    butt_size = _clean_text(profile.get("butt_size")).replace("_", " ")
+    if body_type:
+        items.append(f"{body_type} body")
+    if height:
+        items.append(f"{height} height")
+    if breast_size:
+        items.append(f"{breast_size} breasts")
+    if butt_size:
+        items.append(f"{butt_size} hips")
+    return items
+
+
+def _outfit_from_body_profile(visual: Mapping[str, Any]) -> str:
+    profile = visual.get("body_profile")
+    if not isinstance(profile, Mapping):
+        return ""
+    preset = _clean_text(profile.get("outfit_preset")).lower()
+    return {
+        "casual": "casual modern outfit",
+        "elegant": "elegant fitted outfit",
+        "sporty": "sporty fitted outfit",
+        "home": "comfortable home outfit",
+    }.get(preset, "")
 
 
 def _visual_parts(character: Mapping[str, Any], policy: PhotoPromptPolicy) -> dict[str, str]:
@@ -1045,17 +1124,20 @@ def _visual_parts(character: Mapping[str, Any], policy: PhotoPromptPolicy) -> di
         "facial_hair",
     )
 
-    appearance_items = _split_csv_items(character.get("appearance") or visual.get("appearance"))
+    appearance_items = _split_csv_items([character.get("appearance"), visual.get("appearance")])
+    appearance_items.extend(_identity_prompt_items(visual))
     body_items = [
         item
         for key in body_keys
         for item in _split_csv_items(_visual_field_tag(key, visual.get(key)))
     ]
+    body_items.extend(_body_profile_items(visual))
     face_items = [
         item
         for key in face_keys
         for item in _split_csv_items(_visual_field_tag(key, visual.get(key)))
     ]
+    face_items.extend(_identity_prompt_items(visual))
     style_items = _split_csv_items(visual.get("style_tags"))
 
     appearance = ", ".join(_dedupe_items(appearance_items, max_items=200))
@@ -1068,7 +1150,10 @@ def _visual_parts(character: Mapping[str, Any], policy: PhotoPromptPolicy) -> di
         "appearance": appearance,
         "body": body,
         "face": face,
-        "default_outfit": _dedupe_csv(_clean_text(visual.get("default_outfit")), 40),
+        "default_outfit": _dedupe_csv(
+            [_clean_text(visual.get("default_outfit")), _outfit_from_body_profile(visual)],
+            40,
+        ),
         "style_tags": style_tags,
     }
 
@@ -1111,7 +1196,6 @@ def _avatar_generation_character(
         raw_model_type = "manhwa"
 
     if raw_model_type == "manhwa":
-        raw_model_type = "anime"
         visual["style_tags"] = _dedupe_csv(
             [visual.get("style_tags"), policy.manhwa_style_tags],
             30,
@@ -1409,6 +1493,14 @@ def _message_payload(messages: Iterable[Message | Mapping[str, Any]]) -> list[di
     return result
 
 
+def _scene_extractor_prompt_key(model_type: str) -> str:
+    if model_type == "real":
+        return "photo_scene_extractor_real"
+    if model_type == "manhwa":
+        return "photo_scene_extractor_manhwa"
+    return "photo_scene_extractor_anime"
+
+
 def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
     outfit_action = _clean_text(scene.get("outfit_action")).lower()
     custom_clothing = _clean_text(scene.get("custom_clothing"))
@@ -1423,6 +1515,7 @@ def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
         custom_clothing = _clean_text(scene.get("clothing"))
 
     return {
+        "scene_description": _clean_text(scene.get("scene_description"))[:600],
         "pose": _clean_text(scene.get("pose"))[:180],
         "primary_pose": _clean_text(scene.get("primary_pose"))[:120],
         "pose_modifiers": _dedupe_csv(scene.get("pose_modifiers"), 20)[:180],
@@ -1442,6 +1535,43 @@ def _normalize_scene(scene: Mapping[str, Any]) -> dict[str, Any]:
         "setting": _clean_text(scene.get("setting") or scene.get("environment"))[:180],
         "scene_notes": _clean_text(scene.get("scene_notes") or scene.get("details"))[:220],
     }
+
+
+def _real_scene_description(scene: Mapping[str, Any], gender: str) -> str:
+    description = _clean_text(scene.get("scene_description"))
+    if description:
+        return description
+
+    subject = "her" if gender == "female" else "him"
+    composition = _clean_text(scene.get("composition")) or "full-body"
+    pose = _dedupe_csv(
+        [
+            scene.get("primary_pose"),
+            scene.get("pose"),
+            scene.get("pose_modifiers"),
+            scene.get("gaze"),
+            scene.get("hands"),
+        ],
+        20,
+    )
+    setting = _dedupe_csv(
+        [
+            scene.get("place") or scene.get("setting"),
+            scene.get("background_objects"),
+            scene.get("lighting"),
+            scene.get("scene_notes"),
+        ],
+        30,
+    )
+
+    first = f"A {composition} realistic photograph"
+    if pose:
+        first = f"{first} of {subject} {pose}"
+    else:
+        first = f"{first} of {subject}"
+    if setting:
+        return f"{first} in {setting}."
+    return f"{first} with natural photographic framing."
 
 
 class ReplicateImageClient:
@@ -1543,6 +1673,17 @@ class ReplicateImageClient:
 
     async def download_output(self, output: Any) -> tuple[bytes, str, str]:
         url = self._first_output_url(output)
+        data_match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", url, flags=re.DOTALL)
+        if data_match:
+            try:
+                content = base64.b64decode(
+                    "".join(data_match.group(2).split()),
+                    validate=True,
+                )
+            except Exception as e:
+                raise PhotoProviderError("Image data URL decode failed") from e
+            return content, data_match.group(1), ""
+
         safe_url = self._safe_output_url(url)
         last_error: Exception | None = None
 
@@ -1616,6 +1757,26 @@ async def _sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
+def _provider_prompt_metadata(
+    *,
+    provider: str,
+    prompt: str,
+    negative_prompt: str | None,
+    replicate_input: Mapping[str, Any],
+) -> dict[str, str | None]:
+    if provider == "runpod_manhwa":
+        provider_prompts = manhwa_provider.build_provider_prompts(prompt, negative_prompt or "")
+        return {
+            "provider_prompt": provider_prompts["positive_prompt"],
+            "provider_negative_prompt": provider_prompts["negative_prompt"] or None,
+        }
+
+    return {
+        "provider_prompt": _clean_text(replicate_input.get("prompt")),
+        "provider_negative_prompt": _clean_text(replicate_input.get("negative_prompt")) or None,
+    }
+
+
 class PhotoGenerationService:
     def __init__(
         self,
@@ -1636,9 +1797,10 @@ class PhotoGenerationService:
         recent_messages: Sequence[Message | Mapping[str, Any]],
         chat_state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        system_prompt = await get_prompt("photo_scene_extractor")
         model_type = _normalize_model_type(character)
+        system_prompt = await get_prompt(_scene_extractor_prompt_key(model_type))
         gender = _normalize_gender(character)
+        _ensure_supported_model_gender(model_type, gender)
         visual_data = _character_visual(character)
         wardrobe = _wardrobe(character)
 
@@ -1672,11 +1834,25 @@ class PhotoGenerationService:
         policy = await get_photo_prompt_policy()
         model_type = _normalize_model_type(character)
         gender = _normalize_gender(character)
-        visual = _visual_parts(character, policy)
+        _ensure_supported_model_gender(model_type, gender)
+        prompt_model_type = "anime" if model_type == "manhwa" else model_type
+        visual = dict(_visual_parts(character, policy))
+        prompt_character: Mapping[str, Any] = character
+        if model_type == "manhwa":
+            visual["style_tags"] = _dedupe_csv([visual.get("style_tags"), policy.manhwa_style_tags], 60)
+            prompt_character = {
+                **dict(character),
+                "model_type": "anime",
+                "visual_data": {
+                    **_character_visual(character),
+                    "model_type": "anime",
+                    "style_tags": visual["style_tags"],
+                },
+            }
         wardrobe = _wardrobe(character)
 
         clothing, state_meta_update, outfit_decision = _resolve_photo_outfit(
-            model_type,
+            prompt_model_type,
             visual,
             wardrobe,
             scene,
@@ -1691,14 +1867,15 @@ class PhotoGenerationService:
         )
         clothing_prompt = (
             _real_clothing_prompt(clothing, policy)
-            if model_type == "real"
+            if prompt_model_type == "real"
             else _dedupe_csv(clothing, 40)
         )
-        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
-        if model_type == "anime":
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+        template_model_type = "manhwa" if model_type == "manhwa" else prompt_model_type
+        template = await get_prompt(f"photo_prompt_{template_model_type}_{gender}")
+        if prompt_model_type == "anime":
+            negative_template = await get_prompt(f"photo_negative_{template_model_type}_{gender}")
             anime_result = _build_anime_prompt_result(
-                character=character,
+                character=prompt_character,
                 gender=gender,
                 visual=visual,
                 scene=scene,
@@ -1714,11 +1891,22 @@ class PhotoGenerationService:
             )
             prompt = anime_result["prompt"]
             negative_prompt = anime_result["negative_prompt"]
-            replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
-            replicate_model = ANIME_MODEL_VERSION
+            replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
+            provider = "runpod_manhwa" if model_type == "manhwa" else "replicate"
+            replicate_model = "runpod:manhwa" if model_type == "manhwa" else ANIME_MODEL_VERSION
             prompt_metadata = dict(anime_result["metadata"])
+            prompt_metadata["model_type"] = model_type
+            prompt_metadata["provider"] = provider
             prompt_metadata["replicate_input"] = dict(replicate_input)
             prompt_metadata["replicate_model"] = replicate_model
+            prompt_metadata.update(
+                _provider_prompt_metadata(
+                    provider=provider,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    replicate_input=replicate_input,
+                )
+            )
             return PhotoPromptBundle(
                 model_type=model_type,
                 gender=gender,
@@ -1727,12 +1915,17 @@ class PhotoGenerationService:
                 scene=dict(anime_result["normalized_scene"]),
                 replicate_input=replicate_input,
                 replicate_model=replicate_model,
+                provider=provider,
                 state_meta_update=state_meta_update,
                 prompt_metadata=prompt_metadata,
             )
 
-        pose = scene.get("pose", "")
-        scene_notes = scene.get("scene_notes", "")
+        exposure_level = _anime_exposure_level(scene, clothing_prompt)
+        normalized_scene = {
+            **dict(scene),
+            "scene_description": _real_scene_description(scene, gender),
+            "exposure_level": exposure_level,
+        }
 
         context = {
             "character_name": character.get("name", ""),
@@ -1742,14 +1935,15 @@ class PhotoGenerationService:
             "body": visual["body"],
             "face": visual["face"],
             "clothing": clothing_prompt,
-            "pose": pose,
+            "scene_description": normalized_scene["scene_description"],
+            "pose": scene.get("pose", ""),
             "expression": scene.get("expression", ""),
             "emotion": scene.get("emotion", ""),
             "setting": scene.get("setting", ""),
-            "scene_notes": scene_notes,
+            "scene_notes": scene.get("scene_notes", ""),
             "style_tags": visual["style_tags"],
         }
-        removable_fields = ("scene_notes", "style_tags", "setting", "emotion")
+        removable_fields = ("style_tags", "scene_notes", "setting", "emotion", "body", "face")
         prompt = _fit_prompt_budget(
             template,
             context,
@@ -1757,20 +1951,48 @@ class PhotoGenerationService:
             removable_fields=removable_fields,
             label=f"{model_type}/{gender}",
             log_meta=log_meta,
+            renderer=_render_real_template,
         )
 
         negative_prompt = None
-        replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
-        replicate_model = ANIME_MODEL_VERSION if model_type == "anime" else REAL_MODEL
+        replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
+        replicate_model = ANIME_MODEL_VERSION if prompt_model_type == "anime" else REAL_MODEL
+        prompt_metadata = {
+            "profile_version": "real_prompt_v1",
+            "purpose": "chat_photo",
+            "model_type": model_type,
+            "provider": "replicate",
+            "gender": gender,
+            "normalized_scene": normalized_scene,
+            "outfit_decision": dict(outfit_decision or {}),
+            "exposure_level": exposure_level,
+            "positive_prompt": prompt,
+            "negative_prompt": None,
+            "positive_tokens": _estimate_prompt_tokens(prompt),
+            "negative_tokens": 0,
+            "replicate_input": dict(replicate_input),
+            "replicate_model": replicate_model,
+            "log_meta": dict(log_meta or {}),
+        }
+        prompt_metadata.update(
+            _provider_prompt_metadata(
+                provider="replicate",
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                replicate_input=replicate_input,
+            )
+        )
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            scene=dict(scene),
+            scene=normalized_scene,
             replicate_input=replicate_input,
             replicate_model=replicate_model,
+            provider="replicate",
             state_meta_update=state_meta_update,
+            prompt_metadata=prompt_metadata,
         )
 
     async def build_avatar_prompt_bundle(
@@ -1781,14 +2003,17 @@ class PhotoGenerationService:
         policy = await get_photo_prompt_policy()
         avatar_character = _avatar_generation_character(character, policy)
         model_type = _normalize_model_type(avatar_character)
+        prompt_model_type = "anime" if model_type == "manhwa" else model_type
         gender = _normalize_gender(avatar_character)
+        _ensure_supported_model_gender(model_type, gender)
         visual = _visual_parts(avatar_character, policy)
         wardrobe = _wardrobe(avatar_character)
-        clothing_prompt = _avatar_clothing_prompt(model_type, gender, visual, wardrobe, policy)
-        template = await get_prompt(f"photo_prompt_{model_type}_{gender}")
-        if model_type == "anime":
+        clothing_prompt = _avatar_clothing_prompt(prompt_model_type, gender, visual, wardrobe, policy)
+        template_model_type = "manhwa" if model_type == "manhwa" else prompt_model_type
+        template = await get_prompt(f"photo_prompt_{template_model_type}_{gender}")
+        if prompt_model_type == "anime":
             scene = dict(policy.avatar_scene)
-            negative_template = await get_prompt(f"photo_negative_anime_{gender}")
+            negative_template = await get_prompt(f"photo_negative_{template_model_type}_{gender}")
             anime_result = _build_anime_prompt_result(
                 character=avatar_character,
                 gender=gender,
@@ -1805,11 +2030,22 @@ class PhotoGenerationService:
             )
             prompt = anime_result["prompt"]
             negative_prompt = anime_result["negative_prompt"]
-            replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
-            replicate_model = ANIME_MODEL_VERSION
+            replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
+            provider = "runpod_manhwa" if model_type == "manhwa" else "replicate"
+            replicate_model = "runpod:manhwa" if model_type == "manhwa" else ANIME_MODEL_VERSION
             prompt_metadata = dict(anime_result["metadata"])
+            prompt_metadata["model_type"] = model_type
+            prompt_metadata["provider"] = provider
             prompt_metadata["replicate_input"] = dict(replicate_input)
             prompt_metadata["replicate_model"] = replicate_model
+            prompt_metadata.update(
+                _provider_prompt_metadata(
+                    provider=provider,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    replicate_input=replicate_input,
+                )
+            )
             return PhotoPromptBundle(
                 model_type=model_type,
                 gender=gender,
@@ -1818,8 +2054,21 @@ class PhotoGenerationService:
                 scene=dict(anime_result["normalized_scene"]),
                 replicate_input=replicate_input,
                 replicate_model=replicate_model,
+                provider=provider,
                 prompt_metadata=prompt_metadata,
             )
+
+        scene_description = (
+            "An upper-body realistic portrait with the character looking at the camera "
+            "against a simple softly lit background."
+        )
+        exposure_level = _anime_exposure_level(policy.avatar_scene, clothing_prompt)
+        normalized_scene = {
+            **dict(policy.avatar_scene),
+            "scene_description": scene_description,
+            "exposure_level": exposure_level,
+        }
+        outfit_decision = {"source": "avatar_default", "clothing": clothing_prompt}
 
         context = {
             "character_name": avatar_character.get("name", ""),
@@ -1829,6 +2078,7 @@ class PhotoGenerationService:
             "body": _strip_user_quality_tags(visual["body"], policy),
             "face": _strip_user_quality_tags(visual["face"], policy),
             "clothing": clothing_prompt,
+            "scene_description": scene_description,
             "pose": policy.avatar_scene.get("pose", ""),
             "expression": policy.avatar_scene.get("expression", ""),
             "emotion": policy.avatar_scene.get("emotion", ""),
@@ -1845,25 +2095,48 @@ class PhotoGenerationService:
             removable_fields=removable_fields,
             label=f"avatar/{model_type}/{gender}",
             log_meta=log_meta,
+            renderer=_render_real_template,
         )
 
         negative_prompt = None
 
-        replicate_input = self._replicate_input(model_type, prompt, negative_prompt)
-        replicate_model = ANIME_MODEL_VERSION if model_type == "anime" else REAL_MODEL
+        replicate_input = self._replicate_input(prompt_model_type, prompt, negative_prompt)
+        replicate_model = ANIME_MODEL_VERSION if prompt_model_type == "anime" else REAL_MODEL
+        prompt_metadata = {
+            "profile_version": "real_prompt_v1",
+            "purpose": "avatar",
+            "model_type": model_type,
+            "provider": "replicate",
+            "gender": gender,
+            "normalized_scene": normalized_scene,
+            "outfit_decision": outfit_decision,
+            "exposure_level": exposure_level,
+            "positive_prompt": prompt,
+            "negative_prompt": None,
+            "positive_tokens": _estimate_prompt_tokens(prompt),
+            "negative_tokens": 0,
+            "replicate_input": dict(replicate_input),
+            "replicate_model": replicate_model,
+            "log_meta": dict(log_meta or {}),
+        }
+        prompt_metadata.update(
+            _provider_prompt_metadata(
+                provider="replicate",
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                replicate_input=replicate_input,
+            )
+        )
         return PhotoPromptBundle(
             model_type=model_type,
             gender=gender,
             prompt=prompt,
             negative_prompt=negative_prompt,
-            scene={
-                "pose": context.get("pose", ""),
-                "expression": context.get("expression", ""),
-                "setting": context.get("setting", ""),
-                "scene_notes": context.get("scene_notes", ""),
-            },
+            scene=normalized_scene,
             replicate_input=replicate_input,
             replicate_model=replicate_model,
+            provider="replicate",
+            prompt_metadata=prompt_metadata,
         )
 
     @staticmethod
@@ -1892,6 +2165,31 @@ class PhotoGenerationService:
             "batch_size": 1,
         }
 
+    async def _run_bundle_provider(
+        self,
+        bundle: PhotoPromptBundle,
+        *,
+        on_runpod_job_created: Callable[[str, str, dict[str, Any]], Awaitable[None]] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        if bundle.provider == "runpod_manhwa":
+            async def on_job(job_id: str, payload: dict[str, Any]) -> None:
+                if on_runpod_job_created:
+                    await on_runpod_job_created("runpod_manhwa", job_id, payload)
+
+            try:
+                image_url = await manhwa_provider.generate(
+                    positive_prompt=bundle.prompt,
+                    negative_prompt=bundle.negative_prompt or "",
+                    on_job_created=on_job,
+                )
+            except manhwa_provider.ManhwaProviderError as e:
+                raise PhotoProviderError(str(e)) from e
+            return image_url, {"runpod_provider": "runpod_manhwa"}
+
+        prediction = await self.replicate_client.run(bundle.replicate_model, bundle.replicate_input)
+        image_url = self.replicate_client._first_output_url(prediction.get("output"))
+        return image_url, {"provider_prediction_id": prediction.get("id")}
+
     async def generate_for_chat(
         self,
         session: AsyncSession,
@@ -1901,6 +2199,7 @@ class PhotoGenerationService:
         recent_messages: Sequence[Message | Mapping[str, Any]],
         chat_state: Mapping[str, Any] | None = None,
         before_save: Callable[[], Awaitable[None]] | None = None,
+        on_runpod_job_created: Callable[[str, str, dict[str, Any]], Awaitable[None]] | None = None,
     ) -> GeneratedImage:
         if chat_state is None:
             chat = await session.get(Chat, chat_id)
@@ -1931,10 +2230,39 @@ class PhotoGenerationService:
             bundle.negative_prompt or "",
         )
 
-        prediction = await self.replicate_client.run(bundle.replicate_model, bundle.replicate_input)
-        image_bytes, content_type, provider_url = await self.replicate_client.download_output(
-            prediction.get("output")
+        image_url, provider_meta = await self._run_bundle_provider(
+            bundle,
+            on_runpod_job_created=on_runpod_job_created,
         )
+
+        identity_source_image = _identity_source_image(character)
+        face_swap_applied = False
+        if identity_source_image:
+            from shared.services.image_storage import ImageStorageError, local_image_to_data_url
+
+            async def on_facefusion_job(job_id: str, payload: dict[str, Any]) -> None:
+                if on_runpod_job_created:
+                    await on_runpod_job_created("runpod_facefusion", job_id, payload)
+
+            try:
+                source_image_data = await local_image_to_data_url(identity_source_image)
+                target_bytes, target_content_type, _target_provider_url = (
+                    await self.replicate_client.download_output(image_url)
+                )
+                target_image_data = (
+                    f"data:{target_content_type};base64,"
+                    f"{base64.b64encode(target_bytes).decode('ascii')}"
+                )
+                image_url = await facefusion_provider.swap_face(
+                    source_image=source_image_data,
+                    target_image=target_image_data,
+                    on_job_created=on_facefusion_job,
+                )
+                face_swap_applied = True
+            except (facefusion_provider.FaceFusionError, ImageStorageError) as e:
+                raise PhotoProviderError("Не удалось применить лицо к фото, попробуйте еще раз") from e
+
+        image_bytes, content_type, provider_url = await self.replicate_client.download_output(image_url)
         if before_save:
             await before_save()
         local_path = await self._save_image_bytes(image_bytes, content_type, user.telegram_id)
@@ -1946,13 +2274,17 @@ class PhotoGenerationService:
                 raise
 
         prompt_metadata = dict(bundle.prompt_metadata or {})
-        if prediction.get("id"):
-            prompt_metadata["provider_prediction_id"] = prediction.get("id")
+        prompt_metadata.update({k: v for k, v in provider_meta.items() if v})
+        if identity_source_image:
+            prompt_metadata["identity_pipeline"] = True
+            prompt_metadata["identity_source_image"] = identity_source_image
+            prompt_metadata["face_swap_backend"] = "runpod_facefusion"
+            prompt_metadata["face_swap_applied"] = face_swap_applied
 
         image = GeneratedImage(
             user_id=user.telegram_id,
             chat_id=chat_id,
-            provider_url=provider_url,
+            provider_url=None if face_swap_applied or not provider_url else provider_url,
             local_path=local_path,
             prompt=bundle.prompt,
             prompt_metadata=prompt_metadata,
@@ -1964,11 +2296,12 @@ class PhotoGenerationService:
         await session.commit()
         await session.refresh(image)
         logger.info(
-            "Generated chat image: image_id=%s chat_id=%s model=%s provider_prediction=%s",
+            "Generated chat image: image_id=%s chat_id=%s model=%s provider=%s provider_meta=%s",
             image.id,
             chat_id,
             bundle.replicate_model,
-            prediction.get("id"),
+            bundle.provider,
+            provider_meta,
         )
         return image
 
@@ -2000,16 +2333,15 @@ class PhotoGenerationService:
             bundle.negative_prompt or "",
         )
 
-        prediction = await self.replicate_client.run(bundle.replicate_model, bundle.replicate_input)
-        image_bytes, content_type, _provider_url = await self.replicate_client.download_output(
-            prediction.get("output")
-        )
+        image_url, provider_meta = await self._run_bundle_provider(bundle)
+        image_bytes, content_type, _provider_url = await self.replicate_client.download_output(image_url)
         public_url = await save_avatar_image(image_bytes, content_type, character_id)
         logger.info(
-            "Generated character avatar: character_id=%s model=%s provider_prediction=%s",
+            "Generated character avatar: character_id=%s model=%s provider=%s provider_meta=%s",
             character_id,
             bundle.replicate_model,
-            prediction.get("id"),
+            bundle.provider,
+            provider_meta,
         )
         return public_url
 

@@ -101,6 +101,88 @@
             pointer-events: none;
         }
 
+        .prompt-debug-toggle {
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 50%;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-hint-color, #999);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .prompt-debug-toggle.active {
+            background: var(--tg-theme-button-color, #FF2FAE);
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+
+        .message-wrapper.photo-prompt-debug .message-bubble {
+            max-width: 92%;
+            background: color-mix(
+                in srgb,
+                var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color)) 86%,
+                var(--tg-theme-bg-color) 14%
+            );
+            border: 1px solid var(--cc-border, rgba(127,127,127,0.22));
+        }
+
+        .message-wrapper.photo-prompt-debug .message-text {
+            color: var(--tg-theme-text-color, #f4f6fb);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .message-wrapper.photo-prompt-debug .markdown-content,
+        .message-wrapper.photo-prompt-debug .markdown-content p,
+        .message-wrapper.photo-prompt-debug .markdown-content code {
+            color: var(--tg-theme-text-color, #f4f6fb);
+        }
+
+        .message-wrapper.photo-prompt-debug .markdown-content strong {
+            color: color-mix(in srgb, var(--tg-theme-text-color, #f4f6fb) 92%, var(--tg-theme-button-color, #FF2FAE));
+            font-weight: 700;
+        }
+
+        .message-wrapper.photo-prompt-debug .message-text code {
+            background: color-mix(
+                in srgb,
+                var(--tg-theme-bg-color, #111315) 72%,
+                var(--tg-theme-secondary-bg-color, #202329) 28%
+            );
+            border: 1px solid var(--cc-border, rgba(127,127,127,0.22));
+            border-radius: 4px;
+            padding: 1px 4px;
+        }
+
+        .message-wrapper.photo-prompt-debug .message-text pre {
+            max-height: 320px;
+            overflow: auto;
+            margin: 6px 0 0;
+            padding: 10px;
+            background: color-mix(
+                in srgb,
+                var(--tg-theme-bg-color, #111315) 78%,
+                var(--tg-theme-secondary-bg-color, #202329) 22%
+            );
+            border: 1px solid var(--cc-border, rgba(127,127,127,0.22));
+            border-radius: 8px;
+            color: var(--tg-theme-text-color, #f4f6fb);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .message-wrapper.photo-prompt-debug .message-text pre code {
+            display: block;
+            background: transparent;
+            border: 0;
+            padding: 0;
+            color: inherit;
+        }
+
         .generating-placeholder {
             display: flex;
             flex-direction: column;
@@ -847,6 +929,13 @@
                 <button @click="resetChat" class="reset-btn" title="Сбросить диалог">
                     <i class="fas fa-redo"></i>
                 </button>
+                <button v-if="currentChatPhotoPromptDebugAvailable"
+                        @click="togglePhotoPromptDebug"
+                        class="prompt-debug-toggle"
+                        :class="{ active: photoPromptDebugVisible }"
+                        :title="photoPromptDebugVisible ? 'Скрыть photo prompt debug' : 'Показать photo prompt debug'">
+                    <i :class="photoPromptDebugVisible ? 'fas fa-eye' : 'fas fa-eye-slash'"></i>
+                </button>
                 <div class="header-avatar" v-if="currentChatAvatar" @click="openCharacterProfile">
                     <img :src="currentChatAvatar">
                 </div>
@@ -854,8 +943,9 @@
 
             <div class="messages-container" ref="messagesContainer" @click="handleMessagesClick">
                 <div v-for="(msg, index) in chatHistory" :key="index"
+                     v-show="shouldDisplayChatMessage(msg)"
                      class="message-wrapper"
-                     :class="msg.role === 'user' ? 'own' : 'foreign'">
+                     :class="[msg.role === 'user' ? 'own' : 'foreign', { 'photo-prompt-debug': msg.type === 'photo_prompt_debug' }]">
                     <div class="message-bubble">
                         <div v-if="msg.content" class="message-text markdown-content" v-html="formatMessage(msg.content)"></div>
                         <div v-if="msg.avatar" class="photo-container">
@@ -901,7 +991,7 @@
                 ></textarea>
                 <button class="btn-generate-image"
                         @click="generateImage"
-                        :disabled="!currentChatId || currentChatType !== 'character' || isWaitingResponse || isStreaming || isGeneratingImage"
+                        :disabled="!currentChatId || currentChatType !== 'character' || !currentChatPhotoGenerationAvailable || isWaitingResponse || isStreaming || isGeneratingImage"
                         title="Сгенерировать фото">
                     <i :class="isGeneratingImage ? 'fas fa-spinner fa-spin' : 'fas fa-image'"></i>
                 </button>
@@ -965,20 +1055,20 @@
                             <div class="cc-segmented" role="group" aria-label="Стиль персонажа">
                                 <button class="cc-segment"
                                         :class="{ active: createCharacterData.model_type === 'anime' }"
-                                        @click="createCharacterData.model_type = 'anime'"
+                                        @click="setCreateCharacterModelType('anime')"
                                         type="button">
                                     Anime
                                 </button>
                                 <button class="cc-segment"
                                         :class="{ active: createCharacterData.model_type === 'real' }"
-                                        @click="createCharacterData.model_type = 'real'"
+                                        @click="setCreateCharacterModelType('real')"
                                         type="button">
                                     Real
                                 </button>
                                 <button v-if="createCharacterData.gender === 'male'"
                                         class="cc-segment"
                                         :class="{ active: createCharacterData.model_type === 'manhwa' }"
-                                        @click="createCharacterData.model_type = 'manhwa'"
+                                        @click="setCreateCharacterModelType('manhwa')"
                                         type="button">
                                     Manhwa
                                 </button>
@@ -1071,6 +1161,26 @@
                             </button>
                         </div>
 
+                            <div v-if="!editingCharacterId" class="cc-field">
+                                <label>Аватарка <span class="cc-required">*</span></label>
+                                <div class="cc-segmented" role="group" aria-label="Источник аватарки">
+                                    <button class="cc-segment"
+                                            :class="{ active: !createCharacterData.custom_avatar }"
+                                            @click="setCustomAvatarMode(false)"
+                                            type="button">
+                                        Сгенерировать
+                                    </button>
+                                    <button v-if="createCharacterData.model_type === 'real'"
+                                            class="cc-segment"
+                                            :class="{ active: createCharacterData.custom_avatar }"
+                                            @click="setCustomAvatarMode(true)"
+                                            type="button">
+                                        Загрузить фото
+                                    </button>
+                                </div>
+                            </div>
+
+                            <template v-if="!createCharacterData.custom_avatar">
                             <div class="cc-field">
                                 <label>Внешность (EN) <span class="cc-required">*</span></label>
                                 <textarea v-model="createCharacterData.appearance" class="scenario-textarea cc-textarea" placeholder="appearance tags..."></textarea>
@@ -1105,8 +1215,115 @@
                                     <i class="fas fa-plus"></i> Добавить наряд
                                 </button>
                             </div>
+                            </template>
+
+                            <template v-else>
+                            <div class="cc-field">
+                                <label>Телосложение</label>
+                                <div class="cc-choice-grid">
+                                    <button v-for="opt in (createCharacterData.gender === 'male' ? maleBodyTypes : femaleBodyTypes)"
+                                            :key="opt.v"
+                                            class="cc-choice-card"
+                                            :class="{ active: createCharacterData.body_profile.body_type === opt.v }"
+                                            @click="createCharacterData.body_profile.body_type = opt.v"
+                                            type="button">
+                                        <span class="cc-choice-card__title">{{ opt.l }}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="cc-field">
+                                <label>Рост</label>
+                                <div class="cc-segmented" role="group" aria-label="Рост">
+                                    <button v-for="opt in heightOptions"
+                                            :key="opt.v"
+                                            class="cc-segment"
+                                            :class="{ active: createCharacterData.body_profile.height === opt.v }"
+                                            @click="createCharacterData.body_profile.height = opt.v"
+                                            type="button">
+                                        {{ opt.l }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
+                                <label>Грудь</label>
+                                <div class="cc-choice-grid">
+                                    <button v-for="opt in breastSizeOptions"
+                                            :key="opt.v"
+                                            class="cc-choice-card"
+                                            :class="{ active: createCharacterData.body_profile.breast_size === opt.v }"
+                                            @click="createCharacterData.body_profile.breast_size = opt.v"
+                                            type="button">
+                                        <span class="cc-choice-card__title">{{ opt.l }}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div v-if="createCharacterData.gender === 'female'" class="cc-field">
+                                <label>Ягодицы</label>
+                                <div class="cc-choice-grid">
+                                    <button v-for="opt in buttSizeOptions"
+                                            :key="opt.v"
+                                            class="cc-choice-card"
+                                            :class="{ active: createCharacterData.body_profile.butt_size === opt.v }"
+                                            @click="createCharacterData.body_profile.butt_size = opt.v"
+                                            type="button">
+                                        <span class="cc-choice-card__title">{{ opt.l }}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="cc-field">
+                                <label>Наряд</label>
+                                <div class="cc-choice-grid">
+                                    <button v-for="opt in outfitPresetOptions"
+                                            :key="opt.v"
+                                            class="cc-choice-card"
+                                            :class="{ active: createCharacterData.body_profile.outfit_preset === opt.v }"
+                                            @click="createCharacterData.body_profile.outfit_preset = opt.v"
+                                            type="button">
+                                        <span class="cc-choice-card__title">{{ opt.l }}</span>
+                                    </button>
+                                </div>
+                            </div>
 
                             <div v-if="!editingCharacterId" class="cc-field">
+                                <div class="cc-media-well">
+                                    <div v-if="isUploadingAvatar" class="cc-preview-loading">
+                                        <div class="cc-spinner"></div>
+                                        <span>Загрузка...</span>
+                                    </div>
+                                    <img v-else-if="selectedCharacterAvatarUrl"
+                                         :src="selectedCharacterAvatarUrl"
+                                         class="cc-preview-image"
+                                         alt="Avatar">
+                                    <div v-else class="cc-preview-placeholder">
+                                        <i class="fas fa-camera"></i>
+                                        <span>Фото не загружено</span>
+                                    </div>
+                                    <button class="cc-btn cc-btn--primary"
+                                            :disabled="isUploadingAvatar"
+                                            @click="$refs.customAvatarInput.click()"
+                                            type="button">
+                                        <i class="fas fa-camera"></i>
+                                        {{ selectedCharacterAvatarUrl ? 'Заменить фото' : 'Загрузить фото' }}
+                                    </button>
+                                </div>
+                                <input type="file"
+                                       ref="customAvatarInput"
+                                       accept="image/jpeg,image/png,image/webp"
+                                       style="display: none;"
+                                       @change="handleCustomAvatarUpload($event)">
+                            </div>
+
+                            <label class="cc-consent-row">
+                                <input type="checkbox" v-model="createCharacterData.identity_consent_confirmed">
+                                <span>Я подтверждаю согласие на использование загруженного фото для identity reference и генерации фото персонажа.</span>
+                            </label>
+                            </template>
+
+                            <div v-if="!editingCharacterId && !createCharacterData.custom_avatar" class="cc-field">
                                 <label>Аватарка <span class="cc-required">*</span></label>
                                 <div class="cc-preview-section cc-avatar-generator">
                                     <div v-if="isGeneratingCharacterAvatar" class="cc-preview-loading">
@@ -1539,6 +1756,7 @@
                 const currentChatAvatar = ref('');
                 const currentChatType = ref('character');
                 const currentCharacterId = ref(null);
+                const currentChatPhotoGenerationAvailable = ref(false);
                 const chatHistory = ref([]);
                 const inputMessage = ref('');
                 const isWaitingResponse = ref(false);
@@ -1546,21 +1764,62 @@
                 const isUndoing = ref(false);
                 const activeImageJob = ref(null);
                 let imageJobPollTimer = null;
+                const IMAGE_JOB_POLL_TIMEOUT_MS = 420000;
+                const PHOTO_PROMPT_DEBUG_STORAGE_KEY = 'photo_prompt_debug_visible';
+                const readPhotoPromptDebugVisible = () => {
+                    try {
+                        return window.localStorage.getItem(PHOTO_PROMPT_DEBUG_STORAGE_KEY) !== 'false';
+                    } catch {
+                        return true;
+                    }
+                };
                 const isActiveImageJobStatus = (status) => status === 'queued' || status === 'running';
                 const isGeneratingImage = computed(() =>
                     !!activeImageJob.value && isActiveImageJobStatus(activeImageJob.value.status)
                 );
+                const currentChatPhotoPromptDebugAvailable = ref(false);
+                const photoPromptDebugVisible = ref(readPhotoPromptDebugVisible());
                 const messagesContainer = ref(null);
 
                 // Create Character
+                const defaultBodyProfile = (gender = 'female') => gender === 'male'
+                    ? { body_type: 'athletic', height: 'average', outfit_preset: 'casual' }
+                    : { body_type: 'proportional', height: 'average', breast_size: 'medium', butt_size: 'rounded', outfit_preset: 'casual' };
                 const defaultCreateCharacterData = () => ({
                     name: '', short_description: '', description: '', personality: '',
                     scenario: '', first_message: '', heat_level: 0, alternate_greetings: [],
                     gender: 'female', model_type: 'anime', appearance: '', visual_body: '', visual_face: '',
                     visual_default_outfit: '', wardrobe: {},
+                    custom_avatar: false, identity_consent_confirmed: false,
+                    body_profile: defaultBodyProfile('female'),
                     tags_str: '',
                     is_public: true,
                 });
+                const femaleBodyTypes = [
+                    { v: 'slim', l: 'Slim' }, { v: 'athletic', l: 'Athletic' },
+                    { v: 'proportional', l: 'Proportional' }, { v: 'soft_curvy', l: 'Soft curvy' },
+                    { v: 'large', l: 'Large' },
+                ];
+                const maleBodyTypes = [
+                    { v: 'lean', l: 'Lean' }, { v: 'athletic', l: 'Athletic' },
+                    { v: 'muscular', l: 'Muscular' }, { v: 'broad', l: 'Broad' },
+                    { v: 'large', l: 'Large' },
+                ];
+                const heightOptions = [
+                    { v: 'short', l: 'Short' }, { v: 'average', l: 'Average' }, { v: 'tall', l: 'Tall' },
+                ];
+                const breastSizeOptions = [
+                    { v: 'small', l: 'Small' }, { v: 'medium', l: 'Medium' },
+                    { v: 'large', l: 'Large' }, { v: 'very_large', l: 'Very large' },
+                ];
+                const buttSizeOptions = [
+                    { v: 'compact', l: 'Compact' }, { v: 'medium', l: 'Medium' },
+                    { v: 'rounded', l: 'Rounded' }, { v: 'large', l: 'Large' },
+                ];
+                const outfitPresetOptions = [
+                    { v: 'casual', l: 'Casual' }, { v: 'elegant', l: 'Elegant' },
+                    { v: 'sporty', l: 'Sporty' }, { v: 'home', l: 'Home' },
+                ];
                 const defaultCreateCharacterAvatar = () => ({
                     draft_id: null,
                     avatar_urls: [],
@@ -1587,6 +1846,8 @@
                 const isGeneratingCharacterAvatar = ref(false);
                 const ccStep = ref(0);
                 const editingCharacterId = ref(null);
+                const isUploadingAvatar = ref(false);
+                const customAvatarInput = ref(null);
 
                 // Create World
                 const defaultCreateWorldData = () => ({
@@ -1647,6 +1908,30 @@
                         : null;
                 };
 
+                const isPhotoPromptDebugMessage = (msg) => (
+                    msg?.type === 'photo_prompt_debug' && !!msg.debug_for_image_id
+                );
+
+                const shouldDisplayChatMessage = (msg) => (
+                    !isPhotoPromptDebugMessage(msg) || photoPromptDebugVisible.value
+                );
+
+                const togglePhotoPromptDebug = () => {
+                    photoPromptDebugVisible.value = !photoPromptDebugVisible.value;
+                    try {
+                        window.localStorage.setItem(
+                            PHOTO_PROMPT_DEBUG_STORAGE_KEY,
+                            photoPromptDebugVisible.value ? 'true' : 'false'
+                        );
+                    } catch {
+                        // Ignore storage failures in embedded webviews.
+                    }
+                };
+
+                const isGeneratedImageFollowup = (msg) => (
+                    msg?.role === 'assistant' && (!msg.content || isPhotoPromptDebugMessage(msg))
+                );
+
                 const appendImageEventIfMissing = (image) => {
                     if (!image || !image.image_id) return false;
                     const exists = chatHistory.value.some(msg => msg.image_id === image.image_id);
@@ -1655,12 +1940,42 @@
                     return true;
                 };
 
+                const appendDebugMessagesIfMissing = (messages) => {
+                    let appended = false;
+                    (messages || []).forEach((message) => {
+                        if (!isPhotoPromptDebugMessage(message)) return;
+                        const exists = chatHistory.value.some(
+                            msg => isPhotoPromptDebugMessage(msg)
+                                && msg.debug_for_image_id === message.debug_for_image_id
+                        );
+                        if (exists) return;
+                        chatHistory.value.push(message);
+                        appended = true;
+                    });
+                    return appended;
+                };
+
+                const appendImageResult = (image, debugMessages) => {
+                    const imageAppended = appendImageEventIfMissing(image);
+                    const debugAppended = appendDebugMessagesIfMissing(debugMessages);
+                    return imageAppended || debugAppended;
+                };
+
                 const startImageJobPolling = (job, sourceChatId, sourceSessionId) => {
                     if (!job || !job.job_id || !sourceChatId) return;
                     clearImageJobPolling();
                     setActiveImageJob(job);
+                    const pollStartedAt = Date.now();
 
                     const poll = async () => {
+                        if (Date.now() - pollStartedAt > IMAGE_JOB_POLL_TIMEOUT_MS) {
+                            clearImageJobPolling();
+                            setActiveImageJob(null);
+                            if (isCurrentChatSession(sourceChatId, sourceSessionId)) {
+                                showToast('Генерация фото заняла слишком много времени', 'error');
+                            }
+                            return;
+                        }
                         try {
                             const response = await axios.get(`/api/chat/${sourceChatId}/image-jobs/${job.job_id}`);
                             if (!isCurrentChatSession(sourceChatId, sourceSessionId)) return;
@@ -1676,7 +1991,7 @@
                             setActiveImageJob(null);
 
                             if (data.status === 'succeeded' && data.image) {
-                                const appended = appendImageEventIfMissing(data.image);
+                                const appended = appendImageResult(data.image, data.debug_messages);
                                 if (appended) {
                                     await nextTick();
                                     scrollToBottom();
@@ -1769,6 +2084,15 @@
                 );
                 const characterAvatarSignature = computed(() => {
                     const d = createCharacterData.value;
+                    if (d.custom_avatar) {
+                        return JSON.stringify({
+                            custom_avatar: true,
+                            gender: d.gender,
+                            selected_avatar_url: createCharacterAvatar.value.selected_avatar_url || '',
+                            body_profile: d.body_profile || {},
+                            identity_consent_confirmed: !!d.identity_consent_confirmed,
+                        });
+                    }
                     return JSON.stringify({
                         name: (d.name || '').trim(),
                         gender: d.gender,
@@ -1781,7 +2105,8 @@
                     });
                 });
                 const characterAvatarIsStale = computed(() =>
-                    !!createCharacterAvatar.value.selected_avatar_url
+                    !createCharacterData.value.custom_avatar
+                    && !!createCharacterAvatar.value.selected_avatar_url
                     && createCharacterAvatar.value.appearance_signature !== characterAvatarSignature.value
                 );
                 const selectedCharacterAvatarUrl = computed(() =>
@@ -2564,6 +2889,7 @@
                     currentChatSessionId.value += 1;
                     currentChatId.value = chatId;
                     isUndoing.value = false;
+                    currentChatPhotoPromptDebugAvailable.value = false;
                     return currentChatSessionId.value;
                 };
 
@@ -2585,12 +2911,14 @@
                         currentChatName.value = metaOverride.name;
                         currentChatAvatar.value = metaOverride.avatar;
                         currentChatType.value = metaOverride.chat_type || 'character';
+                        currentChatPhotoGenerationAvailable.value = currentChatType.value === 'character';
                     } else {
                         const chatMeta = activeChats.value.find(c => c.id === chatId);
                         if (chatMeta) {
                             currentChatName.value = chatMeta.name;
                             currentChatAvatar.value = chatMeta.avatar;
                             currentChatType.value = chatMeta.type || 'character';
+                            currentChatPhotoGenerationAvailable.value = currentChatType.value === 'character';
                         }
                     }
 
@@ -2599,6 +2927,8 @@
                         if (!isCurrentChatSession(chatId, sessionId)) return;
                         chatHistory.value = res.data.history;
                         currentCharacterId.value = (res.data.type === 'character') ? (res.data.target_id || null) : null;
+                        currentChatPhotoGenerationAvailable.value = res.data.photo_generation_available !== false;
+                        currentChatPhotoPromptDebugAvailable.value = !!res.data.photo_prompt_debug_available;
                         currentView.value = 'chat';
                         if (res.data.active_image_job) {
                             startImageJobPolling(res.data.active_image_job, chatId, sessionId);
@@ -2650,6 +2980,8 @@
                     currentView.value = 'selection';
                     chatHistory.value = [];
                     currentCharacterId.value = null;
+                    currentChatPhotoGenerationAvailable.value = false;
+                    currentChatPhotoPromptDebugAvailable.value = false;
                     isWaitingResponse.value = false;
                     isStreaming.value = false;
                     loadChats(); // Refresh list to update dates
@@ -2864,6 +3196,10 @@
                         showToast('Фото можно генерировать только в чате с персонажем', 'error');
                         return;
                     }
+                    if (!currentChatPhotoGenerationAvailable.value) {
+                        showToast('Генерация фото для этого персонажа временно недоступна', 'error');
+                        return;
+                    }
 
                     isWaitingResponse.value = true;
                     scrollToBottom();
@@ -2920,7 +3256,7 @@
                     const h = chatHistory.value;
                     const userIdx = idx - 1;
                     let endIdx = idx;
-                    while (endIdx + 1 < h.length && h[endIdx + 1].role === 'assistant' && !h[endIdx + 1].content) {
+                    while (endIdx + 1 < h.length && isGeneratedImageFollowup(h[endIdx + 1])) {
                         endIdx++;
                     }
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
@@ -2957,7 +3293,7 @@
 
                     isUndoing.value = true;
                     let endIdx = idx;
-                    while (endIdx + 1 < h.length && h[endIdx + 1].role === 'assistant' && !h[endIdx + 1].content) {
+                    while (endIdx + 1 < h.length && isGeneratedImageFollowup(h[endIdx + 1])) {
                         endIdx++;
                     }
                     const removed = h.splice(userIdx, endIdx - userIdx + 1);
@@ -3237,6 +3573,9 @@
                         visual_face: d.visual_face,
                         visual_default_outfit: d.visual_default_outfit,
                         wardrobe: d.wardrobe,
+                        custom_avatar: d.custom_avatar,
+                        identity_consent_confirmed: d.identity_consent_confirmed,
+                        body_profile: d.custom_avatar ? d.body_profile : null,
                         tags: tags,
                         is_public: d.is_public,
                     };
@@ -3246,8 +3585,64 @@
                     createCharacterAvatar.value = defaultCreateCharacterAvatar();
                 };
 
+                const setCustomAvatarMode = (enabled) => {
+                    if (editingCharacterId.value) return;
+                    if (enabled && createCharacterData.value.model_type !== 'real') return;
+                    createCharacterData.value.custom_avatar = enabled;
+                    createCharacterData.value.identity_consent_confirmed = false;
+                    if (enabled) {
+                        createCharacterData.value.model_type = 'real';
+                        createCharacterData.value.appearance = '';
+                        createCharacterData.value.visual_body = '';
+                        createCharacterData.value.visual_face = '';
+                        createCharacterData.value.visual_default_outfit = '';
+                        createCharacterData.value.wardrobe = {};
+                    }
+                    resetCreateCharacterAvatar();
+                };
+
+                const setCreateCharacterModelType = (modelType) => {
+                    createCharacterData.value.model_type = modelType;
+                    if (modelType !== 'real' && createCharacterData.value.custom_avatar) {
+                        setCustomAvatarMode(false);
+                    }
+                };
+
+                const handleCustomAvatarUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                        showToast('Файл слишком большой (макс. 5MB)');
+                        event.target.value = '';
+                        return;
+                    }
+                    isUploadingAvatar.value = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        const res = await axios.post('/api/create_character/upload-avatar', formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' }
+                        });
+                        createCharacterAvatar.value = {
+                            ...defaultCreateCharacterAvatar(),
+                            selected_avatar_url: res.data.url,
+                            avatar_urls: [res.data.url],
+                            appearance_signature: '',
+                        };
+                        createCharacterAvatar.value.appearance_signature = characterAvatarSignature.value;
+                        showToast('Фото загружено', 'success');
+                    } catch (e) {
+                        const detail = e.response?.data?.detail;
+                        showToast(typeof detail === 'string' ? detail : 'Ошибка загрузки фото');
+                    } finally {
+                        isUploadingAvatar.value = false;
+                        event.target.value = '';
+                    }
+                };
+
                 const validateCharacterVisualFields = () => {
                     const d = createCharacterData.value;
+                    if (d.custom_avatar) return true;
                     if (!d.appearance || !d.appearance.trim()) {
                         showToast('Заполните поле внешности');
                         return false;
@@ -3275,6 +3670,7 @@
                 const generateCharacterAvatar = async () => {
                     if (editingCharacterId.value || isGeneratingCharacterAvatar.value) return;
                     const d = createCharacterData.value;
+                    if (d.custom_avatar) return;
                     if (!d.name.trim()) {
                         showToast('Введите имя персонажа');
                         return;
@@ -3329,8 +3725,9 @@
 
                 const setCreateCharacterGender = (gender) => {
                     createCharacterData.value.gender = gender;
+                    createCharacterData.value.body_profile = defaultBodyProfile(gender);
                     if (gender !== 'male' && createCharacterData.value.model_type === 'manhwa') {
-                        createCharacterData.value.model_type = 'anime';
+                        setCreateCharacterModelType('anime');
                     }
                 };
 
@@ -3364,6 +3761,9 @@
                             visual_face: c.visual_face || '',
                             visual_default_outfit: c.visual_default_outfit || '',
                             wardrobe: c.wardrobe || {},
+                            custom_avatar: c.custom_avatar || false,
+                            identity_consent_confirmed: c.custom_avatar || false,
+                            body_profile: c.body_profile || defaultBodyProfile(c.gender || 'female'),
                             tags_str: (c.tags || []).join(', '),
                             is_public: c.is_public !== false,
                         };
@@ -3452,11 +3852,20 @@
                         return;
                     }
                     if (!editingCharacterId.value) {
-                        if (characterAvatarIsStale.value) {
+                        if (d.custom_avatar) {
+                            d.model_type = 'real';
+                            if (!selectedCharacterAvatarUrl.value) {
+                                showToast('Загрузите фото');
+                                return;
+                            }
+                            if (!d.identity_consent_confirmed) {
+                                showToast('Подтвердите согласие на использование фото');
+                                return;
+                            }
+                        } else if (characterAvatarIsStale.value) {
                             showToast('Аватарка устарела, сгенерируйте новую');
                             return;
-                        }
-                        if (!selectedCharacterAvatarUrl.value || !createCharacterAvatar.value.draft_id) {
+                        } else if (!selectedCharacterAvatarUrl.value || !createCharacterAvatar.value.draft_id) {
                             showToast('Сгенерируйте аватарку перед созданием персонажа');
                             return;
                         }
@@ -3475,7 +3884,7 @@
                             currentView.value = 'selection';
                             loadCharacters();
                         } else {
-                            payload.avatar_draft_id = createCharacterAvatar.value.draft_id;
+                            payload.avatar_draft_id = d.custom_avatar ? null : createCharacterAvatar.value.draft_id;
                             payload.selected_avatar_url = selectedCharacterAvatarUrl.value;
                             const createRes = await axios.post('/api/create_character', payload);
                             const characterId = createRes.data.character_id;
@@ -3700,6 +4109,8 @@
                     loadChats, selectItem, openChat, backToMenu,
                     chatHistory, inputMessage, sendMessage,
                     currentChatName, currentChatAvatar, currentChatId, currentChatType, currentCharacterId,
+                    currentChatPhotoGenerationAvailable, currentChatPhotoPromptDebugAvailable,
+                    photoPromptDebugVisible, togglePhotoPromptDebug, shouldDisplayChatMessage,
                     isWaitingResponse, isStreaming, isUndoing, isGeneratingImage, messagesContainer, inputField,
                     generateImage,
                     undoTargetIndex, undoLastTurn, editLastMessage,
@@ -3719,7 +4130,9 @@
                     createCharacterAvatar, isGeneratingCharacterAvatar,
                     selectedCharacterAvatarUrl, characterAvatarIsStale, characterAvatarHint,
                     generateCharacterAvatar, selectCharacterAvatar,
-                    modelTypeLabel, setCreateCharacterGender,
+                    modelTypeLabel, setCreateCharacterGender, setCreateCharacterModelType,
+                    setCustomAvatarMode, handleCustomAvatarUpload, isUploadingAvatar, customAvatarInput,
+                    femaleBodyTypes, maleBodyTypes, heightOptions, breastSizeOptions, buttSizeOptions, outfitPresetOptions,
                     characterCreatorSteps, heatLevelOptions,
                     ccStep, ccNextStep, ccPrevStep, goToStep,
                     addAlternateGreeting, removeAlternateGreeting,

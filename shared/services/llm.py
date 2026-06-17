@@ -19,6 +19,34 @@ from shared.config import (
 logger = logging.getLogger(__name__)
 
 
+DEEPSEEK_MODEL_PREFIX = "deepseek/"
+IGNORED_DEEPSEEK_OPENROUTER_PROVIDER_SLUGS = ("alibaba",)
+
+
+def _uses_deepseek_model(model: str) -> bool:
+    return model.lower().startswith(DEEPSEEK_MODEL_PREFIX)
+
+
+def _with_ignored_providers(provider: dict | None) -> dict:
+    provider_config = dict(provider or {})
+    raw_ignore = provider_config.get("ignore")
+    if isinstance(raw_ignore, list):
+        ignored_providers = raw_ignore.copy()
+    elif isinstance(raw_ignore, (tuple, set)):
+        ignored_providers = list(raw_ignore)
+    elif raw_ignore:
+        ignored_providers = [str(raw_ignore)]
+    else:
+        ignored_providers = []
+
+    for provider_slug in IGNORED_DEEPSEEK_OPENROUTER_PROVIDER_SLUGS:
+        if provider_slug not in ignored_providers:
+            ignored_providers.append(provider_slug)
+
+    provider_config["ignore"] = ignored_providers
+    return provider_config
+
+
 class LLMError(Exception):
     pass
 
@@ -185,6 +213,9 @@ class LLMClient:
         payload.update(self.override_payload)
         if extra_payload:
             payload.update(extra_payload)
+
+        if _uses_deepseek_model(resolved_model):
+            payload["provider"] = _with_ignored_providers(payload.get("provider"))
 
         return resolved_model, payload
 

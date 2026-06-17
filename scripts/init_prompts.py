@@ -75,6 +75,18 @@ PROMPT_METADATA = {
         "category": "photo",
         "name": "Photo Scene Extractor"
     },
+    "photo_scene_extractor_real": {
+        "category": "photo",
+        "name": "Photo Scene Extractor: Real"
+    },
+    "photo_scene_extractor_anime": {
+        "category": "photo",
+        "name": "Photo Scene Extractor: Anime"
+    },
+    "photo_scene_extractor_manhwa": {
+        "category": "photo",
+        "name": "Photo Scene Extractor: Manhwa"
+    },
     "photo_prompt_real_female": {
         "category": "photo",
         "name": "Photo Prompt: Real Female"
@@ -91,6 +103,10 @@ PROMPT_METADATA = {
         "category": "photo",
         "name": "Photo Prompt: Anime Male"
     },
+    "photo_prompt_manhwa_male": {
+        "category": "photo",
+        "name": "Photo Prompt: Manhwa Male"
+    },
     "photo_negative_anime_female": {
         "category": "photo",
         "name": "Photo Negative Prompt: Anime Female"
@@ -98,6 +114,10 @@ PROMPT_METADATA = {
     "photo_negative_anime_male": {
         "category": "photo",
         "name": "Photo Negative Prompt: Anime Male"
+    },
+    "photo_negative_manhwa_male": {
+        "category": "photo",
+        "name": "Photo Negative Prompt: Manhwa Male"
     },
     "photo_policy_anime_filler_tags": {
         "category": "photo_policy",
