@@ -351,11 +351,11 @@ def test_replicate_client_resolves_owner_model_to_latest_version():
     assert len(http_client.calls) == 1
 
 
-def test_anime_model_uses_animagine_xl_v4_pinned_version():
+def test_anime_model_uses_wai_nsfw_illustrious_v12_pinned_version():
     assert (
         photo.ANIME_MODEL_VERSION
-        == "aisha-ai-official/animagine-xl-v4-opt:"
-        "cfd0f86fbcd03df45fca7ce83af9bb9c07850a3317303fe8dcf677038541db8a"
+        == "aisha-ai-official/wai-nsfw-illustrious-v12:"
+        "0fc0fa9885b284901a6f9c0b4d67701fd7647d157b88371427d63f8089ce140e"
     )
 
 

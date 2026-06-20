@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 REAL_MODEL = "prunaai/z-image-turbo"
 ANIME_MODEL_VERSION = (
-    "aisha-ai-official/animagine-xl-v4-opt:"
-    "cfd0f86fbcd03df45fca7ce83af9bb9c07850a3317303fe8dcf677038541db8a"
+    "aisha-ai-official/wai-nsfw-illustrious-v12:"
+    "0fc0fa9885b284901a6f9c0b4d67701fd7647d157b88371427d63f8089ce140e"
 )
 REPLICATE_OUTPUT_DOWNLOAD_ATTEMPTS = 3
 
