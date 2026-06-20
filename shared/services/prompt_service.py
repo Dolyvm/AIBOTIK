@@ -167,8 +167,8 @@ DEFAULT_PROMPTS = {
     "photo_policy_default_style_tags_anime": "",
     "photo_policy_default_style_tags_manhwa": "",
     "photo_policy_manhwa_style_tags": "manhwa style, webtoon style, clean line art",
-    "photo_policy_default_wardrobe_female": '{"nude":"nothing, showing her naked body","underwear":"white bra, white panties"}',
-    "photo_policy_default_wardrobe_male": '{"nude":"nothing, showing his naked body","underwear":"black boxer briefs"}',
+    "photo_policy_default_wardrobe_female": '{"nude":"nude, showing her pussy","underwear":"white bra, white panties"}',
+    "photo_policy_default_wardrobe_male": '{"nude":"nude, showing his penis","underwear":"black boxer briefs"}',
 
     "behavior_affinity_cold": "Ты осторожен и держишь границы, не спеши доверять или поддерживать флирт. Реагируй строго в рамках своего характера.",
     "behavior_affinity_love": "Ты полностью доверяешь игроку - свободно выражай желания, эмоции и инициативу. Интимность без ограничений. Но при этом всегда сохраняй характер и манеру общения.\r\n\r\n\r\n",
