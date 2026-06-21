@@ -18,7 +18,12 @@ from shared.database.repositories.subscription import SubscriptionRepository
 from shared.models import SubscriptionPlan, User
 from shared.services.platega import PlategaAPIError, PlategaClient, PlategaConfigurationError
 from shared.services.subscription import get_subscription_service
-from shared.subscription_plans import MIN_PLATEGA_PAYMENT_RUB, PLAN_LIMITS
+from shared.subscription_plans import (
+    MIN_PLATEGA_PAYMENT_RUB,
+    PLAN_LIMITS,
+    USAGE_LIMIT_KEYS,
+    is_usage_display_unlimited,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,22 +114,21 @@ async def get_plans():
     """Список планов с ценами и лимитами (без auth)."""
     plans = []
     for plan_enum, config in PLAN_LIMITS.items():
+        price_rub = config["price_rub"]
+        platega_price_rub = 0 if price_rub <= 0 else max(
+            MIN_PLATEGA_PAYMENT_RUB,
+            int(config.get("platega_price_rub", price_rub)),
+        )
         plans.append({
             "plan": plan_enum.value,
             "display_name": config["display_name"],
-            "price_rub": config["price_rub"],
-            "platega_price_rub": config.get("platega_price_rub", config["price_rub"]),
+            "price_rub": price_rub,
+            "platega_price_rub": platega_price_rub,
             "price_stars": config["price_stars"],
             "duration_days": config["duration_days"],
             "limits": {
-                k: -1 if config.get("display_as_unlimited") else config[k]
-                for k in [
-                    "messages",
-                    "images_generated",
-                    "characters_created",
-                    "worlds_created",
-                    "content_edits",
-                ]
+                k: -1 if is_usage_display_unlimited(config, k) else config[k]
+                for k in USAGE_LIMIT_KEYS
             },
         })
     return {"plans": plans}
@@ -173,7 +177,7 @@ async def purchase_subscription(
         else:
             platega_price_rub = max(
                 MIN_PLATEGA_PAYMENT_RUB,
-                int(plan_config.get("platega_price_rub", final_rub)),
+                final_rub,
             )
             payment = await repo.create_payment(
                 user_id=user.telegram_id,

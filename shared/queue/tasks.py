@@ -25,6 +25,13 @@ from shared.services.subscription import get_subscription_service
 logger = logging.getLogger(__name__)
 
 
+def _chat_photo_usage_type(character: dict | None) -> str:
+    visual = (character or {}).get("visual") or {}
+    if visual.get("custom_avatar"):
+        return "avatar_generations"
+    return "images_generated"
+
+
 async def expire_subscriptions_task(ctx: dict) -> dict:
     """Cron: downgrade expired subscriptions to FREE and notify users."""
     get_session = ctx.get("get_session")
@@ -111,6 +118,7 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
         character = payload.get("character") or {}
         recent_messages = payload.get("recent_messages") or []
         chat_state = payload.get("chat_state") or {}
+        usage_type = _chat_photo_usage_type(character)
 
         user = await session.get(User, job.user_id)
         chat = await session.get(Chat, job.chat_id)
@@ -156,7 +164,7 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
                 on_runpod_job_created=record_runpod_job,
             )
             await ensure_job_active()
-            await sub_service.increment_usage(user.telegram_id, "images_generated", session)
+            await sub_service.increment_usage(user.telegram_id, usage_type, session)
             await AnalyticsService.track(
                 session,
                 user_id=user.telegram_id,
@@ -168,6 +176,7 @@ async def generate_chat_image_task(ctx: dict, job_id: int) -> dict:
                     "image_id": image.id,
                     "model_type": character.get("model_type"),
                     "job_id": job_id,
+                    "usage_type": usage_type,
                 },
             )
             await job_repo.mark_succeeded(job_id, image.id)

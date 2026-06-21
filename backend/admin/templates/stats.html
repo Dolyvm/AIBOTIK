@@ -133,9 +133,11 @@
                     <th>Тариф</th>
                     <th>Истекает</th>
                     <th title="Сообщения">Сообщ.</th>
+                    <th title="Фото">Фото</th>
                     <th title="Персонажи">Перс.</th>
                     <th title="Миры">Миры</th>
                     <th title="Редактирования">Ред.</th>
+                    <th title="Фото по лицу">Лицо</th>
                     <th>Активность</th>
                 </tr>
             </thead>
@@ -161,23 +163,33 @@
                     </td>
                     {% set u_msgs = u.usage.messages %}
                     <td title="бонус: +{{ u_msgs.bonus }}">
-                        {{ u_msgs.used }}/{% if u_msgs.limit >= 9999 %}∞{% else %}{{ u_msgs.limit }}{% endif %}
+                        {{ u_msgs.used }}/{{ u_msgs.limit }}
                         {% if u_msgs.bonus > 0 %}<sup style="color:#27ae60">+{{ u_msgs.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_images = u.usage.images_generated %}
+                    <td title="бонус: +{{ u_images.bonus }}">
+                        {{ u_images.used }}/{{ u_images.limit }}
+                        {% if u_images.bonus > 0 %}<sup style="color:#27ae60">+{{ u_images.bonus }}</sup>{% endif %}
                     </td>
                     {% set u_chars = u.usage.characters_created %}
                     <td title="бонус: +{{ u_chars.bonus }}">
-                        {{ u_chars.used }}/{% if u_chars.limit >= 9999 %}∞{% else %}{{ u_chars.limit }}{% endif %}
+                        {{ u_chars.used }}/{{ u_chars.limit }}
                         {% if u_chars.bonus > 0 %}<sup style="color:#27ae60">+{{ u_chars.bonus }}</sup>{% endif %}
                     </td>
                     {% set u_worlds = u.usage.worlds_created %}
                     <td title="бонус: +{{ u_worlds.bonus }}">
-                        {{ u_worlds.used }}/{% if u_worlds.limit >= 9999 %}∞{% else %}{{ u_worlds.limit }}{% endif %}
+                        {{ u_worlds.used }}/{{ u_worlds.limit }}
                         {% if u_worlds.bonus > 0 %}<sup style="color:#27ae60">+{{ u_worlds.bonus }}</sup>{% endif %}
                     </td>
                     {% set u_edits = u.usage.content_edits %}
                     <td title="бонус: +{{ u_edits.bonus }}">
-                        {{ u_edits.used }}/{% if u_edits.limit >= 9999 %}∞{% else %}{{ u_edits.limit }}{% endif %}
+                        {{ u_edits.used }}/{{ u_edits.limit }}
                         {% if u_edits.bonus > 0 %}<sup style="color:#27ae60">+{{ u_edits.bonus }}</sup>{% endif %}
+                    </td>
+                    {% set u_avatar = u.usage.avatar_generations %}
+                    <td title="бонус: +{{ u_avatar.bonus }}">
+                        {{ u_avatar.used }}/{{ u_avatar.limit }}
+                        {% if u_avatar.bonus > 0 %}<sup style="color:#27ae60">+{{ u_avatar.bonus }}</sup>{% endif %}
                     </td>
                     <td style="font-size:12px; white-space:nowrap;">
                         {% if u.last_active_at %}{{ u.last_active_at.strftime("%d.%m.%y %H:%M") }}{% else %}—{% endif %}
@@ -229,9 +241,11 @@
             <!-- Добавить бонус -->
             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                 <input type="number" id="bonus-messages"  min="0" placeholder="Сообщ. +" style="width:90px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-images"    min="0" placeholder="Фото +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-chars"     min="0" placeholder="Перс. +"  style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-worlds"    min="0" placeholder="Миры +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <input type="number" id="bonus-edits"     min="0" placeholder="Ред. +"   style="width:75px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
+                <input type="number" id="bonus-avatar"    min="0" placeholder="Лицо +"   style="width:80px; padding:5px 6px; border-radius:4px; border:1px solid #ccc;">
                 <button onclick="applyBonus()" style="padding:5px 12px; background:#27ae60; color:#fff; border:none; border-radius:4px; cursor:pointer;">Добавить бонус</button>
             </div>
         </div>
@@ -287,9 +301,11 @@
             const bonus = {};
             const map = [
                 ['bonus-messages',  'messages'],
+                ['bonus-images',    'images_generated'],
                 ['bonus-chars',     'characters_created'],
                 ['bonus-worlds',    'worlds_created'],
                 ['bonus-edits',     'content_edits'],
+                ['bonus-avatar',    'avatar_generations'],
             ];
             for (const [elId, key] of map) {
                 const val = parseInt(document.getElementById(elId).value);
