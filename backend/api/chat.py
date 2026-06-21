@@ -247,6 +247,13 @@ def _photo_capabilities_for_character(character: dict | None) -> dict:
     }
 
 
+def _chat_photo_usage_type(character: dict | None) -> str:
+    visual = (character or {}).get("visual") or {}
+    if visual.get("custom_avatar"):
+        return "avatar_generations"
+    return "images_generated"
+
+
 def _message_snapshot(messages) -> list[dict]:
     return [
         {
@@ -440,22 +447,23 @@ async def generate_image(
     if not arq_pool:
         raise HTTPException(status_code=503, detail="Генерация фото временно недоступна")
 
-    sub_service = get_subscription_service()
-    async with get_session() as session:
-        allowed, remaining, limit = await sub_service.check_usage_allowed(
-            user.telegram_id,
-            "images_generated",
-            session,
-        )
-        if not allowed:
-            raise UsageLimitExceeded("images_generated", limit)
-
     character = await get_character(chat.target_id)
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
     photo_capabilities = _photo_capabilities_for_character(character)
     if not photo_capabilities["available"]:
         raise HTTPException(status_code=503, detail="Генерация фото для этого персонажа временно недоступна")
+
+    usage_type = _chat_photo_usage_type(character)
+    sub_service = get_subscription_service()
+    async with get_session() as session:
+        allowed, remaining, limit = await sub_service.check_usage_allowed(
+            user.telegram_id,
+            usage_type,
+            session,
+        )
+        if not allowed:
+            raise UsageLimitExceeded(usage_type, limit)
 
     async with get_session() as session:
         message_repo = MessageRepository(session)

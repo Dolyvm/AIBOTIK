@@ -411,8 +411,8 @@
             <div class="grid-container">
                 <!-- Sub tabs (Main / Community) -->
                 <div v-if="tab === 'characters' || tab === 'worlds'" class="sub-tabs cc-segmented cc-selection-tabs">
-                    <button class="cc-segment" :class="{active: subTab[tab] === 'main'}" @click="setSubTab('main')">Главная</button>
-                    <button class="cc-segment" :class="{active: subTab[tab] === 'community'}" @click="setSubTab('community')">Сообщество</button>
+                    <button class="cc-segment" :class="{active: subTab[tab] === 'main'}" @click="setSubTab('main')">основные</button>
+                    <button class="cc-segment" :class="{active: subTab[tab] === 'community'}" @click="setSubTab('community')">комьюнити</button>
                 </div>
 
                 <!-- Filters Characters -->
@@ -441,7 +441,7 @@
                             <select class="cc-filter-select cc-name-input" v-model="characterFilters.creator_type" @change="loadCharacters">
                                 <option :value="null">Автор</option>
                                 <option value="me">Мои</option>
-                                <option value="public">Сообщество</option>
+                                <option value="public">комьюнити</option>
                             </select>
                         </div>
                         <div class="cc-field cc-filter-field">
@@ -474,7 +474,7 @@
                             <select class="cc-filter-select cc-name-input" v-model="worldFilters.creator_type" @change="loadWorlds">
                                 <option :value="null">Автор</option>
                                 <option value="me">Мои</option>
-                                <option value="public">Сообщество</option>
+                                <option value="public">комьюнити</option>
                             </select>
                         </div>
                     </div>
@@ -1389,7 +1389,7 @@
                                 <button class="cc-segment" :class="{ active: !createCharacterData.is_public }" @click="createCharacterData.is_public = false" type="button">Скрытый</button>
                             </div>
                             <div class="cc-helper">
-                                {{ createCharacterData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
+                                {{ createCharacterData.is_public ? 'Виден во вкладке «комьюнити»' : 'Виден только вам' }}
                             </div>
                         </div>
 
@@ -1533,7 +1533,7 @@
                                 <button class="cc-segment" :class="{ active: !createWorldData.is_public }" @click="createWorldData.is_public = false" type="button">Скрытый</button>
                             </div>
                             <div class="cc-helper">
-                                {{ createWorldData.is_public ? 'Виден во вкладке «Сообщество»' : 'Виден только вам' }}
+                                {{ createWorldData.is_public ? 'Виден во вкладке «комьюнити»' : 'Виден только вам' }}
                             </div>
                         </div>
                     </section>
@@ -2071,6 +2071,7 @@
                     characters_created: 'Создание персонажей',
                     worlds_created: 'Создание вселенных',
                     content_edits: 'Редактирование',
+                    avatar_generations: 'Фото по лицу',
                 };
                 const modelTypeLabel = (type) => ({
                     anime: 'Anime',
@@ -2326,6 +2327,7 @@
                                     images_generated: 'фото',
                                     characters_created: 'создания персонажей', worlds_created: 'создания вселенных',
                                     content_edits: 'редактирования',
+                                    avatar_generations: 'фото по лицу',
                                 };
                                 const label = labels[data.usage_type] || data.usage_type;
                                 showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
@@ -3014,6 +3016,7 @@
                                 characters_created: 'создания персонажей',
                                 worlds_created: 'создания вселенных',
                                 content_edits: 'редактирования',
+                                avatar_generations: 'фото по лицу',
                             };
                             const label = labels[data.usage_type] || data.usage_type || 'сообщений';
                             showToast(`Лимит ${label} исчерпан. Обновите подписку`, 'error');
@@ -3540,6 +3543,7 @@
                     characters_created: 'создания персонажей',
                     worlds_created: 'создания вселенных',
                     content_edits: 'редактирования',
+                    avatar_generations: 'фото по лицу',
                 };
 
                 const blockIfLimitReached = (usageType) => {

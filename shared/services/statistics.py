@@ -258,13 +258,17 @@ class StatisticsService:
                 u.last_active_at,
                 u.created_at,
                 COALESCE(mu.messages_sent, 0)      AS messages_sent,
+                COALESCE(mu.images_generated, 0)   AS images_generated,
                 COALESCE(mu.characters_created, 0) AS characters_created,
                 COALESCE(mu.worlds_created, 0)     AS worlds_created,
                 COALESCE(mu.content_edits, 0)      AS content_edits,
+                COALESCE(mu.avatar_generations, 0) AS avatar_generations,
                 COALESCE(mu.bonus_messages_sent, 0)      AS bonus_messages_sent,
+                COALESCE(mu.bonus_images_generated, 0)   AS bonus_images_generated,
                 COALESCE(mu.bonus_characters_created, 0) AS bonus_characters_created,
                 COALESCE(mu.bonus_worlds_created, 0)     AS bonus_worlds_created,
-                COALESCE(mu.bonus_content_edits, 0)      AS bonus_content_edits
+                COALESCE(mu.bonus_content_edits, 0)      AS bonus_content_edits,
+                COALESCE(mu.bonus_avatar_generations, 0) AS bonus_avatar_generations
             FROM users u
             LEFT JOIN monthly_usage mu
                 ON mu.user_id = u.telegram_id AND mu.period = :period
@@ -286,9 +290,11 @@ class StatisticsService:
 
             usage_types = {
                 "messages": ("messages_sent", "bonus_messages_sent"),
+                "images_generated": ("images_generated", "bonus_images_generated"),
                 "characters_created": ("characters_created", "bonus_characters_created"),
                 "worlds_created": ("worlds_created", "bonus_worlds_created"),
                 "content_edits": ("content_edits", "bonus_content_edits"),
+                "avatar_generations": ("avatar_generations", "bonus_avatar_generations"),
             }
             usage_summary = {}
             for ut, (db_field, bonus_field) in usage_types.items():

@@ -21,20 +21,20 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
 
     ALLOWED_FIELDS = frozenset({
         "messages_sent", "images_generated", "characters_created",
-        "worlds_created", "content_edits",
+        "worlds_created", "content_edits", "avatar_generations",
     })
 
     ALLOWED_BONUS_FIELDS = frozenset({
         "bonus_messages_sent", "bonus_images_generated", "bonus_characters_created",
-        "bonus_worlds_created", "bonus_content_edits",
+        "bonus_worlds_created", "bonus_content_edits", "bonus_avatar_generations",
     })
 
     _RETURNING = """
         RETURNING id, user_id, period,
                   messages_sent, images_generated, characters_created,
-                  worlds_created, content_edits,
+                  worlds_created, content_edits, avatar_generations,
                   bonus_messages_sent, bonus_images_generated, bonus_characters_created,
-                  bonus_worlds_created, bonus_content_edits
+                  bonus_worlds_created, bonus_content_edits, bonus_avatar_generations
     """
 
     def _row_to_usage(self, row) -> MonthlyUsage:
@@ -45,11 +45,13 @@ class SubscriptionRepository(BaseRepository[SubscriptionPayment]):
             characters_created=row.characters_created,
             worlds_created=row.worlds_created,
             content_edits=row.content_edits,
+            avatar_generations=row.avatar_generations,
             bonus_messages_sent=row.bonus_messages_sent,
             bonus_images_generated=row.bonus_images_generated,
             bonus_characters_created=row.bonus_characters_created,
             bonus_worlds_created=row.bonus_worlds_created,
             bonus_content_edits=row.bonus_content_edits,
+            bonus_avatar_generations=row.bonus_avatar_generations,
         )
 
     async def upsert_usage(self, user_id: int, period: str, field: str, increment: int = 1, limit: int | None = None) -> MonthlyUsage | None:

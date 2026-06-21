@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models import User, MonthlyUsage, SubscriptionPlan
-from shared.subscription_plans import PLAN_LIMITS, USAGE_TYPE_MAP
+from shared.subscription_plans import PLAN_LIMITS, USAGE_TYPE_MAP, is_usage_display_unlimited
 from shared.database.repositories.subscription import SubscriptionRepository
 from shared.database.exceptions import UsageLimitExceeded
 
@@ -127,18 +127,18 @@ class SubscriptionService:
         repo = self._repo(session)
         usage = await repo.get_monthly_usage(user_id, period)
 
-        is_unlimited = limits.get("display_as_unlimited", False)
         summary = {}
         for usage_type, db_field in USAGE_TYPE_MAP.items():
             plan_limit = limits.get(usage_type, 0)
             current = getattr(usage, db_field, 0) if usage else 0
             bonus = getattr(usage, f"bonus_{db_field}", 0) if usage else 0
             total_limit = plan_limit + bonus
+            display_unlimited = is_usage_display_unlimited(limits, usage_type)
             summary[usage_type] = {
                 "used": current,
-                "limit": -1 if is_unlimited else total_limit,
+                "limit": -1 if display_unlimited else total_limit,
                 "bonus": bonus,
-                "remaining": -1 if is_unlimited else max(0, total_limit - current),
+                "remaining": -1 if display_unlimited else max(0, total_limit - current),
             }
 
         return {
