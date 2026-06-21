@@ -16,6 +16,7 @@ from shared.database import get_session
 from shared.database.repositories import CharacterRepository, ChatRepository, LikeRepository
 from shared.models import Character, Chat, get_async_session
 from shared.config import ADMIN_TELEGRAM_IDS
+from shared.character_order import sort_main_characters
 from shared.services.content_loader import get_all_characters, get_character
 from shared.services.cache import get_cache
 from shared.services.image_cleanup import collect_character_file_paths, delete_files
@@ -114,6 +115,9 @@ async def list_characters(
             r["chat_session_count"] = chat_session_counts.get(r["id"], 0)
             r["like_count"] = like_counts.get(r["id"], 0)
             r["is_liked"] = r["id"] in liked_ids
+
+    if verified == "verified":
+        result = sort_main_characters(result)
 
     return {"characters": result}
 
