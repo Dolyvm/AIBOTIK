@@ -1,6 +1,6 @@
 """set nsfw blur and nude wardrobe defaults
 
-Revision ID: 0010_nsfw_blur_and_wardrobe_defaults
+Revision ID: 0010_nsfw_blur_wardrobe
 Revises: 0009_world_total_message_count
 Create Date: 2026-06-20
 """
@@ -10,7 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 
 
-revision: str = "0010_nsfw_blur_and_wardrobe_defaults"
+revision: str = "0010_nsfw_blur_wardrobe"
 down_revision: Union[str, None] = "0009_world_total_message_count"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
