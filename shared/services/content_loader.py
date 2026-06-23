@@ -8,6 +8,13 @@ from shared.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
 
+REMOVED_CHARACTER_IDS = {"alex", "kenji"}
+
+
+def _is_removed_character_id(character_id: str | None) -> bool:
+    return (character_id or "").lower() in REMOVED_CHARACTER_IDS
+
+
 def character_to_dict(char: Character) -> dict:
     visual_data = char.visual_data or {}
     scenarios = char.scenarios or []
@@ -119,6 +126,9 @@ def world_to_dict(world: World) -> dict:
     }
 
 async def get_character(character_id: str) -> Optional[dict]:
+    if _is_removed_character_id(character_id):
+        return None
+
     cache = get_cache()
     if cache:
         cached = await cache.get_character(character_id)
@@ -174,13 +184,21 @@ async def get_all_characters(tag: Optional[str] = None) -> dict[str, dict]:
         cached = await cache.get_all_characters()
         if cached:
             logger.debug("All characters loaded from cache")
-            return {char["id"]: char for char in cached}
+            return {
+                char["id"]: char
+                for char in cached
+                if not _is_removed_character_id(char.get("id"))
+            }
 
     async with get_session() as session:
         try:
             repo = CharacterRepository(session)
             characters = await repo.get_all_with_filter(tag)
-            result = {char.id: character_to_dict(char) for char in characters}
+            result = {
+                char.id: character_to_dict(char)
+                for char in characters
+                if not _is_removed_character_id(char.id)
+            }
 
             if cache and tag is None:
                 await cache.set_all_characters(list(result.values()))
