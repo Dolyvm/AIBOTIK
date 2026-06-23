@@ -6,10 +6,32 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 
-from shared.models import Character, World
+from shared.models import Character, Chat, Prompt, World
 from shared.database import get_session
+
+
+REMOVED_SYSTEM_CHARACTER_IDS = ("alex", "kenji")
+
+
+async def delete_removed_system_characters(session):
+    await session.execute(
+        delete(Chat)
+        .where(Chat.chat_type == "character")
+        .where(Chat.target_id.in_(REMOVED_SYSTEM_CHARACTER_IDS))
+    )
+    await session.execute(
+        delete(Character).where(Character.id.in_(REMOVED_SYSTEM_CHARACTER_IDS))
+    )
+    await session.execute(
+        delete(Prompt).where(
+            or_(
+                Prompt.key.like("character_modifiers_alex_stage_%"),
+                Prompt.key.like("character_modifiers_kenji_stage_%"),
+            )
+        )
+    )
 
 
 async def load_characters(session, content_dir: Path):
@@ -139,6 +161,7 @@ async def main():
     else:
         content_dir = Path(__file__).parent.parent / "content"
     async with get_session() as session:
+        await delete_removed_system_characters(session)
         await load_characters(session, content_dir)
         await load_worlds(session, content_dir)
 
