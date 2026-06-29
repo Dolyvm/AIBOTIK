@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from sqlalchemy import select, func, distinct, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models import User, Event
+from shared.models import User, Event, Chat
 from shared.subscription_plans import PLAN_LIMITS
 
 
@@ -36,8 +36,8 @@ class StatisticsService:
             int: Number of unique users who started at least one chat
         """
         query = (
-            select(func.count(distinct(Event.user_id)))
-            .where(Event.event_type == "character_chat_started")
+            select(func.count(distinct(Chat.user_id)))
+            .where(Chat.user_id.isnot(None))
         )
         result = await session.execute(query)
         return result.scalar_one()
@@ -49,7 +49,8 @@ class StatisticsService:
         * просмотры
         * кол-во созданных чатов
         * конверсия = (уникальные чаты с персонажем / просмотры) * 100
-        * сообщения
+        * сохраненные сообщения
+        * сгенерированные фотографии
         """
         query = text("""
             WITH view_stats AS (
@@ -78,6 +79,15 @@ class StatisticsService:
                 WHERE e.event_type = 'message_sent'
                     AND e.meta->>'character_id' IS NOT NULL
                 GROUP BY (e.meta->>'character_id')
+            ),
+            photo_stats AS (
+                SELECT
+                    (e.meta->>'character_id') AS target_id,
+                    COUNT(e.id) AS photos
+                FROM events e
+                WHERE e.event_type = 'image_generated'
+                    AND e.meta->>'character_id' IS NOT NULL
+                GROUP BY (e.meta->>'character_id')
             )
             SELECT 
                 ch.name AS "Персонаж",
@@ -88,12 +98,26 @@ class StatisticsService:
                     THEN ROUND(COALESCE(cs.chats, 0)::numeric / v.views * 100, 1)
                     ELSE 0
                 END AS "Конверсия (%)",
-                COALESCE(ms.messages, 0) AS "Сообщения"
+                GREATEST(
+                    COALESCE(ch.total_message_count, 0),
+                    COALESCE(ms.messages, 0)
+                ) AS "Сообщения",
+                COALESCE(ps.photos, 0) AS "Фотографии"
             FROM characters ch
             LEFT JOIN view_stats v ON v.character_id = ch.id
             LEFT JOIN chat_stats cs ON cs.target_id = ch.id
             LEFT JOIN message_stats ms ON ms.target_id = ch.id
-            ORDER BY "Просмотры" DESC
+            LEFT JOIN photo_stats ps ON ps.target_id = ch.id
+            WHERE COALESCE(v.views, 0) > 0
+               OR COALESCE(cs.chats, 0) > 0
+               OR GREATEST(COALESCE(ch.total_message_count, 0), COALESCE(ms.messages, 0)) > 0
+               OR COALESCE(ps.photos, 0) > 0
+            ORDER BY
+                COALESCE(v.views, 0) DESC,
+                COALESCE(cs.chats, 0) DESC,
+                GREATEST(COALESCE(ch.total_message_count, 0), COALESCE(ms.messages, 0)) DESC,
+                COALESCE(ps.photos, 0) DESC,
+                ch.name ASC
             LIMIT :head
         """)
 
@@ -106,10 +130,10 @@ class StatisticsService:
     async def get_top_worlds_info(session: AsyncSession, head: int = 10) -> List[Dict[str, Any]]:
         """
         Топ-N миров по метрикам:
-        * просмотры персонажей этого мира
-        * кол-во созданных чатов с персонажами мира
+        * просмотры карточки мира
+        * кол-во созданных чатов с миром
         * конверсия = (чаты / просмотры) * 100
-        * сообщения в чатах с персонажами мира
+        * сохраненные сообщения в чатах мира
         """
         query = text("""
             WITH view_stats AS (
@@ -148,12 +172,22 @@ class StatisticsService:
                     THEN ROUND(COALESCE(cs.chats, 0)::numeric / v.views * 100, 1)
                     ELSE 0
                 END AS "Конверсия (%)",
-                COALESCE(ms.messages, 0) AS "Сообщения"
+                GREATEST(
+                    COALESCE(w.total_message_count, 0),
+                    COALESCE(ms.messages, 0)
+                ) AS "Сообщения"
             FROM worlds w
             LEFT JOIN view_stats v ON v.world_id = w.id
             LEFT JOIN chat_stats cs ON cs.target_id = w.id
             LEFT JOIN message_stats ms ON ms.target_id = w.id
-            ORDER BY "Просмотры" DESC
+            WHERE COALESCE(v.views, 0) > 0
+               OR COALESCE(cs.chats, 0) > 0
+               OR GREATEST(COALESCE(w.total_message_count, 0), COALESCE(ms.messages, 0)) > 0
+            ORDER BY
+                COALESCE(v.views, 0) DESC,
+                COALESCE(cs.chats, 0) DESC,
+                GREATEST(COALESCE(w.total_message_count, 0), COALESCE(ms.messages, 0)) DESC,
+                w.name ASC
             LIMIT :head
         """)
 
@@ -165,12 +199,18 @@ class StatisticsService:
     @staticmethod
     async def get_churned_users_summary(session: AsyncSession, days_threshold: int = 7) -> Dict[str, Any]:
         """
-        Сводная статистика по ушедшим пользователям (не было событий > days_threshold дней).
+        Сводная статистика по неактивным пользователям.
+
+        Это не показатель блокировок/остановки бота. Пользователь считается
+        неактивным, если его последняя активность старше days_threshold дней.
+        Последняя активность берется как максимум из users.last_active_at,
+        users.created_at и последнего analytics-события.
+
         Возвращает словарь с:
-        * общее количество ушедших пользователей
-        * процент ушедших от всех пользователей
+        * общее количество неактивных пользователей
+        * процент неактивных от всех пользователей
         * среднее количество дней неактивности
-        * Всего событий от ушедших
+        * Всего событий от неактивных
         * Распределение по последним событиям (считает, сколько раз то или иное событие было финальным). Пример:
             {
               "message_sent": 45,
@@ -179,7 +219,7 @@ class StatisticsService:
             }
         """
         query = text("""
-            WITH user_activity AS (
+            WITH event_activity AS (
                 SELECT 
                     user_id,
                     MAX(created_at) AS last_event_at,
@@ -187,37 +227,52 @@ class StatisticsService:
                 FROM events
                 GROUP BY user_id
             ),
-            churned_users AS (
+            user_activity AS (
                 SELECT 
-                    ua.*,
+                    u.telegram_id AS user_id,
                     u.username,
-                    EXTRACT(DAY FROM (NOW() - ua.last_event_at))::INT AS days_inactive
+                    GREATEST(
+                        COALESCE(u.last_active_at, TIMESTAMP 'epoch'),
+                        COALESCE(u.created_at, TIMESTAMP 'epoch'),
+                        COALESCE(ea.last_event_at, TIMESTAMP 'epoch')
+                    ) AS last_activity_at,
+                    COALESCE(ea.total_events, 0) AS total_events
+                FROM users u
+                LEFT JOIN event_activity ea ON ea.user_id = u.telegram_id
+            ),
+            inactive_users AS (
+                SELECT
+                    ua.*,
+                    EXTRACT(DAY FROM (NOW() - ua.last_activity_at))::INT AS days_inactive
                 FROM user_activity ua
-                JOIN users u ON u.telegram_id = ua.user_id
-                WHERE ua.last_event_at < NOW() - (interval '1 day' * :days_threshold)
+                WHERE ua.last_activity_at < NOW() - (interval '1 day' * :days_threshold)
             ),
             last_events AS (
-                SELECT DISTINCT ON (user_id)
-                    user_id,
-                    event_type
-                FROM events
-                ORDER BY user_id, created_at DESC
+                SELECT DISTINCT ON (e.user_id)
+                    e.user_id,
+                    e.event_type
+                FROM events e
+                JOIN inactive_users iu ON iu.user_id = e.user_id
+                ORDER BY e.user_id, e.created_at DESC, e.id DESC
             )
             SELECT 
-                COUNT(*) AS "Всего ушедших",
-                ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM users), 1) AS "Процент от всех пользователей",
-                COALESCE(AVG(days_inactive)::NUMERIC(10,1), 0) AS "Среднее дней неактивности",
-                SUM(total_events) AS "Всего событий от ушедших",
-                (
+                COUNT(*) AS "Всего неактивных",
+                COALESCE(
+                    ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM users), 0), 1),
+                    0
+                ) AS "Процент от всех пользователей",
+                COALESCE(AVG(days_inactive)::NUMERIC(10,1), 0) AS "Среднее дней без активности",
+                COALESCE(SUM(total_events), 0) AS "Всего событий от неактивных",
+                :days_threshold AS "Порог неактивности (дней)",
+                COALESCE((
                     SELECT jsonb_object_agg(event_type, count)
                     FROM (
                         SELECT le.event_type, COUNT(*) as count
                         FROM last_events le
-                        WHERE le.user_id IN (SELECT user_id FROM churned_users)
                         GROUP BY le.event_type
                     ) t
-                ) AS "Распределение по последним событиям"
-            FROM churned_users
+                ), '{}'::jsonb) AS "Распределение по последним событиям"
+            FROM inactive_users
         """)
 
         result = await session.execute(query, {"days_threshold": days_threshold})
